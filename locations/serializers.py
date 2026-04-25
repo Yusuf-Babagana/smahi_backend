@@ -28,3 +28,10 @@ class CountrySerializer(serializers.ModelSerializer):
         
 
         
+
+
+class CountryLiteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Country
+        # Only fetch what is needed for the Dropdown
+        fields = ['id', 'name', 'emoji', 'phone_code']

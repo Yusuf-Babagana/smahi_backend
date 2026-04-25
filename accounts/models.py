@@ -44,6 +44,10 @@ class User(AbstractUser):
     country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     state = models.ForeignKey(State, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     lga = models.ForeignKey(LGA, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
+    
+    # GPS Coordinates
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
 
     is_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
