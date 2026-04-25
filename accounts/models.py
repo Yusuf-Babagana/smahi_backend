@@ -17,6 +17,7 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', 'admin')
+        extra_fields.setdefault('account_status', 'active') # ✅ ADD THIS LINE
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
@@ -33,8 +34,14 @@ class User(AbstractUser):
         ('agent', 'Agent'),
         ('admin', 'Admin'),
     ]
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+        ('suspended', 'Suspended')
+    ]
 
     username = None
+    account_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='client')
     phone_number = models.CharField(max_length=20, blank=True)
