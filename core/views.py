@@ -25,35 +25,21 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
+    # 👇 FORCE DJANGO TO SEND EVERYONE:
+    queryset = ArtisanProfile.objects.all()
     serializer_class = ArtisanProfileSerializer
     permission_classes = [AllowAny]
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['category', 'verification_status']
-    search_fields = ['user__first_name', 'user__last_name', 'bio']
     pagination_class = None
 
-    def get_queryset(self):
-        queryset = ArtisanProfile.objects.select_related(
-            'user', 'category'
-        ).prefetch_related(
-            'service_countries', 'service_states', 'service_lgas'
-        ).filter(verification_status='approved')
+    def list(self, request, *args, **kwargs):
+        # Grab absolutely everyone from the database
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        artisan_data = serializer.data
 
-        category_id = self.request.query_params.get('category_id')
-        country_id = self.request.query_params.get('country_id')
-        state_id = self.request.query_params.get('state_id')
-        lga_id = self.request.query_params.get('lga_id')
-
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
-        if country_id:
-            queryset = queryset.filter(service_countries__id=country_id)
-        if state_id:
-            queryset = queryset.filter(service_states__id=state_id)
-        if lga_id:
-            queryset = queryset.filter(service_lgas__id=lga_id)
-
-        return queryset.distinct()
+        # We will completely skip the distance math for this test.
+        # Just send the raw list back to the app immediately.
+        return Response(artisan_data)
 
 
 class ArtisanProfileView(generics.RetrieveUpdateAPIView):
