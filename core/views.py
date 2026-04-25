@@ -32,11 +32,9 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ['user__first_name', 'user__last_name', 'bio']
 
     def get_queryset(self):
-        queryset = ArtisanProfile.objects.select_related(
-            'user', 'category'
-        ).prefetch_related(
-            'service_countries', 'service_states', 'service_lgas'
-        ) # .filter(verification_status='approved')
+        queryset = ArtisanProfile.objects.select_related('user', 'category')
+        
+        # Note: I removed the prefetch_related for service_countries to keep it simple
 
         category_id = self.request.query_params.get('category_id')
         country_id = self.request.query_params.get('country_id')
@@ -45,12 +43,14 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
 
         if category_id:
             queryset = queryset.filter(category_id=category_id)
+            
+        # 🔥 THE FIX: Tell Django to look at the User's actual location!
         if country_id:
-            queryset = queryset.filter(service_countries__id=country_id)
+            queryset = queryset.filter(user__country__id=country_id)
         if state_id:
-            queryset = queryset.filter(service_states__id=state_id)
+            queryset = queryset.filter(user__state__id=state_id)
         if lga_id:
-            queryset = queryset.filter(service_lgas__id=lga_id)
+            queryset = queryset.filter(user__lga__id=lga_id)
 
         return queryset.distinct()
 
