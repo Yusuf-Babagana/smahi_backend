@@ -2,6 +2,9 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from locations.serializers import CountrySerializer, StateSerializer, LGASerializer
 
+# 👇 Import ArtisanProfile at the top
+from core.models import ArtisanProfile 
+
 User = get_user_model()
 
 
@@ -13,11 +16,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=True, allow_blank=False)
     last_name = serializers.CharField(required=True, allow_blank=False)
 
+    # 👇 Add category_id to catch the dropdown value from the app
+    category_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
     class Meta:
         model = User
         fields = [
             'email', 'password', 'password_confirm', 'first_name', 'last_name',
-            'role', 'phone_number', 'address', 'country', 'state', 'lga'
+            'role', 'phone_number', 'address', 'country', 'state', 'lga', 'category_id'
         ]
 
     def validate(self, attrs):
@@ -31,9 +37,23 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        # 1. Pull the category_id out of the data before creating the user
+        category_id = validated_data.pop('category_id', None)
+
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
+
+        # 2. Create the User account
         user = User.objects.create_user(password=password, **validated_data)
+
+        # 3. 🔥 THE FIX: Automatically create the ArtisanProfile!
+        if user.role == 'artisan':
+            ArtisanProfile.objects.create(
+                user=user,
+                category_id=category_id,
+                verification_status='approved' # Set to 'pending' later if you want to manually approve them
+            )
+
         return user
 
 
