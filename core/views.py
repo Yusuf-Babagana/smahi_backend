@@ -25,21 +25,34 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
-    # 👇 FORCE DJANGO TO SEND EVERYONE:
-    queryset = ArtisanProfile.objects.all()
     serializer_class = ArtisanProfileSerializer
     permission_classes = [AllowAny]
-    pagination_class = None
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['category', 'verification_status']
+    search_fields = ['user__first_name', 'user__last_name', 'bio']
 
-    def list(self, request, *args, **kwargs):
-        # Grab absolutely everyone from the database
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        artisan_data = serializer.data
+    def get_queryset(self):
+        queryset = ArtisanProfile.objects.select_related(
+            'user', 'category'
+        ).prefetch_related(
+            'service_countries', 'service_states', 'service_lgas'
+        ).filter(verification_status='approved')
 
-        # We will completely skip the distance math for this test.
-        # Just send the raw list back to the app immediately.
-        return Response(artisan_data)
+        category_id = self.request.query_params.get('category_id')
+        country_id = self.request.query_params.get('country_id')
+        state_id = self.request.query_params.get('state_id')
+        lga_id = self.request.query_params.get('lga_id')
+
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        if country_id:
+            queryset = queryset.filter(service_countries__id=country_id)
+        if state_id:
+            queryset = queryset.filter(service_states__id=state_id)
+        if lga_id:
+            queryset = queryset.filter(service_lgas__id=lga_id)
+
+        return queryset.distinct()
 
 
 class ArtisanProfileView(generics.RetrieveUpdateAPIView):
@@ -158,20 +171,3 @@ class ReviewViewSet(viewsets.ModelViewSet):
             serializer.save(booking=booking)
         except Booking.DoesNotExist:
             raise serializers.ValidationError("Booking not found or you don't have permission to review it.")
-
-@api_view(['PATCH'])
-@permission_classes([IsAuthenticated])
-def update_artisan_location(request):
-    user = request.user
-    
-    # Grab the coordinates sent from the mobile app
-    lat = request.data.get('latitude')
-    lon = request.data.get('longitude')
-    
-    if lat is not None and lon is not None:
-        user.latitude = float(lat)
-        user.longitude = float(lon)
-        user.save()
-        return Response({"message": "Location updated successfully!"}, status=200)
-        
-    return Response({"error": "Latitude and longitude are required."}, status=400)

@@ -13,8 +13,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'email', 'password', 'password_confirm', 'first_name', 'last_name',
-            'role', 'phone_number', 'address', 'country', 'state', 'lga',
-            'latitude', 'longitude'
+            'role', 'phone_number', 'address', 'country', 'state', 'lga'
         ]
 
     def validate(self, attrs):
@@ -39,7 +38,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'first_name', 'last_name', 'role', 'phone_number',
             'address', 'profile_picture', 'country', 'state', 'lga',
-            'latitude', 'longitude', 'country_details', 'state_details', 'lga_details',
+            'country_details', 'state_details', 'lga_details',
             'is_verified', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'role', 'is_verified', 'created_at', 'updated_at']
@@ -50,6 +49,5 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'first_name', 'last_name', 'phone_number', 'address',
-            'profile_picture', 'country', 'state', 'lga',
-            'latitude', 'longitude'
+            'profile_picture', 'country', 'state', 'lga'
         ]
