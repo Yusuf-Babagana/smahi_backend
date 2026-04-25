@@ -172,3 +172,20 @@ class ReviewViewSet(viewsets.ModelViewSet):
             serializer.save(booking=booking)
         except Booking.DoesNotExist:
             raise serializers.ValidationError("Booking not found or you don't have permission to review it.")
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_artisan_location(request):
+    user = request.user
+    
+    # Grab the coordinates sent from the mobile app
+    lat = request.data.get('latitude')
+    lon = request.data.get('longitude')
+    
+    if lat is not None and lon is not None:
+        user.latitude = float(lat)
+        user.longitude = float(lon)
+        user.save()
+        return Response({"message": "Location updated successfully!"}, status=200)
+        
+    return Response({"error": "Latitude and longitude are required."}, status=400)
