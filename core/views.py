@@ -30,6 +30,7 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['category', 'verification_status']
     search_fields = ['user__first_name', 'user__last_name', 'bio']
+    pagination_class = None
 
     def get_queryset(self):
         queryset = ArtisanProfile.objects.select_related(
