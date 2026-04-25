@@ -3,12 +3,16 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny 
 from .models import Country, State, LGA
-from .serializers import CountrySerializer, StateSerializer, LGASerializer
+from .serializers import (
+    CountrySerializer, CountryLiteSerializer, 
+    StateSerializer, StateLiteSerializer, 
+    LGASerializer
+)
 
 # --- COUNTRIES ---
 class CountryListView(generics.ListAPIView):
     queryset = Country.objects.all()
-    serializer_class = CountrySerializer
+    serializer_class = CountryLiteSerializer # ✅ Use Lite Serializer
     permission_classes = [AllowAny]
     pagination_class = None          # <--- Fix 1: Fetch ALL countries (250+)
 
@@ -19,7 +23,7 @@ class CountryDetailView(generics.RetrieveAPIView):
 
 # --- STATES ---
 class StateListView(generics.ListAPIView):
-    serializer_class = StateSerializer
+    serializer_class = StateLiteSerializer # ✅ Use Lite Serializer
     permission_classes = [AllowAny]
     pagination_class = None          # <--- Fix 1: Fetch ALL states (e.g. all 36+1 for Nigeria)
     
