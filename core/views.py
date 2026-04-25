@@ -36,7 +36,7 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
             'user', 'category'
         ).prefetch_related(
             'service_countries', 'service_states', 'service_lgas'
-        ).filter(verification_status='approved')
+        ) # .filter(verification_status='approved')
 
         category_id = self.request.query_params.get('category_id')
         country_id = self.request.query_params.get('country_id')
