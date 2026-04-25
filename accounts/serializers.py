@@ -9,6 +9,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True, min_length=8)
 
+    # Force the API to require these fields to be filled out
+    first_name = serializers.CharField(required=True, allow_blank=False)
+    last_name = serializers.CharField(required=True, allow_blank=False)
+
     class Meta:
         model = User
         fields = [
@@ -19,6 +23,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password": "Passwords do not match."})
+
+        # Block the specific "User User" placeholder from being saved
+        if attrs.get('first_name') == 'User' and attrs.get('last_name') == 'User':
+            raise serializers.ValidationError({"first_name": "Please enter your actual name instead of 'User'."})
+
         return attrs
 
     def create(self, validated_data):
