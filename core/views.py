@@ -28,7 +28,7 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ArtisanProfileSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['category', 'verification_status']
+    filterset_fields = ['category', 'verification_status', 'user']
     search_fields = ['user__first_name', 'user__last_name', 'bio']
 
     def get_queryset(self):

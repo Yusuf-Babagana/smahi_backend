@@ -7,7 +7,7 @@ from .serializers import CountrySerializer, StateSerializer, LGASerializer
 
 # --- COUNTRIES ---
 class CountryListView(generics.ListAPIView):
-    queryset = Country.objects.all().prefetch_related('states')
+    queryset = Country.objects.all()
     serializer_class = CountrySerializer
     permission_classes = [AllowAny]
     pagination_class = None          # <--- Fix 1: Fetch ALL countries (250+)
@@ -24,10 +24,11 @@ class StateListView(generics.ListAPIView):
     pagination_class = None          # <--- Fix 1: Fetch ALL states (e.g. all 36+1 for Nigeria)
     
     def get_queryset(self):
-        queryset = State.objects.all().select_related('country').prefetch_related('lgas')
+        queryset = State.objects.all().select_related('country')
         
-        # <--- Fix 2: Only fetch states that correspond to the selected country
-        country_id = self.request.query_params.get('country_id')
+        # Support both Path Parameter and Query Parameter
+        country_id = self.kwargs.get('country_id') or self.request.query_params.get('country_id')
+        
         if country_id:
             queryset = queryset.filter(country_id=country_id)
             
@@ -47,8 +48,9 @@ class LGAListView(generics.ListAPIView):
     def get_queryset(self):
         queryset = LGA.objects.all().select_related('state', 'state__country')
         
-        # <--- Fix 2: Only fetch LGAs that correspond to the selected state
-        state_id = self.request.query_params.get('state_id')
+        # Support both Path Parameter and Query Parameter
+        state_id = self.kwargs.get('state_id') or self.request.query_params.get('state_id')
+        
         if state_id:
             queryset = queryset.filter(state_id=state_id)
             
