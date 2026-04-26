@@ -78,6 +78,13 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
         client_lon = request.query_params.get('longitude')
         max_distance = request.query_params.get('max_distance') 
 
+        # 🔥 NEW: Check if the client wants to use their saved database address
+        use_saved = request.query_params.get('use_saved') == 'true'
+
+        if use_saved and request.user.is_authenticated:
+            client_lat = request.user.latitude
+            client_lon = request.user.longitude
+
         # Convert queryset to a list so we can manipulate it in Python
         artisans = list(queryset)
 
