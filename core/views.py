@@ -73,9 +73,10 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         
-        # 1. Grab the client's location from the URL parameters
+        # 1. Grab the location and new max_distance limit from the parameters
         client_lat = request.query_params.get('latitude')
         client_lon = request.query_params.get('longitude')
+        max_distance = request.query_params.get('max_distance') 
 
         # Convert queryset to a list so we can manipulate it in Python
         artisans = list(queryset)
@@ -100,8 +101,10 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
                 # 2. Sort the artisans: Closest first!
                 artisans.sort(key=lambda x: getattr(x, 'distance', float('inf')))
                 
-                # Optional: Filter out artisans that are too far away (e.g., > 50km)
-                # artisans = [a for a in artisans if getattr(a, 'distance', float('inf')) <= 50.0]
+                # 🔥 3. Filter out anyone further than the max_distance!
+                if max_distance:
+                    max_dist_float = float(max_distance)
+                    artisans = [a for a in artisans if getattr(a, 'distance', float('inf')) <= max_dist_float]
 
             except ValueError:
                 pass # If coordinates are invalid, just return the unsorted list
