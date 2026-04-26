@@ -19,6 +19,9 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     service_countries_details = CountrySerializer(source='service_countries', many=True, read_only=True)
     service_states_details = StateSerializer(source='service_states', many=True, read_only=True)
     service_lgas_details = LGASerializer(source='service_lgas', many=True, read_only=True)
+    
+    # 👇 1. Add the distance field
+    distance = serializers.SerializerMethodField() 
 
     class Meta:
         model = ArtisanProfile
@@ -28,9 +31,16 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
             'service_countries', 'service_states', 'service_lgas',
             'service_countries_details', 'service_states_details', 'service_lgas_details',
             'verification_status', 'rating', 'total_reviews', 'total_bookings',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at', 'distance' 
         ]
         read_only_fields = ['user', 'verification_status', 'rating', 'total_reviews', 'total_bookings']
+
+    # 👇 3. Create the method to extract the calculated distance
+    def get_distance(self, obj):
+        # Check if the view calculated a distance for this specific request
+        if hasattr(obj, 'distance') and obj.distance != float('inf'):
+            return round(obj.distance, 1) # Rounds to 1 decimal place (e.g., 2.5)
+        return None
 
 
 class ArtisanProfileUpdateSerializer(serializers.ModelSerializer):

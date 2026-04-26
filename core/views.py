@@ -1,4 +1,19 @@
 from rest_framework import viewsets, status, generics
+import math
+
+def calculate_haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculates the distance between two GPS coordinates in kilometers."""
+    R = 6371.0 # Earth radius in kilometers
+    
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    
+    a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    return R * c
+
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -53,6 +68,52 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(user__lga__id=lga_id)
 
         return queryset.distinct()
+
+    # 👇 ADD THIS NEW LIST METHOD 👇
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # 1. Grab the client's location from the URL parameters
+        client_lat = request.query_params.get('latitude')
+        client_lon = request.query_params.get('longitude')
+
+        # Convert queryset to a list so we can manipulate it in Python
+        artisans = list(queryset)
+
+        if client_lat and client_lon:
+            try:
+                client_lat = float(client_lat)
+                client_lon = float(client_lon)
+
+                for artisan in artisans:
+                    art_lat = artisan.user.latitude
+                    art_lon = artisan.user.longitude
+                    
+                    if art_lat and art_lon:
+                        # Calculate distance and attach it to the object temporarily
+                        artisan.distance = calculate_haversine_distance(
+                            client_lat, client_lon, float(art_lat), float(art_lon)
+                        )
+                    else:
+                        artisan.distance = float('inf') # Push artisans without GPS to the bottom
+
+                # 2. Sort the artisans: Closest first!
+                artisans.sort(key=lambda x: getattr(x, 'distance', float('inf')))
+                
+                # Optional: Filter out artisans that are too far away (e.g., > 50km)
+                # artisans = [a for a in artisans if getattr(a, 'distance', float('inf')) <= 50.0]
+
+            except ValueError:
+                pass # If coordinates are invalid, just return the unsorted list
+
+        # 3. Handle Pagination and Response
+        page = self.paginate_queryset(artisans)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(artisans, many=True)
+        return Response(serializer.data)
 
 
 class ArtisanProfileView(generics.RetrieveUpdateAPIView):
