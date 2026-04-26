@@ -54,6 +54,9 @@ class User(AbstractUser):
     state = models.ForeignKey(State, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     lga = models.ForeignKey(LGA, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
 
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
     is_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
