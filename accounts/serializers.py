@@ -51,7 +51,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             ArtisanProfile.objects.create(
                 user=user,
                 category_id=category_id,
-                verification_status='approved' # Set to 'pending' later if you want to manually approve them
+                verification_status='pending' # 🔥 Changed to Pending!
             )
 
         return user
