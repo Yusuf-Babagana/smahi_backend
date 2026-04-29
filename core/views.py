@@ -37,6 +37,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
     search_fields = ['name', 'description']
+    pagination_class = None
 
 
 class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
