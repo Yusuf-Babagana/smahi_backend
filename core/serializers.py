@@ -22,11 +22,14 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     
     # 👇 1. Add the distance field
     distance = serializers.SerializerMethodField() 
+    
+    # 🔥 1. Add this new custom field
+    profession_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ArtisanProfile
         fields = [
-            'id', 'user', 'user_details', 'category', 'category_name',
+            'id', 'user', 'user_details', 'category', 'category_name', 'profession_name',
             'bio', 'experience_years', 'hourly_rate',
             'service_countries', 'service_states', 'service_lgas',
             'service_countries_details', 'service_states_details', 'service_lgas_details',
@@ -41,6 +44,22 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'distance') and obj.distance != float('inf'):
             return round(obj.distance, 1) # Rounds to 1 decimal place (e.g., 2.5)
         return None
+
+    # 🔥 3. Add this function inside the class to safely grab the name
+    def get_profession_name(self, obj):
+        # First, check if the category is attached directly to the Artisan Profile
+        if hasattr(obj, 'category') and obj.category:
+            return obj.category.name
+            
+        # Second, check if it was saved on the User model during registration
+        if hasattr(obj.user, 'service_category') and obj.user.service_category:
+            # If it's a Category object, get the name
+            if hasattr(obj.user.service_category, 'name'):
+                return obj.user.service_category.name
+            # If it's just plain text, return the text
+            return str(obj.user.service_category)
+            
+        return "Artisan" # Default fallback
 
 
 class ArtisanProfileUpdateSerializer(serializers.ModelSerializer):
