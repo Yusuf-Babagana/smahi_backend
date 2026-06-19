@@ -58,7 +58,7 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
         lga_id = self.request.query_params.get('lga_id')
 
         if category_id:
-            queryset = queryset.filter(category_id=category_id)
+            queryset = queryset.filter(category__name__iexact=category_id)
             
         # 🔥 THE FIX: Tell Django to look at the User's actual location!
         if country_id:
