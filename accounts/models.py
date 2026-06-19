@@ -34,6 +34,7 @@ class User(AbstractUser):
         ('client', 'Client'),
         ('artisan', 'Artisan'),
         ('agent', 'Agent'),
+        ('state_coordinator', 'State Coordinator'),
         ('admin', 'Admin'),
     ]
     STATUS_CHOICES = [
