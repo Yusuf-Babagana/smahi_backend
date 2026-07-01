@@ -12,6 +12,7 @@ class Category(models.Model):
         related_name='subcategories'
     )
     name = models.CharField(max_length=100)
+    name_ha = models.CharField(max_length=100, blank=True, help_text="Hausa translation")
     description = models.TextField(blank=True)
     icon = models.CharField(max_length=50, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -10,7 +10,7 @@ User = get_user_model()
 class SubcategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ['id', 'name', 'description', 'icon']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon']
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -18,7 +18,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'description', 'icon', 'subcategories', 'created_at']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'subcategories', 'created_at']
 
 
 class FlatCategorySerializer(serializers.ModelSerializer):
@@ -26,12 +26,13 @@ class FlatCategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'description', 'icon', 'parent_id']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'parent_id']
 
 
 class ArtisanProfileSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
+    category_name_ha = serializers.CharField(source='category.name_ha', read_only=True, default='')
     service_countries_details = CountrySerializer(source='service_countries', many=True, read_only=True)
     service_states_details = StateSerializer(source='service_states', many=True, read_only=True)
     service_lgas_details = LGASerializer(source='service_lgas', many=True, read_only=True)
@@ -45,7 +46,7 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArtisanProfile
         fields = [
-            'id', 'user', 'user_details', 'category', 'category_name', 'profession_name',
+            'id', 'user', 'user_details', 'category', 'category_name', 'category_name_ha', 'profession_name',
             'bio', 'experience_years', 'hourly_rate',
             'service_countries', 'service_states', 'service_lgas',
             'service_countries_details', 'service_states_details', 'service_lgas_details',

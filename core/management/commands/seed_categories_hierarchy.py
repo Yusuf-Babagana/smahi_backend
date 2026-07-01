@@ -3,47 +3,86 @@ from core.models import Category
 
 
 PARENTS = [
-    {"name": "Home & Tech Repairs", "icon": "home-outline", "description": "Home maintenance, repairs, and technology services"},
-    {"name": "Food & Provisions", "icon": "restaurant-outline", "description": "Food preparation, catering, and provisions"},
-    {"name": "Fashion & Beauty", "icon": "shirt-outline", "description": "Clothing, styling, and personal care services"},
-    {"name": "Metalwork & Construction", "icon": "construct-outline", "description": "Building, metal fabrication, and construction services"},
-    {"name": "Professional Services", "icon": "briefcase-outline", "description": "Business, creative, and professional support services"},
+    {"name": "Home & Tech Repairs",        "name_ha": "Gyaran Gida da Fasaha",       "icon": "home-outline",        "description": "Home maintenance, repairs, and technology services"},
+    {"name": "Food & Provisions",          "name_ha": "Abinci da Kayayyaki",          "icon": "restaurant-outline",  "description": "Food preparation, catering, and provisions"},
+    {"name": "Fashion & Beauty",           "name_ha": "Kayayyaki da Kyau",            "icon": "shirt-outline",       "description": "Clothing, styling, and personal care services"},
+    {"name": "Metalwork & Construction",   "name_ha": "Aikin Karfe da Gina",          "icon": "construct-outline",   "description": "Building, metal fabrication, and construction services"},
+    {"name": "Professional Services",      "name_ha": "Sabis na Kwararru",            "icon": "briefcase-outline",   "description": "Business, creative, and professional support services"},
 ]
 
 SUBCATEGORIES = {
     "Home & Tech Repairs": [
-        "Plumbing", "Electrical", "Carpentry", "Painting", "Cleaning",
-        "AC Technician", "Mechanic", "TV & Electronics Repair",
-        "Computer & Phone Repair", "Furniture Repair & Assembly",
-        "Generator Repair", "Pest Control", "Interior Decoration",
-        "Tiling", "HVAC", "Solar Installation", "Smart Home Setup",
+        ("Plumbing",                 "Aikin Ruwa"),
+        ("Electrical",               "Aikin Wuta"),
+        ("Carpentry",                "Kafinta"),
+        ("Painting",                 "Fenti"),
+        ("Cleaning",                 "Tsaftacewa"),
+        ("AC Technician",            "Mai Gyaran AC"),
+        ("Mechanic",                 "Makanike"),
+        ("TV & Electronics Repair",  "Gyaran TV da Lantarki"),
+        ("Computer & Phone Repair",  "Gyaran Kwamfuta da Wayar"),
+        ("Furniture Repair & Assembly", "Gyaran Kayan Daki"),
+        ("Generator Repair",         "Gyaran Janareta"),
+        ("Pest Control",             "Kawar da Kwari"),
+        ("Interior Decoration",      "Kayan Ado na Cikin Gida"),
+        ("Tiling",                   "Tile"),
+        ("HVAC",                     "HVAC"),
+        ("Solar Installation",       "Saka Hasken Rana"),
+        ("Smart Home Setup",         "Saka Na'urorin Gida"),
     ],
     "Food & Provisions": [
-        "Catering", "Baking & Confectionery", "Grilling & Suya",
-        "Food Delivery", "Butchery", "Poultry & Livestock",
-        "Farming & Provisions", "Waiters & Event Staff",
-        "Meal Prep & Meal Plans", "Juice & Beverages",
+        ("Catering",                 "Aikin Abinci"),
+        ("Baking & Confectionery",   "Biredi da Kayan Zaki"),
+        ("Grilling & Suya",          "Gasasshe da Suya"),
+        ("Food Delivery",            "Isar da Abinci"),
+        ("Butchery",                 "Aikin Mahauci"),
+        ("Poultry & Livestock",      "Kiwon Kaji da Dabbobi"),
+        ("Farming & Provisions",     "Noma da Kayayyaki"),
+        ("Waiters & Event Staff",    "Masu Hidimar Taro"),
+        ("Meal Prep & Meal Plans",   "Shirya Abinci"),
+        ("Juice & Beverages",        "Ruwan 'Ya'yan Itace"),
     ],
     "Fashion & Beauty": [
-        "Tailoring", "Barber", "Hairdressing", "Makeup & Cosmetics",
-        "Nail Technician", "Fashion Design", "Shoemaking & Repairs",
-        "Laundry & Dry Cleaning", "Spa & Massage",
-        "Tattoo & Piercing", "Wig & Hair Extensions",
+        ("Tailoring",                "Dinki"),
+        ("Barber",                   "Wanzami"),
+        ("Hairdressing",             "Gyaran Gashi"),
+        ("Makeup & Cosmetics",       "Kayan Shafa"),
+        ("Nail Technician",          "Gyaran Farce"),
+        ("Fashion Design",           "Zanen Tufafi"),
+        ("Shoemaking & Repairs",     "Gyaran Takalma"),
+        ("Laundry & Dry Cleaning",   "Wanki"),
+        ("Spa & Massage",            "Spa da Tausa"),
+        ("Tattoo & Piercing",        "Tattoo da Huda"),
+        ("Wig & Hair Extensions",    "Gashi na Roko"),
     ],
     "Metalwork & Construction": [
-        "Mason", "Welding", "Aluminum Fabrication", "Roofing",
-        "Iron Bending & Steel Work", "POP Ceiling Installation",
-        "Glasswork & Mirror", "Gate & Automation",
-        "POP & Plastering", "Concrete & Block Work",
+        ("Mason",                    "Magoni"),
+        ("Welding",                  "Waldi"),
+        ("Aluminum Fabrication",     "Aikin Aluminum"),
+        ("Roofing",                  "Rufin Gida"),
+        ("Iron Bending & Steel Work", "Lankwashe Karfe"),
+        ("POP Ceiling Installation", "Saka POP"),
+        ("Glasswork & Mirror",       "Gilashi da Madubi"),
+        ("Gate & Automation",        "Kofa da Automation"),
+        ("POP & Plastering",         "POP da Plasta"),
+        ("Concrete & Block Work",    "Aikin Siminti"),
     ],
     "Professional Services": [
-        "Photography", "Videography", "Graphic Design",
-        "Web & App Development", "Logistics & Delivery",
-        "Security Services", "Tutoring & Education",
-        "Event Planning", "Consulting", "Legal Services",
-        "Accounting & Tax", "Digital Marketing",
-        "Translation & Interpretation", "Music & Entertainment",
-        "Virtual Assistant",
+        ("Photography",              "Daukar Hoto"),
+        ("Videography",              "Daukar Bidiyo"),
+        ("Graphic Design",           "Zanen Hotuna"),
+        ("Web & App Development",    "Shafukan Yanar Gizo"),
+        ("Logistics & Delivery",     "Jigilar Kaya"),
+        ("Security Services",        "Tsaro"),
+        ("Tutoring & Education",     "Koyarwa"),
+        ("Event Planning",           "Shirya Taro"),
+        ("Consulting",               "Shawarwari"),
+        ("Legal Services",           "Aikin Lauya"),
+        ("Accounting & Tax",         "Lissafin Kudi"),
+        ("Digital Marketing",        "Tallan Yanar Gizo"),
+        ("Translation & Interpretation", "Fassara"),
+        ("Music & Entertainment",    "Kida da Nishaɗi"),
+        ("Virtual Assistant",        "Mataimaki na Yanar Gizo"),
     ],
 }
 
@@ -56,21 +95,18 @@ EXISTING_MERGE_MAP = {
     "Tailor": "Tailoring",
 }
 
-CATEGORIES_TO_DELETE = ["Cleaner", "Painter", "Tailor", "Plumber", "Electrician", "Carpenter"]
-
 
 class Command(BaseCommand):
-    help = "Seeds the 5 parent categories with ~50 sub-categories, cleaning up duplicates"
+    help = "Seeds the 5 parent categories with ~50 sub-categories and their Hausa translations"
 
     def handle(self, *args, **options):
-        self.stdout.write("Seeding hierarchical categories...")
+        self.stdout.write("Seeding hierarchical categories with Hausa translations...")
 
         existing_cats = {c.name: c for c in Category.objects.all()}
 
         for old_name, new_name in EXISTING_MERGE_MAP.items():
             if old_name in existing_cats and new_name in existing_cats:
                 old_cat = existing_cats[old_name]
-                ArtisanProfile = None
                 try:
                     from core.models import ArtisanProfile
                     ArtisanProfile.objects.filter(category=old_cat).update(category=existing_cats[new_name])
@@ -90,6 +126,7 @@ class Command(BaseCommand):
             cat, created = Category.objects.get_or_create(
                 name=parent_data["name"],
                 defaults={
+                    "name_ha": parent_data["name_ha"],
                     "icon": parent_data["icon"],
                     "description": parent_data["description"],
                 }
@@ -97,19 +134,21 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f"  Created parent: {cat.name}")
             else:
+                cat.name_ha = parent_data["name_ha"]
                 cat.icon = parent_data["icon"]
                 cat.description = parent_data["description"]
                 cat.save()
-                self.stdout.write(f"  Updated parent: {cat.name}")
+                self.stdout.write(f"  Updated parent: {cat.name} (name_ha seeded)")
             parent_objects[parent_data["name"]] = cat
 
-        for parent_name, sub_names in SUBCATEGORIES.items():
+        for parent_name, sub_list in SUBCATEGORIES.items():
             parent = parent_objects[parent_name]
-            for sub_name in sub_names:
+            for sub_name, sub_ha in sub_list:
                 sub, created = Category.objects.get_or_create(
                     name=sub_name,
                     defaults={
                         "parent": parent,
+                        "name_ha": sub_ha,
                         "icon": "",
                         "description": "",
                     }
@@ -117,19 +156,8 @@ class Command(BaseCommand):
                 if created:
                     self.stdout.write(f"    Created sub: {sub_name} -> {parent_name}")
                 else:
-                    if sub.parent != parent:
-                        sub.parent = parent
-                        sub.save()
-                        self.stdout.write(f"    Re-parented: {sub_name} -> {parent_name}")
-                    else:
-                        self.stdout.write(f"    Already exists: {sub_name}")
-
-        uncategorized = Category.objects.filter(parent__isnull=True).exclude(
-            name__in=[p["name"] for p in PARENTS]
-        )
-        if uncategorized.exists():
-            self.stdout.write(self.style.WARNING(
-                f"  Uncategorized top-level items remain: {[c.name for c in uncategorized]}"
-            ))
-
-        self.stdout.write(self.style.SUCCESS("Category hierarchy seeded successfully!"))
+                    sub.name_ha = sub_ha
+                    sub.parent = parent
+                    sub.save()
+                    self.stdout.write(f"    Updated sub: {sub_name} (name_ha seeded)")
+        self.stdout.write(self.style.SUCCESS("Category hierarchy with Hausa translations seeded successfully!"))
