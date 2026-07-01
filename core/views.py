@@ -22,7 +22,8 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review
 from .serializers import (
-    CategorySerializer, ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
+    CategorySerializer, FlatCategorySerializer,
+    ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer
@@ -33,11 +34,25 @@ User = get_user_model()
 
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
     permission_classes = [AllowAny]
     search_fields = ['name', 'description']
     pagination_class = None
+
+    def get_queryset(self):
+        if self.action == 'all':
+            return Category.objects.all()
+        return Category.objects.filter(parent__isnull=True).prefetch_related('subcategories')
+
+    def get_serializer_class(self):
+        if self.action == 'all':
+            return FlatCategorySerializer
+        return CategorySerializer
+
+    @action(detail=False, methods=['get'])
+    def all(self, request):
+        categories = self.get_queryset()
+        serializer = self.get_serializer(categories, many=True)
+        return Response(serializer.data)
 
 
 class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
@@ -58,7 +73,17 @@ class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
         lga_id = self.request.query_params.get('lga_id')
 
         if category_id:
-            queryset = queryset.filter(category__name__iexact=category_id)
+            try:
+                cat_id = int(category_id)
+                cat = Category.objects.get(id=cat_id)
+                if cat.parent is None:
+                    sub_ids = list(cat.subcategories.values_list('id', flat=True))
+                    sub_ids.append(cat_id)
+                    queryset = queryset.filter(category__id__in=sub_ids)
+                else:
+                    queryset = queryset.filter(category__id=cat_id)
+            except (ValueError, Category.DoesNotExist):
+                queryset = queryset.filter(category__name__iexact=category_id)
             
         # 🔥 THE FIX: Tell Django to look at the User's actual location!
         if country_id:

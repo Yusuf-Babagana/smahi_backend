@@ -7,7 +7,11 @@ User = get_user_model()
 
 
 class Category(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='subcategories'
+    )
+    name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     icon = models.CharField(max_length=50, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

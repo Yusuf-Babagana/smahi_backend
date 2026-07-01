@@ -7,10 +7,26 @@ from locations.serializers import CountrySerializer, StateSerializer, LGASeriali
 User = get_user_model()
 
 
-class CategorySerializer(serializers.ModelSerializer):
+class SubcategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ['id', 'name', 'description', 'icon', 'created_at']
+        fields = ['id', 'name', 'description', 'icon']
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    subcategories = SubcategorySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'description', 'icon', 'subcategories', 'created_at']
+
+
+class FlatCategorySerializer(serializers.ModelSerializer):
+    parent_id = serializers.IntegerField(source='parent.id', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'description', 'icon', 'parent_id']
 
 
 class ArtisanProfileSerializer(serializers.ModelSerializer):

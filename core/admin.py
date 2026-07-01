@@ -4,7 +4,8 @@ from .models import Category, ArtisanProfile, VerificationRequest, Booking, Revi
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'icon', 'created_at']
+    list_display = ['name', 'parent', 'icon', 'created_at']
+    list_filter = ['parent']
     search_fields = ['name', 'description']
 
 
