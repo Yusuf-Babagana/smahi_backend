@@ -18,17 +18,27 @@ SUBCATEGORIES = {
         ("Painting",                 "Fenti"),
         ("Cleaning",                 "Tsaftacewa"),
         ("AC Technician",            "Mai Gyaran AC"),
+        ("AC Repair & Maintenance",  "Gyaran AC da Kulawa"),
         ("Mechanic",                 "Makanike"),
+        ("Auto Electrician",         "Mai Aikin Wutar Mota"),
+        ("Auto Mechanic",            "Makanin Mota"),
+        ("Borehole Driller",         "Mai Hako Rijiya"),
+        ("CCTV & Security Installer","Saka CCTV da Tsaro"),
         ("TV & Electronics Repair",  "Gyaran TV da Lantarki"),
         ("Computer & Phone Repair",  "Gyaran Kwamfuta da Wayar"),
         ("Furniture Repair & Assembly", "Gyaran Kayan Daki"),
         ("Generator Repair",         "Gyaran Janareta"),
+        ("Home Appliance Repairer",  "Gyaran Na'urorin Gida"),
         ("Pest Control",             "Kawar da Kwari"),
         ("Interior Decoration",      "Kayan Ado na Cikin Gida"),
         ("Tiling",                   "Tile"),
         ("HVAC",                     "HVAC"),
+        ("Landscaper / Gardener",    "Gyaran Lambu"),
+        ("Locksmith",                "Makulli"),
+        ("Satellite / DSTV Installer","Saka Satellite da DSTV"),
         ("Solar Installation",       "Saka Hasken Rana"),
         ("Smart Home Setup",         "Saka Na'urorin Gida"),
+        ("Watch Repairer",           "Mai Gyaran Agogo"),
     ],
     "Food & Provisions": [
         ("Catering",                 "Aikin Abinci"),
@@ -41,6 +51,7 @@ SUBCATEGORIES = {
         ("Waiters & Event Staff",    "Masu Hidimar Taro"),
         ("Meal Prep & Meal Plans",   "Shirya Abinci"),
         ("Juice & Beverages",        "Ruwan 'Ya'yan Itace"),
+        ("Canopy & Chair Rental",    "Hayar Tanti da Kujera"),
     ],
     "Fashion & Beauty": [
         ("Tailoring",                "Dinki"),
@@ -54,6 +65,7 @@ SUBCATEGORIES = {
         ("Spa & Massage",            "Spa da Tausa"),
         ("Tattoo & Piercing",        "Tattoo da Huda"),
         ("Wig & Hair Extensions",    "Gashi na Roko"),
+        ("Henna / Lali Artist",      "Mai Zanen Lalle"),
     ],
     "Metalwork & Construction": [
         ("Mason",                    "Magoni"),
@@ -66,6 +78,10 @@ SUBCATEGORIES = {
         ("Gate & Automation",        "Kofa da Automation"),
         ("POP & Plastering",         "POP da Plasta"),
         ("Concrete & Block Work",    "Aikin Siminti"),
+        ("Panel Beater",             "Mai Gyaran Mota"),
+        ("Vulcanizer",               "Mai Gyaran Taya"),
+        ("Water Tanker Supplier",    "Mai Samar da Ruwa"),
+        ("Glass Worker",             "Mai Aikin Gilashi"),
     ],
     "Professional Services": [
         ("Photography",              "Daukar Hoto"),
@@ -83,6 +99,17 @@ SUBCATEGORIES = {
         ("Translation & Interpretation", "Fassara"),
         ("Music & Entertainment",    "Kida da Nishaɗi"),
         ("Virtual Assistant",        "Mataimaki na Yanar Gizo"),
+        ("DJ (Disc Jockey)",         "DJ"),
+        ("Errand / Personal Shopper","Mai Siyayya"),
+        ("Event Decorator",          "Mai Adon Taro"),
+        ("Event MC / Compere",       "Mai Gabatarwa"),
+        ("Moving & Relocation Service", "Mai Taimakawa ƙaura"),
+        ("Professional Driver",      "Direba"),
+        ("Sign Writer / Banner Printer", "Mai Rubutun allo"),
+        ("Sound & Equipment Rental", "Hayar Sauti"),
+        ("Towing Service",           "Janyar Mota"),
+        ("Upholstery Maker",         "Mai Dinki Kujera"),
+        ("Waste Disposal Service",   "Sharar Gida"),
     ],
 }
 
@@ -93,6 +120,34 @@ EXISTING_MERGE_MAP = {
     "Painter": "Painting",
     "Cleaner": "Cleaning",
     "Tailor": "Tailoring",
+}
+
+DUPLICATES_TO_DELETE = {
+    "Computer & Laptop Repairer": "Computer & Phone Repair",
+    "Phone Repair Technician": "Computer & Phone Repair",
+    "Fumigation & Pest Control": "Pest Control",
+    "Generator Mechanic": "Generator Repair",
+    "House Cleaning Service": "Cleaning",
+    "Interior Decorator": "Interior Decoration",
+    "Solar Panel & Inverter Installer": "Solar Installation",
+    "TV & Audio System Repairer": "TV & Electronics Repair",
+    "Tiler": "Tiling",
+    "Baker / Cake Maker": "Baking & Confectionery",
+    "Caterer / Local Food Chef": "Catering",
+    "Hairstylist": "Hairdressing",
+    "Makeup Artist": "Makeup & Cosmetics",
+    "Shoemaker / Cobbler": "Shoemaking & Repairs",
+    "Tailor / Fashion Designer": "Tailoring",
+    "Spa / Massage Therapist": "Spa & Massage",
+    "Aluminum Fabricator": "Aluminum Fabrication",
+    "Mason / Bricklayer": "Mason",
+    "POP / Plasterer": "POP & Plastering",
+    "Roofer": "Roofing",
+    "Welder / Iron Bender": "Welding",
+    "Photographer": "Photography",
+    "Videographer": "Videography",
+    "Logistics / Dispatch Rider": "Logistics & Delivery",
+    "Carpenter / Furniture Maker": "Carpentry",
 }
 
 
@@ -118,6 +173,19 @@ class Command(BaseCommand):
                 existing_cats[old_name].name = new_name
                 existing_cats[old_name].save()
                 self.stdout.write(f"  Renamed '{old_name}' to '{new_name}'")
+
+        existing_cats = {c.name: c for c in Category.objects.all()}
+
+        for dup_name, canonical_name in DUPLICATES_TO_DELETE.items():
+            if dup_name in existing_cats and canonical_name in existing_cats:
+                dup = existing_cats[dup_name]
+                try:
+                    from core.models import ArtisanProfile
+                    ArtisanProfile.objects.filter(category=dup).update(category=existing_cats[canonical_name])
+                except Exception:
+                    pass
+                dup.delete()
+                self.stdout.write(f"  Deleted duplicate: {dup_name} -> {canonical_name}")
 
         existing_cats = {c.name: c for c in Category.objects.all()}
 
