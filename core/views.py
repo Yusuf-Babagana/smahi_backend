@@ -20,6 +20,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
@@ -35,7 +36,6 @@ User = get_user_model()
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
-    search_fields = ['name', 'description']
     pagination_class = None
 
     def get_queryset(self):
@@ -47,6 +47,18 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'all':
             return FlatCategorySerializer
         return CategorySerializer
+
+    def list(self, request, *args, **kwargs):
+        search = request.query_params.get('search', '').strip()
+
+        if search:
+            qs = Category.objects.filter(
+                Q(name__icontains=search) | Q(name_ha__icontains=search)
+            ).select_related('parent')
+            serializer = FlatCategorySerializer(qs, many=True)
+            return Response(serializer.data)
+
+        return super().list(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'])
     def all(self, request):

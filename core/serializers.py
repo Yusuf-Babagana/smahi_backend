@@ -8,9 +8,18 @@ User = get_user_model()
 
 
 class SubcategorySerializer(serializers.ModelSerializer):
+    parent_name = serializers.SerializerMethodField()
+    parent_name_ha = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
-        fields = ['id', 'name', 'name_ha', 'description', 'icon']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'parent_name', 'parent_name_ha']
+
+    def get_parent_name(self, obj):
+        return obj.parent.name if obj.parent else None
+
+    def get_parent_name_ha(self, obj):
+        return obj.parent.name_ha if obj.parent and obj.parent.name_ha else None
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -23,10 +32,18 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class FlatCategorySerializer(serializers.ModelSerializer):
     parent_id = serializers.IntegerField(source='parent.id', read_only=True, allow_null=True)
+    parent_name = serializers.SerializerMethodField()
+    parent_name_ha = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'parent_id']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'parent_id', 'parent_name', 'parent_name_ha']
+
+    def get_parent_name(self, obj):
+        return obj.parent.name if obj.parent else None
+
+    def get_parent_name_ha(self, obj):
+        return obj.parent.name_ha if obj.parent and obj.parent.name_ha else None
 
 
 class ArtisanProfileSerializer(serializers.ModelSerializer):
