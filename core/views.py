@@ -280,3 +280,57 @@ class ReviewViewSet(viewsets.ModelViewSet):
             serializer.save(booking=booking)
         except Booking.DoesNotExist:
             raise serializers.ValidationError("Booking not found or you don't have permission to review it.")
+
+
+import openai
+from django.conf import settings
+from rest_framework.views import APIView
+
+
+class AIChatView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        user_text = request.data.get("text", "").strip()
+
+        if not user_text:
+            return Response(
+                {"error": "No text provided. Please say or type something."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            api_key = getattr(settings, "OPENAI_API_KEY", "")
+            if not api_key:
+                return Response(
+                    {"error": "AI service is not configured."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            client = openai.OpenAI(api_key=api_key)
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are S-MAHII AI, a helpful, polite assistant for the S-MAHII Service Directory app "
+                            "in Nigeria. Help users find services like plumbers, mechanics, tailors, or electricians. "
+                            "Keep your answers short, concise, and professional (max 2-3 sentences)."
+                        )
+                    },
+                    {"role": "user", "content": user_text}
+                ],
+                max_tokens=150,
+                temperature=0.7
+            )
+
+            ai_reply = response.choices[0].message.content.strip()
+
+            return Response({"reply": ai_reply}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {"error": f"AI Service temporarily unavailable: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

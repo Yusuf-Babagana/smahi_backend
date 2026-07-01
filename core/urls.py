@@ -2,7 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, ArtisanViewSet, ArtisanProfileView,
-    VerificationRequestViewSet, BookingViewSet, ReviewViewSet
+    VerificationRequestViewSet, BookingViewSet, ReviewViewSet,
+    AIChatView
 )
 
 router = DefaultRouter()
@@ -15,4 +16,5 @@ router.register(r'reviews', ReviewViewSet, basename='review')
 urlpatterns = [
     path('', include(router.urls)),
     path('artisan/profile/', ArtisanProfileView.as_view(), name='artisan-profile'),
+    path('ai/chat/', AIChatView.as_view(), name='ai-chat'),
 ]
