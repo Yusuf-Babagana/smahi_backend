@@ -28,6 +28,8 @@
 | `is_active=False` blocks login **and** invalidates existing JWTs on their next request (SimpleJWT checks `is_active`) | ✅ |
 | `email_verified` (added 2026-07-15): set `True` only by confirming an emailed OTP (Brevo). Separate from the artisan `is_verified` badge. OTP: 6 digits, hashed at rest, 10-min expiry, 5 attempts, 60s resend cooldown. Auto-sent at registration (best-effort) | ✅ |
 | `email_verified` currently **gates nothing** — unverified-email users can do everything | ⚠️ (see D26) |
+| Password reset (added 2026-07-15): public two-step flow — emailed OTP (`password-reset/request/`), then `email+code+new_password` (`.../confirm/`). Enumeration-safe: unknown emails get identical responses. Same OTP limits as email verification | ✅ |
+| A password reset does **not** invalidate existing JWT sessions (token blacklist is off) — a stolen 7-day access / 30-day refresh token survives the password change | ⚠️ |
 | `account_status` (active/inactive/suspended) is stored but **read by nothing** — "suspending" a user via this field does nothing | ⚠️ |
 | A deactivated artisan (`is_active=False`) **still appears in public search** and can still be booked/messaged (nothing filters `user__is_active`) | ⚠️ |
 

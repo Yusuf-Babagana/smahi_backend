@@ -209,6 +209,46 @@ Authorization: Bearer <token>
 
 Codes expire after 10 minutes. Requesting a new code invalidates the previous one. The user object returned by register/login/profile now includes the read-only boolean `email_verified`.
 
+#### Request Password Reset (Forgot Password)
+Public endpoint — no token required. Emails a 6-digit reset code if an account with that email exists. **Always returns the same 200 response whether or not the account exists** (no user enumeration).
+
+```
+POST /api/auth/password-reset/request/
+```
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Responses:**
+- `200` — `{"message": "If an account exists with this email, a password reset code has been sent."}` (always, except missing email)
+- `400` — email field missing
+
+#### Confirm Password Reset
+Public endpoint — no token required.
+
+```
+POST /api/auth/password-reset/confirm/
+```
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com",
+  "code": "123456",
+  "new_password": "newSecret123"
+}
+```
+
+**Responses:**
+- `200` — `{"message": "Password reset successfully. You can now log in with your new password."}`
+- `400` — missing fields, password shorter than 8 characters, or invalid/expired/overused code (unknown emails get the same "Invalid code" message as wrong codes)
+
+Same code rules as email verification: 10-minute expiry, 5 attempts, 60-second resend cooldown, newest code wins. Reset codes and email-verification codes are separate — one cannot be used for the other. After a successful reset the user logs in with the new password (no tokens are returned by the confirm endpoint).
+
 ### 2. Locations
 
 #### List Countries

@@ -81,6 +81,68 @@ def login_view(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_request_view(request):
+    email = str(request.data.get('email', '')).strip()
+    if not email:
+        return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Always the same answer whether or not the account exists (no user enumeration)
+    generic = {'message': 'If an account exists with this email, a password reset code has been sent.'}
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response(generic)
+
+    try:
+        send_otp(user, 'password_reset')
+    except OTPError:
+        # Cooldown/provider state must not be revealed to unauthenticated callers
+        pass
+
+    return Response(generic)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_confirm_view(request):
+    email = str(request.data.get('email', '')).strip()
+    code = str(request.data.get('code', '')).strip()
+    new_password = request.data.get('new_password', '')
+
+    if not email or not code or not new_password:
+        return Response(
+            {'error': 'Email, code and new_password are required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if len(new_password) < 8:
+        return Response(
+            {'error': 'Password must be at least 8 characters.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        # Same response as a wrong code — never reveal whether the email exists
+        return Response(
+            {'error': 'Invalid code. Please check and try again.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    ok, message = verify_otp(user, code, 'password_reset')
+    if not ok:
+        return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.set_password(new_password)
+    user.save(update_fields=['password'])
+
+    return Response({'message': 'Password reset successfully. You can now log in with your new password.'})
+
+
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def request_email_verification_view(request):
     if request.user.email_verified:

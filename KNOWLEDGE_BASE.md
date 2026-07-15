@@ -284,6 +284,8 @@ Base: `/api/`. 🔓 = `AllowAny`, 🔒 = JWT required, 🎭 = role-restricted. P
 | POST | `register/` | 🔓 | Creates user (+ArtisanProfile if artisan); returns user + tokens. Accepts `category_id`. Best-effort sends an email-verification OTP (never fails registration). |
 | POST | `email/verify/request/` | 🔒 | (Re)sends OTP to own email. 429 inside 60s cooldown; 503 if Brevo down/unconfigured. |
 | POST | `email/verify/confirm/` | 🔒 | `{code}` → sets `User.email_verified=True`; returns message + updated user. 400 on bad/expired code or >5 attempts. |
+| POST | `password-reset/request/` | 🔓 | `{email}` → emails reset OTP. **Always 200 with identical body** (no enumeration); cooldown/provider errors swallowed. |
+| POST | `password-reset/confirm/` | 🔓 | `{email, code, new_password}` → `set_password`. Unknown email answers exactly like a wrong code. No tokens returned. ⚠ Existing JWTs stay valid after reset (blacklist off). |
 | POST | `login/` | 🔓 | Email + password → user + tokens |
 | POST | `token/refresh/` | 🔓 | SimpleJWT refresh |
 | GET/PUT/PATCH | `profile/` | 🔒 | Own profile; write via `UserUpdateSerializer` |

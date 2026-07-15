@@ -14,6 +14,11 @@ OTP_TTL_MINUTES = 10
 MAX_VERIFY_ATTEMPTS = 5
 RESEND_COOLDOWN_SECONDS = 60
 
+PURPOSE_EMAIL_CONTENT = {
+    'email_verify': ('Your S-MAHII verification code', 'Your S-MAHII verification code is:'),
+    'password_reset': ('Your S-MAHII password reset code', 'Your S-MAHII password reset code is:'),
+}
+
 
 class OTPError(Exception):
     """Base OTP-sending error; the message is safe to show to the user."""
@@ -44,12 +49,13 @@ def send_otp(user, purpose):
 
     code = f"{secrets.randbelow(10 ** OTP_LENGTH):0{OTP_LENGTH}d}"
 
+    subject, intro = PURPOSE_EMAIL_CONTENT[purpose]
     sent = send_transactional_email(
         to_email=user.email,
-        subject='Your S-MAHII verification code',
+        subject=subject,
         html_content=(
             f"<p>Hello {user.first_name},</p>"
-            f"<p>Your S-MAHII verification code is:</p>"
+            f"<p>{intro}</p>"
             f"<h2 style=\"letter-spacing: 4px;\">{code}</h2>"
             f"<p>The code expires in {OTP_TTL_MINUTES} minutes. "
             f"If you did not request it, you can ignore this email.</p>"

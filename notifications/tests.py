@@ -12,6 +12,8 @@ User = get_user_model()
 
 REQUEST_URL = '/api/auth/email/verify/request/'
 CONFIRM_URL = '/api/auth/email/verify/confirm/'
+RESET_REQUEST_URL = '/api/auth/password-reset/request/'
+RESET_CONFIRM_URL = '/api/auth/password-reset/confirm/'
 
 
 @patch('notifications.services.send_transactional_email', return_value=True)
@@ -114,6 +116,96 @@ class EmailVerificationTests(APITestCase):
         self.client.force_authenticate(None)
         self.assertEqual(self._request_code().status_code, 401)
         self.assertEqual(self.client.post(CONFIRM_URL, {'code': '123456'}).status_code, 401)
+
+
+@patch('notifications.services.send_transactional_email', return_value=True)
+class PasswordResetTests(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='resetme@test.com', password='oldpass123',
+            first_name='Reset', last_name='Me', role='client'
+        )
+
+    def _sent_code(self, mock_send):
+        html = mock_send.call_args.kwargs['html_content']
+        start = html.index('<h2')
+        start = html.index('>', start) + 1
+        return html[start:start + 6]
+
+    def test_request_sends_code_for_existing_email(self, mock_send):
+        response = self.client.post(RESET_REQUEST_URL, {'email': 'resetme@test.com'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mock_send.called)
+        self.assertEqual(mock_send.call_args.kwargs['subject'], 'Your S-MAHII password reset code')
+        self.assertTrue(
+            OTPCode.objects.filter(email='resetme@test.com', purpose='password_reset').exists()
+        )
+
+    def test_request_for_unknown_email_returns_same_200_and_sends_nothing(self, mock_send):
+        response = self.client.post(RESET_REQUEST_URL, {'email': 'ghost@test.com'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(mock_send.called)
+        # Identical body to the existing-email case — no enumeration signal
+        known = self.client.post(RESET_REQUEST_URL, {'email': 'resetme@test.com'})
+        self.assertEqual(response.data, known.data)
+
+    def test_confirm_resets_password(self, mock_send):
+        self.client.post(RESET_REQUEST_URL, {'email': 'resetme@test.com'})
+        code = self._sent_code(mock_send)
+
+        response = self.client.post(RESET_CONFIRM_URL, {
+            'email': 'resetme@test.com', 'code': code, 'new_password': 'newpass456'
+        })
+        self.assertEqual(response.status_code, 200)
+
+        # Old password dead, new one works
+        old = self.client.post('/api/auth/login/', {'email': 'resetme@test.com', 'password': 'oldpass123'})
+        self.assertEqual(old.status_code, 401)
+        new = self.client.post('/api/auth/login/', {'email': 'resetme@test.com', 'password': 'newpass456'})
+        self.assertEqual(new.status_code, 200)
+
+        # Code consumed — cannot be replayed to set another password
+        replay = self.client.post(RESET_CONFIRM_URL, {
+            'email': 'resetme@test.com', 'code': code, 'new_password': 'hacker789'
+        })
+        self.assertEqual(replay.status_code, 400)
+
+    def test_confirm_with_wrong_code_rejected(self, mock_send):
+        self.client.post(RESET_REQUEST_URL, {'email': 'resetme@test.com'})
+        code = self._sent_code(mock_send)
+        wrong = '000000' if code != '000000' else '111111'
+
+        response = self.client.post(RESET_CONFIRM_URL, {
+            'email': 'resetme@test.com', 'code': wrong, 'new_password': 'newpass456'
+        })
+        self.assertEqual(response.status_code, 400)
+        login = self.client.post('/api/auth/login/', {'email': 'resetme@test.com', 'password': 'oldpass123'})
+        self.assertEqual(login.status_code, 200)
+
+    def test_confirm_unknown_email_matches_wrong_code_response(self, mock_send):
+        response = self.client.post(RESET_CONFIRM_URL, {
+            'email': 'ghost@test.com', 'code': '123456', 'new_password': 'newpass456'
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error'], 'Invalid code. Please check and try again.')
+
+    def test_short_password_rejected(self, mock_send):
+        self.client.post(RESET_REQUEST_URL, {'email': 'resetme@test.com'})
+        code = self._sent_code(mock_send)
+        response = self.client.post(RESET_CONFIRM_URL, {
+            'email': 'resetme@test.com', 'code': code, 'new_password': 'short'
+        })
+        self.assertEqual(response.status_code, 400)
+
+    def test_reset_code_unusable_for_email_verification(self, mock_send):
+        self.client.post(RESET_REQUEST_URL, {'email': 'resetme@test.com'})
+        code = self._sent_code(mock_send)
+        self.client.force_authenticate(self.user)
+        response = self.client.post(CONFIRM_URL, {'code': code})
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.email_verified)
 
 
 class SendFailureTests(APITestCase):

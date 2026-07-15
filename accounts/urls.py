@@ -2,7 +2,8 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     register_view, login_view, ProfileView,
-    request_email_verification_view, confirm_email_verification_view
+    request_email_verification_view, confirm_email_verification_view,
+    password_reset_request_view, password_reset_confirm_view
 )
 
 urlpatterns = [
@@ -12,4 +13,6 @@ urlpatterns = [
     path('profile/', ProfileView.as_view(), name='profile'),
     path('email/verify/request/', request_email_verification_view, name='email-verify-request'),
     path('email/verify/confirm/', confirm_email_verification_view, name='email-verify-confirm'),
+    path('password-reset/request/', password_reset_request_view, name='password-reset-request'),
+    path('password-reset/confirm/', password_reset_confirm_view, name='password-reset-confirm'),
 ]
