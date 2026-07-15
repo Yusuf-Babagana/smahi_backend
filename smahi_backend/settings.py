@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'locations',
     'core',
     'chat',
+    'notifications',
 ]
 
 MIDDLEWARE = [
@@ -163,3 +164,8 @@ CORS_ALLOW_HEADERS = [
 ALLOWED_HOSTS = ['*', '192.168.1.254', 'localhost', '127.0.0.1']
 
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
+
+# Brevo (transactional email — OTP delivery)
+BREVO_API_KEY = config('BREVO_API_KEY', default='')
+BREVO_SENDER_EMAIL = config('BREVO_SENDER_EMAIL', default='no-reply@smahi.app')
+BREVO_SENDER_NAME = config('BREVO_SENDER_NAME', default='S-MAHII')

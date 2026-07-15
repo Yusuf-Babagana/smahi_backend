@@ -59,6 +59,8 @@ class User(AbstractUser):
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     is_verified = models.BooleanField(default=False)
+    # Email ownership confirmed via OTP — independent of the artisan verification badge above
+    email_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

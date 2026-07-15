@@ -176,6 +176,39 @@ Content-Type: multipart/form-data
 }
 ```
 
+#### Request Email Verification Code
+Sends a 6-digit OTP to the authenticated user's email (via Brevo). One code is also sent automatically right after registration.
+
+```
+POST /api/auth/email/verify/request/
+Authorization: Bearer <token>
+```
+
+**Responses:**
+- `200` — `{"message": "A verification code has been sent to your email."}`
+- `400` — email already verified
+- `429` — resend requested within the 60-second cooldown
+- `503` — email provider unavailable
+
+#### Confirm Email Verification Code
+```
+POST /api/auth/email/verify/confirm/
+Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "code": "123456"
+}
+```
+
+**Responses:**
+- `200` — `{"message": "Email verified successfully.", "user": { ...user with "email_verified": true... }}`
+- `400` — missing/invalid/expired code, too many attempts (max 5), or already verified
+
+Codes expire after 10 minutes. Requesting a new code invalidates the previous one. The user object returned by register/login/profile now includes the read-only boolean `email_verified`.
+
 ### 2. Locations
 
 #### List Countries
