@@ -67,8 +67,8 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
             'bio', 'experience_years', 'hourly_rate',
             'service_countries', 'service_states', 'service_lgas',
             'service_countries_details', 'service_states_details', 'service_lgas_details',
-            'verification_status', 'rating', 'total_reviews', 'total_bookings',
-            'created_at', 'updated_at', 'distance' 
+            'verification_status', 'is_available', 'rating', 'total_reviews', 'total_bookings',
+            'created_at', 'updated_at', 'distance'
         ]
         read_only_fields = ['user', 'verification_status', 'rating', 'total_reviews', 'total_bookings']
 
@@ -101,7 +101,8 @@ class ArtisanProfileUpdateSerializer(serializers.ModelSerializer):
         model = ArtisanProfile
         fields = [
             'category', 'bio', 'experience_years', 'hourly_rate',
-            'service_countries', 'service_states', 'service_lgas'
+            'service_countries', 'service_states', 'service_lgas',
+            'is_available'
         ]
 
 

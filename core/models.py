@@ -48,6 +48,10 @@ class ArtisanProfile(models.Model):
         choices=VERIFICATION_STATUS_CHOICES,
         default='pending'
     )
+    # Artisan-controlled visibility switch (dashboard "Available for Jobs").
+    # False hides the artisan from public search but not from their own
+    # dashboard lookup or direct profile views.
+    is_available = models.BooleanField(default=True)
     rating = models.DecimalField(
         max_digits=3,
         decimal_places=2,

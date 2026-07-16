@@ -274,3 +274,48 @@ class BookingStatusTransitionTests(BookingTestBase):
         response = self.client.delete(f'{BOOKINGS_URL}{booking.id}/')
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
         self.assertEqual(Booking.objects.count(), 1)
+
+
+class ArtisanAvailabilityTests(BookingTestBase):
+    """The dashboard 'Available for Jobs' toggle: PATCH artisans/{profile_id}/."""
+
+    def profile_url(self):
+        return f'/api/artisans/{self.artisan_profile.id}/'
+
+    def test_owner_can_toggle_availability(self):
+        self.client.force_authenticate(self.artisan_user)
+        response = self.client.patch(self.profile_url(), {'is_available': False})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.artisan_profile.refresh_from_db()
+        self.assertFalse(self.artisan_profile.is_available)
+
+    def test_non_owner_cannot_update_profile(self):
+        self.client.force_authenticate(self.client_user)
+        response = self.client.patch(self.profile_url(), {'is_available': False})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_update_profile(self):
+        response = self.client.patch(self.profile_url(), {'is_available': False})
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_offline_artisan_hidden_from_public_list(self):
+        self.artisan_profile.is_available = False
+        self.artisan_profile.save()
+        response = self.client.get('/api/artisans/')
+        ids = [a['id'] for a in response.data['results']]
+        self.assertNotIn(self.artisan_profile.id, ids)
+
+    def test_offline_artisan_still_visible_to_self_and_by_detail(self):
+        self.artisan_profile.is_available = False
+        self.artisan_profile.save()
+        # Dashboard lookup by user id keeps working
+        response = self.client.get('/api/artisans/', {'user': self.artisan_user.id})
+        self.assertEqual(response.data['count'], 1)
+        self.assertFalse(response.data['results'][0]['is_available'])
+        # Direct profile page keeps working
+        response = self.client.get(self.profile_url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_reads_expose_is_available(self):
+        response = self.client.get('/api/artisans/')
+        self.assertTrue(response.data['results'][0]['is_available'])

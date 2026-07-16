@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, generics, serializers as drf_serializers
+from rest_framework import viewsets, status, generics, mixins, serializers as drf_serializers
 import math
 
 def calculate_haversine_distance(lat1, lon1, lat2, lon2):
@@ -30,7 +30,7 @@ from .serializers import (
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer
 )
-from .permissions import IsArtisan, IsAgent, IsClient
+from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner
 
 User = get_user_model()
 
@@ -68,15 +68,34 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class ArtisanViewSet(viewsets.ReadOnlyModelViewSet):
+class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = ArtisanProfileSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['category', 'verification_status', 'user']
     search_fields = ['user__first_name', 'user__last_name', 'bio']
+    # PATCH only (no PUT): the app's dashboard sends partial updates
+    # (e.g. the is_available toggle); reads stay public.
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in ('update', 'partial_update'):
+            return [IsAuthenticated(), IsProfileOwner()]
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return ArtisanProfileUpdateSerializer
+        return ArtisanProfileSerializer
 
     def get_queryset(self):
         queryset = ArtisanProfile.objects.select_related('user', 'category')
+
+        # Offline artisans are hidden from public browsing/search, but stay
+        # reachable via detail pages, the ?user= dashboard lookup, and their
+        # own updates — otherwise they could never toggle themselves back on.
+        if self.action == 'list' and not self.request.query_params.get('user'):
+            queryset = queryset.filter(is_available=True)
         
         # Note: I removed the prefetch_related for service_countries to keep it simple
 

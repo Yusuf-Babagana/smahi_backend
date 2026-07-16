@@ -31,7 +31,8 @@
 | Password reset (added 2026-07-15): public two-step flow — emailed OTP (`password-reset/request/`), then `email+code+new_password` (`.../confirm/`). Enumeration-safe: unknown emails get identical responses. Same OTP limits as email verification | ✅ |
 | A password reset does **not** invalidate existing JWT sessions (token blacklist is off) — a stolen 7-day access / 30-day refresh token survives the password change | ⚠️ |
 | `account_status` (active/inactive/suspended) is stored but **read by nothing** — "suspending" a user via this field does nothing | ⚠️ |
-| A deactivated artisan (`is_active=False`) **still appears in public search** and can still be booked/messaged (nothing filters `user__is_active`) | ⚠️ |
+| A deactivated artisan (`is_active=False`) **still appears in public search** — nothing filters `user__is_active` in search. (They can no longer be *booked*: booking validates the artisan is active, 2026-07-16.) Chat is still possible | ⚠️ |
+| **Availability toggle (added 2026-07-16):** `ArtisanProfile.is_available` (default true), set by the artisan via `PATCH /api/artisans/{profile_id}/` — owner-only (401/403 otherwise; the endpoint allows PATCH only, no PUT/DELETE). `is_available=False` hides the artisan from the public list/search but NOT from `?user=` lookups (own dashboard), direct detail pages, or existing bookings | ✅ |
 
 ### Open decisions
 
