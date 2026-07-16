@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, generics
+from rest_framework import viewsets, status, generics, serializers as drf_serializers
 import math
 
 def calculate_haversine_distance(lat1, lon1, lat2, lon2):
@@ -20,7 +20,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db import transaction
+from django.db.models import Q, F
 from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
@@ -231,16 +232,21 @@ class BookingViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'artisan', 'client']
+    # No 'delete': bookings are a permanent activity record for both parties;
+    # cancellation is the supported way to end one.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_queryset(self):
         user = self.request.user
         if user.role == 'client':
             return Booking.objects.filter(client=user).select_related(
-                'client', 'artisan', 'country', 'state', 'lga'
+                'client', 'artisan', 'artisan__artisan_profile',
+                'country', 'state', 'lga'
             )
         elif user.role == 'artisan':
             return Booking.objects.filter(artisan=user).select_related(
-                'client', 'artisan', 'country', 'state', 'lga'
+                'client', 'artisan', 'artisan__artisan_profile',
+                'country', 'state', 'lga'
             )
         return Booking.objects.none()
 
@@ -251,11 +257,26 @@ class BookingViewSet(viewsets.ModelViewSet):
             return BookingUpdateSerializer
         return BookingSerializer
 
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsClient()]
+        return super().get_permissions()
+
     def perform_create(self, serializer):
-        booking = serializer.save(client=self.request.user)
-        artisan_profile = booking.artisan.artisan_profile
-        artisan_profile.total_bookings += 1
-        artisan_profile.save()
+        with transaction.atomic():
+            serializer.save(client=self.request.user)
+
+    def perform_update(self, serializer):
+        # total_bookings counts finished jobs ("Jobs done" in the app), so it
+        # increments on the transition to 'completed' — atomically, to avoid
+        # the lost-update race with update_rating()'s full-row save.
+        old_status = serializer.instance.status
+        with transaction.atomic():
+            booking = serializer.save()
+            if booking.status == 'completed' and old_status != 'completed':
+                ArtisanProfile.objects.filter(user=booking.artisan).update(
+                    total_bookings=F('total_bookings') + 1
+                )
 
 
 class ReviewViewSet(viewsets.ModelViewSet):
@@ -276,10 +297,10 @@ class ReviewViewSet(viewsets.ModelViewSet):
         try:
             booking = Booking.objects.get(id=booking_id, client=self.request.user)
             if booking.status != 'completed':
-                raise serializers.ValidationError("Can only review completed bookings.")
+                raise drf_serializers.ValidationError("Can only review completed bookings.")
             serializer.save(booking=booking)
         except Booking.DoesNotExist:
-            raise serializers.ValidationError("Booking not found or you don't have permission to review it.")
+            raise drf_serializers.ValidationError("Booking not found or you don't have permission to review it.")
 
 
 import openai

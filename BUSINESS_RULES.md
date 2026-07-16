@@ -44,51 +44,44 @@
 
 ## 2. Booking Lifecycle
 
-### Current behavior (verified)
+> **Reworked 2026-07-16** (product-owner sign-off): D5, D8, D9, D10, and D11 are RESOLVED and implemented. Pricing is negotiated and paid **outside the app** — the platform never handles client→artisan money. (Separately, artisans owe a one-time ₦2,500 platform service fee at registration; Paystack integration pending — see §7.)
+
+### Current behavior (verified, implemented 2026-07-16)
 
 | Rule | Status |
 |---|---|
 | Booking creator is always the requesting user (`client` forced server-side) | ✅ |
 | Only the booking's client and artisan can *see* it (role-scoped querysets) | ✅ |
-| **Anyone authenticated can CREATE a booking** — creation is not restricted to `role='client'` (an agent's booking becomes invisible even to its creator, since only client/artisan roles get non-empty querysets) | ⚠️ |
-| **The `artisan` field accepts ANY user id** — no check that the target is `role='artisan'`, has a profile, is verified, is active, or isn't the requester. Booking a non-artisan crashes with a 500 *after* the row is committed (orphan booking) | ⚠️ |
-| `scheduled_date` may be in the past (the future-date validator sits on the wrong serializer) | ⚠️ |
+| Only `role='client'` may create a booking (D9: `IsClient` on the create action) | ✅ |
+| The `artisan` target must be `role='artisan'`, active, with an `ArtisanProfile`, and not the requester (D8). Verification is NOT required to be bookable — still open under D13 | ✅ |
+| `scheduled_date` must be in the future (D10: past-dated bookings forbidden); create accepts either `scheduled_date` or mobile-style `date` + `time` (combined server-side, time defaults 09:00) | ✅ |
+| `duration_hours` and `total_cost` are **optional** — price is agreed off-app after inspection, so it is unknown at request time | ✅ |
+| Mobile field aliases: create accepts `description`→`service_description`, `location`→`address`; reads additionally return `description`, `location`, `date`, `time` alongside the canonical fields | ✅ |
 | Only `status` and `cancellation_reason` are editable after creation | ✅ |
-| **Either party may set ANY status at ANY time**, including completed→pending, or a client self-completing to unlock a review | ⚠️ |
-| `cancellation_reason` is optional even when cancelling | ⚠️ |
-| `total_cost` is a client-typed number with no verification, quote, or payment behind it | ⚠️ |
-| `total_bookings` on the artisan profile counts booking *creations* only — never decremented on cancellation, so it means "bookings ever received", not "jobs done" | ⚠️ |
+| Status changes follow the D5 transition table below; anything else → 400 | ✅ |
+| `cancellation_reason` remains optional when cancelling (revisit if disputes emerge) | ✅ |
+| `total_bookings` = **jobs completed** (D11): increments atomically (`F()`) on the transition to `completed`, not on creation | ✅ |
+| DELETE on bookings is disabled (405) — a booking is a shared record; `cancelled` is the only way to end one | ✅ |
+| Booking creation runs in a transaction (no orphan-booking 500s) | ✅ |
 
-### Current state transitions (as-implemented)
-
-| From \ To | pending | confirmed | in_progress | completed | cancelled |
-|---|---|---|---|---|---|
-| **any state** | anyone* | anyone* | anyone* | anyone* | anyone* |
-
-\* "anyone" = either the client or the artisan on the booking. **There are no rules.** This table is the single largest divergence between what the code allows and what any marketplace intends.
-
-### Proposed transition table — ❓ D5, awaiting product-owner sign-off
+### State transitions — ✅ D5 RESOLVED (2026-07-16, artisan-only completion)
 
 | From → To | Who | Notes |
 |---|---|---|
-| pending → confirmed | artisan | acceptance |
-| pending → cancelled | either | reason required ❓ |
+| pending → confirmed | artisan | acceptance ("Accept" in the app) |
+| pending → cancelled | either | artisan decline or client withdrawal |
 | confirmed → in_progress | artisan | job started |
-| confirmed → cancelled | either | reason required; notice window? ❓ |
-| in_progress → completed | artisan ❓ (or client-confirmed? two-sided completion?) | unlocks review |
-| in_progress → cancelled | ❓ | dispute territory — allowed at all? |
-| completed | terminal | no transitions out |
-| cancelled | terminal | no transitions out |
+| confirmed → cancelled | either | |
+| in_progress → completed | **artisan only** | unlocks review; increments `total_bookings` |
+| in_progress → cancelled | ❌ nobody | dispute territory — deliberately not allowed (revisit with a dispute flow) |
+| completed / cancelled | terminal | no transitions out (D6 confirmed: pending is entry-only) |
+
+Enforced in `BookingUpdateSerializer.ALLOWED_TRANSITIONS`; counter side-effect in `BookingViewSet.perform_update`. Test coverage: `core/tests.py` (22 tests).
 
 ### Open decisions
 
-- **D5 — Approve/adjust the transition table above**, including: who marks `completed` (artisan-only, client-only, or mutual confirmation?), whether `in_progress` can be cancelled, and whether `cancellation_reason` becomes mandatory.
-- **D6 — Can a booking ever return to `pending`?** Proposed: no — pending is entry-only.
-- **D7 — Can an artisan "reject" a booking?** There is no `rejected`/`declined` status today; the only refusal path is `cancelled`, which conflates "artisan declined" with "either party backed out". Add a `declined` status?
-- **D8 — Who may be booked?** Only `role='artisan'`? Only artisans with `verification_status='approved'`? Only active accounts? Ban self-booking? (Recommended minimum: role check + active check + self-ban; the verification gate is the real product call — see D13.)
-- **D9 — Who may book?** Restrict creation to `role='client'`, or allow artisans to book other artisans?
-- **D10 — Past-dated bookings:** forbid, or allow for record-keeping of walk-in jobs?
-- **D11 — What should `total_bookings` mean** — bookings received, or jobs completed? (Determines whether cancellations decrement it.)
+- **D7 — Can an artisan "reject" a booking?** Still no `declined` status; artisan refusal uses `cancelled` (this is what the app's Decline button sends). Add a distinct status later if analytics need to separate refusals from withdrawals.
+- ~~D5, D6, D8, D9, D10, D11~~ — resolved 2026-07-16 as described above.
 
 ---
 
@@ -259,13 +252,13 @@ Cells marked ⚠️ are behaviors that exist but were almost certainly never dec
 | D2 | Suspended artisan's active bookings | same |
 | D3 | `state_coordinator` purpose or removal | role cleanup |
 | D4 | Multi-role behavior (artisan-as-client) | booking rules |
-| **D5** | **Booking transition table** | **the #1 integrity fix** |
-| D6 | Booking back to pending? (proposed: no) | D5 |
-| D7 | `declined` status for artisan refusal? | D5 |
-| **D8** | **Who may be booked (role/verified/active/self)** | **booking validation fix** |
-| D9 | Who may book (client-only?) | same |
-| D10 | Past-dated bookings | small fix |
-| D11 | Meaning of `total_bookings` | counter fix |
+| ~~D5~~ | ✅ RESOLVED 2026-07-16 — transition table implemented, artisan-only completion (§2) | — |
+| ~~D6~~ | ✅ RESOLVED 2026-07-16 — pending is entry-only | — |
+| D7 | `declined` status for artisan refusal? (currently maps to `cancelled`) | analytics nicety |
+| ~~D8~~ | ✅ RESOLVED 2026-07-16 — bookable = active artisan with profile, no self-booking; verification NOT required (see D13) | — |
+| ~~D9~~ | ✅ RESOLVED 2026-07-16 — booking creation is client-only | — |
+| ~~D10~~ | ✅ RESOLVED 2026-07-16 — past-dated bookings forbidden | — |
+| ~~D11~~ | ✅ RESOLVED 2026-07-16 — `total_bookings` = jobs completed | — |
 | **D12** | **Verification submission = artisan-only?** | **agent self-approval hole** |
 | **D13** | **What verification gates (search/booking/badge)** | **the point of the verification program** |
 | D14 | Agent conflict-of-interest rule | verification hardening |
@@ -280,4 +273,6 @@ Cells marked ⚠️ are behaviors that exist but were almost certainly never dec
 | D25 | Deletion doctrine (anonymize vs cascade) | account deletion, NDPA |
 | D26 | What should `email_verified` gate (booking? verification submission? nothing)? | email-verification follow-up |
 
-**Fastest path:** answering D5, D8, D12, and D13 unblocks the entire write-path integrity bundle (the #1 pre-production fix). The rest can be answered as their areas come up.
+**Fastest path:** with D5/D8/D9 done (2026-07-16), the remaining write-path integrity items are D12 and D13 (verification). The rest can be answered as their areas come up.
+
+**Payments (context for D20–22, updated 2026-07-16):** client→artisan payment stays **outside the app** permanently by design. The only in-app money flow planned is the one-time **₦2,500 artisan registration service fee** (Paystack, not yet built).

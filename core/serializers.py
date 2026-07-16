@@ -132,19 +132,45 @@ class BookingSerializer(serializers.ModelSerializer):
     country_details = CountrySerializer(source='country', read_only=True)
     state_details = StateSerializer(source='state', read_only=True)
     lga_details = LGASerializer(source='lga', read_only=True)
+    # Read aliases matching the mobile app's field names (additive; the
+    # canonical fields below stay unchanged for existing clients).
+    description = serializers.CharField(source='service_description', read_only=True)
+    location = serializers.CharField(source='address', read_only=True)
+    date = serializers.SerializerMethodField()
+    time = serializers.SerializerMethodField()
+    # 'artisan' is a User id; the app's artisan screens navigate by
+    # ArtisanProfile id, which is a different number.
+    artisan_profile_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
         fields = [
             'id', 'client', 'client_details', 'artisan', 'artisan_details',
-            'service_description', 'address',
+            'artisan_profile_id',
+            'service_description', 'description', 'address', 'location',
             'country', 'state', 'lga',
             'country_details', 'state_details', 'lga_details',
-            'scheduled_date', 'duration_hours', 'total_cost',
+            'scheduled_date', 'date', 'time', 'duration_hours', 'total_cost',
             'status', 'cancellation_reason',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['client', 'status']
+
+    def get_artisan_profile_id(self, obj):
+        profile = getattr(obj.artisan, 'artisan_profile', None)
+        return profile.id if profile else None
+
+    def get_date(self, obj):
+        from django.utils import timezone
+        if not obj.scheduled_date:
+            return None
+        return timezone.localtime(obj.scheduled_date).date().isoformat()
+
+    def get_time(self, obj):
+        from django.utils import timezone
+        if not obj.scheduled_date:
+            return None
+        return timezone.localtime(obj.scheduled_date).strftime('%H:%M')
 
     def validate_scheduled_date(self, value):
         from django.utils import timezone
@@ -154,19 +180,110 @@ class BookingSerializer(serializers.ModelSerializer):
 
 
 class BookingCreateSerializer(serializers.ModelSerializer):
+    # The mobile booking wizard sends {artisan, date, time, description, location}.
+    # 'description'/'location' write to the canonical model fields via source;
+    # 'date' + 'time' are combined into scheduled_date in validate(). The
+    # original field names remain accepted for backward compatibility.
+    description = serializers.CharField(source='service_description', required=False)
+    location = serializers.CharField(source='address', required=False)
+    date = serializers.DateField(required=False, write_only=True)
+    time = serializers.TimeField(required=False, write_only=True)
+
     class Meta:
         model = Booking
         fields = [
-            'artisan', 'service_description', 'address',
+            'artisan', 'service_description', 'description', 'address', 'location',
             'country', 'state', 'lga',
-            'scheduled_date', 'duration_hours', 'total_cost'
+            'scheduled_date', 'date', 'time', 'duration_hours', 'total_cost'
         ]
+        extra_kwargs = {
+            'service_description': {'required': False},
+            'address': {'required': False},
+            'scheduled_date': {'required': False},
+        }
+
+    def validate_artisan(self, value):
+        if value.role != 'artisan':
+            raise serializers.ValidationError("Selected user is not an artisan.")
+        if not value.is_active:
+            raise serializers.ValidationError("This artisan account is not active.")
+        if not hasattr(value, 'artisan_profile'):
+            raise serializers.ValidationError("This artisan does not have a profile yet.")
+        request = self.context.get('request')
+        if request and request.user == value:
+            raise serializers.ValidationError("You cannot book yourself.")
+        return value
+
+    def validate(self, attrs):
+        from datetime import datetime, time as dt_time
+        from django.utils import timezone
+
+        date = attrs.pop('date', None)
+        time = attrs.pop('time', None)
+
+        if not attrs.get('scheduled_date'):
+            if not date:
+                raise serializers.ValidationError(
+                    {'date': "Provide 'scheduled_date' or 'date' (with optional 'time')."}
+                )
+            naive = datetime.combine(date, time or dt_time(9, 0))
+            attrs['scheduled_date'] = timezone.make_aware(naive)
+
+        if attrs['scheduled_date'] < timezone.now():
+            raise serializers.ValidationError(
+                {'scheduled_date': "Scheduled date must be in the future."}
+            )
+
+        if not attrs.get('service_description'):
+            raise serializers.ValidationError(
+                {'description': "A job description is required."}
+            )
+        if not attrs.get('address'):
+            raise serializers.ValidationError(
+                {'location': "An address is required."}
+            )
+        return attrs
 
 
 class BookingUpdateSerializer(serializers.ModelSerializer):
+    # Legal status transitions per role. Bookings not listed here
+    # ('completed', 'cancelled') are terminal.
+    ALLOWED_TRANSITIONS = {
+        'client': {
+            'pending': {'cancelled'},
+            'confirmed': {'cancelled'},
+        },
+        'artisan': {
+            'pending': {'confirmed', 'cancelled'},
+            'confirmed': {'in_progress', 'cancelled'},
+            'in_progress': {'completed'},
+        },
+    }
+
     class Meta:
         model = Booking
         fields = ['status', 'cancellation_reason']
+
+    def validate(self, attrs):
+        new_status = attrs.get('status')
+        booking = self.instance
+        if new_status and new_status != booking.status:
+            user = self.context['request'].user
+            if user == booking.client:
+                party = 'client'
+            elif user == booking.artisan:
+                party = 'artisan'
+            else:
+                raise serializers.ValidationError(
+                    {'status': "You are not a party to this booking."}
+                )
+            allowed = self.ALLOWED_TRANSITIONS.get(party, {}).get(booking.status, set())
+            if new_status not in allowed:
+                raise serializers.ValidationError(
+                    {'status': f"A {party} cannot change this booking from "
+                               f"'{booking.status}' to '{new_status}'."}
+                )
+        return attrs
 
 
 class ReviewSerializer(serializers.ModelSerializer):

@@ -145,8 +145,16 @@ class Booking(models.Model):
     lga = models.ForeignKey(LGA, on_delete=models.SET_NULL, null=True, related_name='bookings')
 
     scheduled_date = models.DateTimeField()
-    duration_hours = models.DecimalField(max_digits=5, decimal_places=2, validators=[MinValueValidator(0.5)])
-    total_cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    # Price/duration are agreed between client and artisan outside the app,
+    # so they are unknown at request time and optional forever after.
+    duration_hours = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(0.5)]
+    )
+    total_cost = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(0)]
+    )
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     cancellation_reason = models.TextField(blank=True)
