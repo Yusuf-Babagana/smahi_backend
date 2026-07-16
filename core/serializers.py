@@ -201,6 +201,9 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             'service_description': {'required': False},
             'address': {'required': False},
             'scheduled_date': {'required': False},
+            'country': {'required': False},
+            'state': {'required': False},
+            'lga': {'required': False},
         }
 
     def validate_artisan(self, value):
