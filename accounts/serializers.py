@@ -68,6 +68,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'role', 'phone_number',
             'address', 'profile_picture', 'country', 'state', 'lga',
             'country_details', 'state_details', 'lga_details',
+            'latitude', 'longitude',
             'is_verified', 'email_verified', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'role', 'is_verified', 'email_verified', 'created_at', 'updated_at']
@@ -78,5 +79,10 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'first_name', 'last_name', 'phone_number', 'address',
-            'profile_picture', 'country', 'state', 'lga'
+            'profile_picture', 'country', 'state', 'lga',
+            'latitude', 'longitude'
         ]
+        extra_kwargs = {
+            'latitude': {'min_value': -90, 'max_value': 90},
+            'longitude': {'min_value': -180, 'max_value': 180},
+        }

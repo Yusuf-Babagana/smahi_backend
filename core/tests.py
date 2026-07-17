@@ -276,6 +276,70 @@ class BookingStatusTransitionTests(BookingTestBase):
         self.assertEqual(Booking.objects.count(), 1)
 
 
+class LocationDistanceTests(BookingTestBase):
+    """Users save GPS coords via profile PATCH; artisan search returns
+    Haversine distance against them (the '2 km away' feature)."""
+
+    def test_user_can_save_own_coordinates(self):
+        self.client.force_authenticate(self.artisan_user)
+        response = self.client.patch('/api/auth/profile/', {
+            'latitude': '12.000000', 'longitude': '8.516667',  # Kano
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.artisan_user.refresh_from_db()
+        self.assertEqual(float(self.artisan_user.latitude), 12.0)
+        self.assertEqual(float(self.artisan_user.longitude), 8.516667)
+
+    def test_out_of_range_coordinates_rejected(self):
+        self.client.force_authenticate(self.client_user)
+        response = self.client.patch('/api/auth/profile/', {'latitude': '91', 'longitude': '8'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_profile_read_includes_coordinates(self):
+        self.artisan_user.latitude = 12.0
+        self.artisan_user.longitude = 8.5
+        self.artisan_user.save()
+        self.client.force_authenticate(self.artisan_user)
+        response = self.client.get('/api/auth/profile/')
+        self.assertEqual(float(response.data['latitude']), 12.0)
+
+    def test_artisan_search_returns_distance_sorted(self):
+        # Artisan A ~0 km from the client, artisan B ~55 km north
+        self.artisan_user.latitude, self.artisan_user.longitude = 12.0, 8.5
+        self.artisan_user.save()
+        far_user = User.objects.create_user(
+            email='far@test.com', password='pass12345',
+            first_name='Far', last_name='Artisan', role='artisan',
+        )
+        far_user.latitude, far_user.longitude = 12.5, 8.5
+        far_user.save()
+        far_profile = ArtisanProfile.objects.create(user=far_user)
+
+        response = self.client.get('/api/artisans/', {'latitude': 12.0, 'longitude': 8.5})
+        results = response.data['results']
+        self.assertEqual(results[0]['id'], self.artisan_profile.id)
+        self.assertEqual(results[0]['distance'], 0.0)
+        self.assertEqual(results[1]['id'], far_profile.id)
+        self.assertAlmostEqual(results[1]['distance'], 55.6, delta=1.0)
+
+        # max_distance filters the far one out
+        response = self.client.get(
+            '/api/artisans/', {'latitude': 12.0, 'longitude': 8.5, 'max_distance': 10}
+        )
+        ids = [a['id'] for a in response.data['results']]
+        self.assertIn(self.artisan_profile.id, ids)
+        self.assertNotIn(far_profile.id, ids)
+
+    def test_use_saved_falls_back_to_stored_coords(self):
+        self.artisan_user.latitude, self.artisan_user.longitude = 12.0, 8.5
+        self.artisan_user.save()
+        self.client_user.latitude, self.client_user.longitude = 12.0, 8.5
+        self.client_user.save()
+        self.client.force_authenticate(self.client_user)
+        response = self.client.get('/api/artisans/', {'use_saved': 'true'})
+        self.assertEqual(response.data['results'][0]['distance'], 0.0)
+
+
 class ArtisanAvailabilityTests(BookingTestBase):
     """The dashboard 'Available for Jobs' toggle: PATCH artisans/{profile_id}/."""
 
