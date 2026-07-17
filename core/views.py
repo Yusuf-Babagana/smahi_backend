@@ -393,3 +393,40 @@ class AIChatView(APIView):
                 {"error": f"AI Service temporarily unavailable: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class TranscribeView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        audio_file = request.FILES.get("audio")
+        if not audio_file:
+            return Response(
+                {"error": "No audio file provided."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            api_key = getattr(settings, "OPENAI_API_KEY", "")
+            if not api_key:
+                return Response(
+                    {"error": "AI service is not configured."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            client = openai.OpenAI(api_key=api_key)
+
+            file_tuple = (audio_file.name, audio_file.read(), audio_file.content_type)
+            response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=file_tuple,
+                language="en",
+            )
+
+            text = (response.text or "").strip()
+            return Response({"text": text}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {"error": f"Transcription failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

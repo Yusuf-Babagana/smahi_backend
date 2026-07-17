@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, ArtisanViewSet, ArtisanProfileView,
     VerificationRequestViewSet, BookingViewSet, ReviewViewSet,
-    AIChatView
+    AIChatView, TranscribeView
 )
 
 router = DefaultRouter()
@@ -17,4 +17,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('artisan/profile/', ArtisanProfileView.as_view(), name='artisan-profile'),
     path('ai/chat/', AIChatView.as_view(), name='ai-chat'),
+    path('ai/transcribe/', TranscribeView.as_view(), name='ai-transcribe'),
 ]
