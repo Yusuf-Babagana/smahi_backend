@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from locations.serializers import CountrySerializer, StateSerializer, LGASerializer
+from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
 # 👇 Import ArtisanProfile at the top
 from core.models import ArtisanProfile 
@@ -58,8 +58,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    country_details = CountrySerializer(source='country', read_only=True)
-    state_details = StateSerializer(source='state', read_only=True)
+    # Lite serializers on purpose: the full Country/State serializers nest the
+    # ENTIRE location tree (37 states x their LGAs ≈ 70KB per user), which
+    # ballooned every artisan/booking/chat payload. The app reads only id/name.
+    country_details = CountryLiteSerializer(source='country', read_only=True)
+    state_details = StateLiteSerializer(source='state', read_only=True)
     lga_details = LGASerializer(source='lga', read_only=True)
 
     class Meta:

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review
 from accounts.serializers import UserSerializer
-from locations.serializers import CountrySerializer, StateSerializer, LGASerializer
+from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
 User = get_user_model()
 
@@ -50,8 +50,8 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     category_name_ha = serializers.CharField(source='category.name_ha', read_only=True, default='')
-    service_countries_details = CountrySerializer(source='service_countries', many=True, read_only=True)
-    service_states_details = StateSerializer(source='service_states', many=True, read_only=True)
+    service_countries_details = CountryLiteSerializer(source='service_countries', many=True, read_only=True)
+    service_states_details = StateLiteSerializer(source='service_states', many=True, read_only=True)
     service_lgas_details = LGASerializer(source='service_lgas', many=True, read_only=True)
     
     # 👇 1. Add the distance field
@@ -130,8 +130,8 @@ class VerificationProcessSerializer(serializers.Serializer):
 class BookingSerializer(serializers.ModelSerializer):
     client_details = UserSerializer(source='client', read_only=True)
     artisan_details = UserSerializer(source='artisan', read_only=True)
-    country_details = CountrySerializer(source='country', read_only=True)
-    state_details = StateSerializer(source='state', read_only=True)
+    country_details = CountryLiteSerializer(source='country', read_only=True)
+    state_details = StateLiteSerializer(source='state', read_only=True)
     lga_details = LGASerializer(source='lga', read_only=True)
     # Read aliases matching the mobile app's field names (additive; the
     # canonical fields below stay unchanged for existing clients).
