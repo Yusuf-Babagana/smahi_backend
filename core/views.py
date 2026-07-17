@@ -330,10 +330,39 @@ from rest_framework.views import APIView
 class AIChatView(APIView):
     permission_classes = [AllowAny]
 
+    SYSTEM_PROMPT = (
+        "You are the S-MAHII AI assistant, a friendly and helpful guide for the "
+        "S-MAHII app \u2014 a service marketplace connecting clients with skilled artisans "
+        "(plumbers, electricians, mechanics, carpenters, etc.) in northern Nigeria.\n\n"
+        "You help users:\n"
+        "- Find the right type of artisan for their needs\n"
+        "- Explain how the app works (booking, payments, reviews)\n"
+        "- Answer questions about services available\n"
+        "- Provide advice on home repairs and maintenance\n"
+        "- Guide users through the booking process\n"
+        "- Answer in both English and Hausa (match the user's language)\n\n"
+        "Be warm, helpful, and concise. Keep responses conversational and friendly."
+    )
+
     def post(self, request):
+        messages = request.data.get("messages")
         user_text = request.data.get("text", "").strip()
 
-        if not user_text:
+        if messages and isinstance(messages, list):
+            recent = messages[-20:]
+            api_messages = [
+                {"role": "system", "content": self.SYSTEM_PROMPT},
+                *[
+                    {"role": m.get("role", "user"), "content": m.get("content", "")}
+                    for m in recent if m.get("content")
+                ],
+            ]
+        elif user_text:
+            api_messages = [
+                {"role": "system", "content": self.SYSTEM_PROMPT},
+                {"role": "user", "content": user_text},
+            ]
+        else:
             return Response(
                 {"error": "No text provided. Please say or type something."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -350,18 +379,8 @@ class AIChatView(APIView):
 
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are S-MAHII AI, a helpful, polite assistant for the S-MAHII Service Directory app "
-                            "in Nigeria. Help users find services like plumbers, mechanics, tailors, or electricians. "
-                            "Keep your answers short, concise, and professional (max 2-3 sentences)."
-                        )
-                    },
-                    {"role": "user", "content": user_text}
-                ],
-                max_tokens=150,
+                messages=api_messages,
+                max_tokens=500,
                 temperature=0.7
             )
 
