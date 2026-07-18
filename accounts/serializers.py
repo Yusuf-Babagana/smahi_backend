@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
 # 👇 Import ArtisanProfile at the top
-from core.models import ArtisanProfile 
+from core.models import ArtisanProfile, Category
 
 User = get_user_model()
 
@@ -16,14 +16,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=True, allow_blank=False)
     last_name = serializers.CharField(required=True, allow_blank=False)
 
-    # 👇 Add category_id to catch the dropdown value from the app
+    # 👇 Category: either an existing ID or a custom name to auto-create
     category_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    custom_category_name = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=100)
 
     class Meta:
         model = User
         fields = [
             'email', 'password', 'password_confirm', 'first_name', 'last_name',
-            'role', 'phone_number', 'address', 'country', 'state', 'lga', 'category_id'
+            'role', 'phone_number', 'address', 'country', 'state', 'lga',
+            'category_id', 'custom_category_name'
         ]
 
     def validate(self, attrs):
@@ -37,8 +39,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        # 1. Pull the category_id out of the data before creating the user
+        # 1. Pull category data out before creating the user
         category_id = validated_data.pop('category_id', None)
+        custom_category_name = validated_data.pop('custom_category_name', '').strip()
 
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
@@ -46,12 +49,25 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # 2. Create the User account
         user = User.objects.create_user(password=password, **validated_data)
 
-        # 3. 🔥 THE FIX: Automatically create the ArtisanProfile!
+        # 3. Create the ArtisanProfile with the correct category
         if user.role == 'artisan':
+            resolved_category_id = None
+
+            if category_id:
+                # User picked an existing category from the list
+                resolved_category_id = category_id
+            elif custom_category_name:
+                # User typed a custom profession — find or create the Category
+                category_obj, _ = Category.objects.get_or_create(
+                    name__iexact=custom_category_name,
+                    defaults={'name': custom_category_name},
+                )
+                resolved_category_id = category_obj.id
+
             ArtisanProfile.objects.create(
                 user=user,
-                category_id=category_id,
-                verification_status='pending' # 🔥 Changed to Pending!
+                category_id=resolved_category_id,
+                verification_status='pending'
             )
 
         return user
