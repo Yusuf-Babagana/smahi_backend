@@ -22,7 +22,10 @@ def register_view(request):
 
         # Artisans must pay a registration fee before their account is active.
         # Set account to inactive; it gets activated after Paystack verification.
-        if user.role == 'artisan':
+        # If Paystack isn't configured yet (no secret key), skip this so
+        # accounts don't get stuck inactive with no way to pay — the fee stays
+        # owed (registration_fee_paid=False) and is collected once payments go live.
+        if user.role == 'artisan' and settings.PAYSTACK_SECRET_KEY:
             user.account_status = 'inactive'
             user.save(update_fields=['account_status'])
 
@@ -99,6 +102,14 @@ def login_view(request):
     if user.role == 'artisan' and not user.registration_fee_paid:
         response_data['requires_payment'] = True
         response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
+
+        # Self-heal accounts stuck 'inactive' from before payments were
+        # configured (or while they are switched off): they owe the fee but
+        # must still be able to use the app and pay later.
+        if not settings.PAYSTACK_SECRET_KEY and user.account_status == 'inactive':
+            user.account_status = 'active'
+            user.save(update_fields=['account_status'])
+            response_data['user'] = UserSerializer(user).data
 
     return Response(response_data)
 
@@ -292,6 +303,15 @@ def initialize_registration_payment(request):
         return Response(
             {'error': 'Registration fee has already been paid.'},
             status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Without a Paystack key the API call below can only fail with a
+    # confusing "Invalid key" error. Fail cleanly instead; the account
+    # stays usable and the fee is collected once payments are configured.
+    if not settings.PAYSTACK_SECRET_KEY:
+        return Response(
+            {'error': 'Payments are not available yet. Your account remains active — you can complete the registration fee later.'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
     amount_kobo = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500) * 100
