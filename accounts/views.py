@@ -1,8 +1,9 @@
 from rest_framework import status, generics
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import uuid
@@ -251,18 +252,28 @@ def _resolve_user_from_request(request):
     SecureStore timing issues on Android).  This helper lets the endpoint
     work either way so the payment flow isn't blocked.
     """
-    # 1. Try standard JWT authentication
+    # 1. Try JWT authentication manually. The payment views disable DRF's
+    # automatic authentication so that a stale/invalid token in the header
+    # degrades to the email fallback instead of a hard 401 before the view.
+    try:
+        auth = JWTAuthentication().authenticate(request)
+        if auth is not None:
+            return auth[0]
+    except Exception:
+        pass
+
     user = getattr(request, 'user', None)
     if user and user.is_authenticated:
         return user
 
-    # 2. Fallback: look up by email in the request body
-    email = (request.data or {}).get('email', '').strip().lower()
+    # 2. Fallback: look up by email in the request body. Case-insensitive:
+    # registration stores the email as typed, so an exact-match lookup on the
+    # lowercased value silently missed users who registered with capitals.
+    email = str((request.data or {}).get('email', '')).strip()
     if email:
-        try:
-            return User.objects.get(email=email)
-        except User.DoesNotExist:
-            pass
+        user = User.objects.filter(email__iexact=email).first()
+        if user:
+            return user
 
     return None
 
@@ -275,6 +286,7 @@ def _paystack_headers():
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def initialize_registration_payment(request):
     """Initialize a Paystack transaction for the artisan registration fee.
@@ -365,6 +377,7 @@ def initialize_registration_payment(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def verify_registration_payment(request, reference):
     """Verify a Paystack transaction and activate the artisan account."""
