@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>S MAHI Global Services - Innovating Skills, Empowering Workers | DUNS: 669827104</title>
+    <meta name="description" content="S MAHI Global Services – bridging skilled professionals with global opportunities. DUNS: 669827104 | RC: 8681627. Training, certification, job placement worldwide.">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+
+    <style>
+      /* Partnership Notice Banner - Professional Redesign */
+      .partnership-banner {
+        background: linear-gradient(135deg, #004aad 0%, #002d6e 100%);
+        color: #fff;
+        padding: 18px 15px;
+        text-align: center;
+        font-family: 'Poppins', sans-serif;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .partnership-banner::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #ffe600, #ffaa00);
+      }
+
+      .partnership-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        position: relative;
+        z-index: 1;
+      }
+
+      .partnership-banner h2 {
+        font-size: 1.4rem;
+        font-weight: 600;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .partnership-banner p {
+        font-size: 1rem;
+        line-height: 1.6;
+        margin: 8px 0;
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .partnership-banner .cta-text {
+        margin-top: 15px;
+        font-weight: 500;
+      }
+
+      .partnership-banner .cta-text a {
+        color: #ffe600;
+        text-decoration: none;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+        background: rgba(255, 230, 0, 0.1);
+      }
+
+      .partnership-banner .cta-text a:hover {
+        color: #002d6e;
+        background: #ffe600;
+        text-decoration: none;
+      }
+
+      /* Professional styling for announcement in hero section */
+      .announcement-container {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border-left: 4px solid #004aad;
+      }
+
+      .announcement-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #004aad;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .announcement-content {
+        font-size: 1.1rem;
+        line-height: 1.5;
+        margin-bottom: 15px;
+      }
+
+      .announcement-link {
+        display: inline-block;
+        background: #004aad;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+      }
+
+      .announcement-link:hover {
+        background: #002d6e;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Additional professional refinements */
+      .hero-title {
+        font-size: 2.5rem;
+        margin-bottom: 20px;
+      }
+
+      .hero-subtitle {
+        font-size: 1.2rem;
+        line-height: 1.6;
+      }
+
+      .section-title {
+        font-size: 2.2rem;
+        margin-bottom: 40px;
+      }
+
+      /* Exclusive Services Section Styling */
+      .exclusive-services {
+        background: #f8f9fa;
+        padding: 80px 0;
+      }
+
+      .exclusive-services .section-title {
+        text-align: center;
+        margin-bottom: 50px;
+      }
+
+      .exclusive-feature {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 40px;
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+      }
+
+      .exclusive-feature:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      }
+
+      .feature-icon {
+        background: linear-gradient(135deg, #004aad, #002d6e);
+        color: white;
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        margin-right: 25px;
+        flex-shrink: 0;
+      }
+
+      .feature-content h3 {
+        font-size: 1.5rem;
+        margin-bottom: 15px;
+        color: #004aad;
+      }
+
+      .feature-content p {
+        line-height: 1.6;
+        margin-bottom: 15px;
+      }
+
+      .feature-list {
+        list-style-type: none;
+        padding-left: 0;
+      }
+
+      .feature-list li {
+        margin-bottom: 8px;
+        display: flex;
+        align-items: flex-start;
+      }
+
+      .feature-list li i {
+        color: #004aad;
+        margin-right: 10px;
+        margin-top: 5px;
+        flex-shrink: 0;
+      }
+
+      .goal-box {
+        background: rgba(0, 74, 173, 0.1);
+        border-left: 4px solid #004aad;
+        padding: 15px 20px;
+        border-radius: 0 8px 8px 0;
+        margin: 20px 0;
+      }
+
+      .goal-box p {
+        margin: 0;
+        font-style: italic;
+      }
+
+      /* Contact email styling */
+      .email-options {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 15px;
+      }
+
+      .email-option {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 6px;
+        transition: all 0.3s ease;
+      }
+
+      .email-option:hover {
+        background: rgba(255, 255, 255, 0.9);
+        transform: translateX(5px);
+      }
+
+      .email-option i {
+        margin-right: 10px;
+        color: #004aad;
+        width: 20px;
+        text-align: center;
+      }
+
+      /* RC Number and DUNS styling enhancements */
+      .rc-tag, .duns-tag {
+        background: #004aad;
+        color: white;
+        border-radius: 30px;
+        padding: 4px 12px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 10px;
+      }
+      
+      .duns-tag {
+        background: #2c5282;
+        border-left: 2px solid #ffe600;
+      }
+      
+      .social-links-mini {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        margin-left: 15px;
+      }
+      
+      .social-links-mini a {
+        color: white;
+        transition: 0.2s;
+        font-size: 1rem;
+      }
+      
+      .social-links-mini a:hover {
+        color: #ffe600;
+      }
+      
+      .footer-rc, .footer-duns {
+        background: rgba(255,255,255,0.1);
+        padding: 8px 15px;
+        border-radius: 40px;
+        display: inline-block;
+        margin-top: 12px;
+        font-size: 0.85rem;
+        margin-right: 8px;
+      }
+      
+      .tiktok-icon {
+        color: #000000;
+        background: white;
+        border-radius: 8px;
+        padding: 4px 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+      }
+      
+      .tiktok-icon i {
+        color: #000;
+      }
+
+      /* Duns badge hero */
+      .duns-badge {
+        display: inline-flex;
+        align-items: center;
+        background: #1e3a5f;
+        padding: 5px 12px;
+        border-radius: 40px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        margin-left: 12px;
+        gap: 6px;
+        border: 1px solid rgba(255,230,0,0.3);
+      }
+      
+      .duns-badge i {
+        font-size: 0.8rem;
+      }
+
+      @media (max-width: 768px) {
+        .partnership-banner h2 {
+          font-size: 1.2rem;
+          flex-direction: column;
+          gap: 5px;
+        }
+        
+        .partnership-banner p {
+          font-size: 0.9rem;
+        }
+        
+        .announcement-title {
+          font-size: 1.1rem;
+        }
+        
+        .announcement-content {
+          font-size: 1rem;
+        }
+        
+        .exclusive-feature {
+          flex-direction: column;
+          text-align: center;
+        }
+        
+        .feature-icon {
+          margin-right: 0;
+          margin-bottom: 20px;
+          align-self: center;
+        }
+        
+        .email-options {
+          flex-direction: column;
+        }
+        
+        .rc-tag, .duns-tag {
+          margin-left: 0;
+          margin-top: 6px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Partnership Notice with RC, DUNS and TikTok integration in header banner -->
+    <div class="partnership-banner">
+      <div class="partnership-content">
+        <h2>
+          <i class="fas fa-handshake"></i> S MAHI Global Services: Now Accepting Partnership Proposals
+          <span class="rc-tag"><i class="fas fa-building"></i> RC: 8681627</span>
+          <span class="duns-tag"><i class="fas fa-chart-line"></i> DUNS: 669827104</span>
+          <div class="social-links-mini">
+            <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" rel="noopener noreferrer" title="Follow us on TikTok">
+              <i class="fab fa-tiktok"></i> TikTok
+            </a>
+          </div>
+        </h2>
+        <p>
+          We are actively seeking strategic partnerships with individuals, investors, and organizations of all sizes worldwide. 
+          Our platform is designed to serve clients across all 195 countries, connecting skilled professionals with global opportunities.
+        </p>
+        <p>
+          If your organization operates in business development, professional services, or workforce solutions, 
+          we invite you to explore collaboration opportunities with our global network.
+        </p>
+        <p class="cta-text">
+          Let's create meaningful impact together through strategic alliances.  
+          <a href="#contact">Contact us to discuss partnership opportunities</a> | 
+          <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" style="background: rgba(0,0,0,0.2);"><i class="fab fa-tiktok"></i> Follow on TikTok</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+      <nav class="nav">
+        <div class="nav-container">
+          <div class="nav-logo">
+            <i class="fas fa-globe-americas"></i>
+            <span>S.MAHI Global Services Ltd 
+              <span style="font-size: 0.7rem; background: #004aad; color: white; padding: 2px 6px; border-radius: 20px; margin-left: 6px;">RC 8681627</span>
+              <span style="font-size: 0.7rem; background: #2c5282; color: white; padding: 2px 6px; border-radius: 20px; margin-left: 6px;">DUNS 669827104</span>
+            </span>
+          </div>
+          <ul class="nav-menu">
+            <li><a href="#home" class="nav-link">Home</a></li>
+            <li><a href="#what-we-do" class="nav-link">What We Do</a></li>
+            <li><a href="#exclusive-services" class="nav-link">Exclusive Services</a></li>
+            <li><a href="#our-presence" class="nav-link">Our Presence</a></li>
+            <li><a href="#who-we-help" class="nav-link">Who We Help</a></li>
+            <li><a href="#certification" class="nav-link">Certification</a></li>
+            <li><a href="#contact" class="nav-link">Contact</a></li>
+          </ul>
+          <div class="nav-toggle">
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <!-- Hero Section -->
+      <section id="home" class="hero">
+        <div class="hero-container">
+          <div class="hero-content">
+            <!-- Professional Announcement with DUNS mention -->
+            <div class="announcement-container">
+              <div class="announcement-title">
+                <i class="fas fa-bullhorn"></i> Important Announcement
+                <span class="duns-badge"><i class="fas fa-building"></i> DUNS: 669827104 | Verified Entity</span>
+              </div>
+              <div class="announcement-content">
+                We are pleased to announce that our Job Application Portal is now operational. 
+                Qualified candidates are invited to submit their applications through our secure online platform.
+                <strong>S MAHI Global Services Ltd</strong> is a DUNS-registered organization (669827104) ensuring global compliance and trust.
+              </div>
+              <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="announcement-link">
+                <i class="fas fa-external-link-alt"></i> Access Application Portal
+              </a>
+            </div>
+
+            <h1 class="hero-title">
+              S MAHI Global Services
+              <span style="font-size: 1rem; display: inline-block; background: #1e3a5f; padding: 4px 12px; border-radius: 30px; margin-left: 12px; vertical-align: middle;"><i class="fas fa-chart-simple"></i> DUNS 669827104</span>
+            </h1>
+            <p class="hero-subtitle">
+              We specialize in bridging the gap between skilled professionals and global opportunities 
+              through comprehensive training, certification, and strategic job placement services.
+              <strong>Globally recognized & DUNS certified (669827104).</strong>
+            </p>
+            <div class="hero-buttons">
+              <a href="#certification" class="btn btn-primary">Get Certified</a>
+              <a href="#what-we-do" class="btn btn-secondary">Learn More</a>
+              <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" class="btn btn-secondary" style="background:#000; color:white; border-color:#000;"><i class="fab fa-tiktok"></i> TikTok</a>
+            </div>
+          </div>
+          <div class="hero-image">
+            <div class="hero-visual">
+              <i class="fas fa-tools"></i>
+              <i class="fas fa-graduation-cap"></i>
+              <i class="fas fa-handshake"></i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- What We Do -->
+      <section id="what-we-do" class="what-we-do">
+        <div class="container">
+          <h2 class="section-title">Our Services</h2>
+          <div class="services-grid">
+            <div class="service-card">
+              <div class="service-icon">
+                <i class="fas fa-hard-hat"></i>
+              </div>
+              <h3>Construction & Engineering</h3>
+              <p>Professional training and certification programs for construction workers, engineers, and technical specialists.</p>
+            </div>
+            <div class="service-card">
+              <div class="service-icon">
+                <i class="fas fa-chalkboard-teacher"></i>
+              </div>
+              <h3>Education & Training</h3>
+              <p>Comprehensive educational programs designed to enhance professional skills and career advancement opportunities.</p>
+            </div>
+            <div class="service-card">
+              <div class="service-icon">
+                <i class="fas fa-certificate"></i>
+              </div>
+              <h3>Certification</h3>
+              <p>Internationally recognized certifications that validate professional competencies and facilitate global mobility.</p>
+            </div>
+            <div class="service-card">
+              <div class="service-icon">
+                <i class="fas fa-users"></i>
+              </div>
+              <h3>Workforce Matching</h3>
+              <p>Strategic connections between qualified professionals and international employers through our extensive network.</p>
+            </div>
+            <div class="service-card">
+              <div class="service-icon">
+                <i class="fas fa-globe"></i>
+              </div>
+              <h3>International Partnership</h3>
+              <p>Building strategic alliances between local talent pools and global opportunities through collaborative partnerships.</p>
+            </div>
+            <div class="service-card">
+              <div class="service-icon">
+                <i class="fas fa-building"></i>
+              </div>
+              <h3>Institution Setup</h3>
+              <p>Establishing accredited training centers and educational institutions to expand our service delivery and impact.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Exclusive Services Section -->
+      <section id="exclusive-services" class="exclusive-services">
+        <div class="container">
+          <h2 class="section-title">🚀 What Sets S MAHI Global Services Apart</h2>
+          <p class="section-subtitle" style="text-align: center; max-width: 800px; margin: 0 auto 50px; font-size: 1.2rem;">
+            We are not just facilitating partnerships; we have built a cutting-edge platform that streamlines the professional and working lives of experts and employers worldwide.
+            <br><span style="background:#eef2ff; padding:4px 12px; border-radius:30px; display:inline-block; margin-top:10px;"><i class="fas fa-check-circle"></i> DUNS #669827104 | Global Credibility</span>
+          </p>
+          
+          <!-- Expert Search Application -->
+          <div class="exclusive-feature">
+            <div class="feature-icon">
+              <i class="fas fa-mobile-alt"></i>
+            </div>
+            <div class="feature-content">
+              <h3>📱 Our Expert Search Application</h3>
+              <p>This is our Copyrighted application, designed to close the gap between those seeking services and those offering them.</p>
+              <ul class="feature-list">
+                <li><i class="fas fa-check"></i> <strong>Automatic Translation:</strong> Our App features Automatic Translation technology, which makes it easy to understand different languages globally during communication and transactions.</li>
+                <li><i class="fas fa-check"></i> <strong>Instant Service Search:</strong> Whatever manual labor (handicraft) or skill you are looking for, you can directly access the Application.</li>
+                <li><i class="fas fa-check"></i> <strong>Easy Search:</strong> Perform your search, and the App will show you the expert closest to your location.</li>
+                <li><i class="fas fa-check"></i> <strong>Full Details:</strong> You will see their phone number, type of expertise, and their guarantee status (whether they provide a guarantee or not).</li>
+              </ul>
+              <div class="goal-box">
+                <p>💡 <strong>Our Goal:</strong> To simplify the process of finding the right expert in your vicinity, quickly and reliably.</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Strategic Alliances with Embassies -->
+          <div class="exclusive-feature">
+            <div class="feature-icon">
+              <i class="fas fa-landmark"></i>
+            </div>
+            <div class="feature-content">
+              <h3>🤝 Strategic Alliances with Embassies</h3>
+              <p>We maintain a special relationship with:</p>
+              <ul class="feature-list">
+                <li><i class="fas fa-check"></i> <strong>Embassies of Every Country:</strong> This partnership allows us to easily facilitate the movement of workers and simplify the process of recruiting professionals from one country to another.</li>
+              </ul>
+            </div>
+          </div>
+          
+          <!-- Verification via AI Technology -->
+          <div class="exclusive-feature">
+            <div class="feature-icon">
+              <i class="fas fa-robot"></i>
+            </div>
+            <div class="feature-content">
+              <h3>🧠 Verification via AI Technology</h3>
+              <p>Our application leverages Artificial Intelligence (AI) technology to:</p>
+              <ul class="feature-list">
+                <li><i class="fas fa-check"></i> <strong>Vetting:</strong> Analyze and verify every individual on our platform to confirm the accuracy of their data and expertise.</li>
+                <li><i class="fas fa-check"></i> <strong>Security:</strong> Ensure that our professionals meet all our quality and professional standards.</li>
+              </ul>
+            </div>
+          </div>
+          
+          <!-- Agents and Coordinators -->
+          <div class="exclusive-feature">
+            <div class="feature-icon">
+              <i class="fas fa-user-friends"></i>
+            </div>
+            <div class="feature-content">
+              <h3>👥 Our Agents and Coordinators – On-the-Ground Support</h3>
+              <p>To ensure reliable, person-to-person service, we have a unique organizational structure:</p>
+              <ul class="feature-list">
+                <li><i class="fas fa-check"></i> <strong>Agents per Local Government (LGA):</strong> In every Local Government Area across Nigeria, we have six (6) trained Agents.</li>
+                <li><i class="fas fa-check"></i> <strong>Problem Resolution:</strong> These Agents are responsible for resolving issues, mediating conflicts, and receiving complaints directly.</li>
+                <li><i class="fas fa-check"></i> <strong>State Coordinators:</strong> In addition to the agents, we have one Coordinator in every state. This Coordinator is responsible for supervising and managing all the Agents operating within their respective state.</li>
+              </ul>
+              <div class="goal-box">
+                <p>🎯 <strong>Goal:</strong> We aim to expand this system of six Agents per LGA, managed by a State Coordinator, across the entire globe.</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- S MAHI Token Wallet -->
+          <div class="exclusive-feature">
+            <div class="feature-icon">
+              <i class="fas fa-wallet"></i>
+            </div>
+            <div class="feature-content">
+              <h3>💰 S MAHI Token Wallet – Seamless Global Payment</h3>
+              <p>We have introduced a dedicated payment system to simplify transactions worldwide:</p>
+              <ul class="feature-list">
+                <li><i class="fas fa-check"></i> <strong>Easy Payroll:</strong> Our S MAHI Token Wallet provides the ability to pay workers easily and seamlessly in any country globally.</li>
+              </ul>
+            </div>
+          </div>
+          
+          <!-- Skills Training and Government Connections -->
+          <div class="exclusive-feature">
+            <div class="feature-icon">
+              <i class="fas fa-graduation-cap"></i>
+            </div>
+            <div class="feature-content">
+              <h3>📚 Skills Training and Government Connections</h3>
+              <ul class="feature-list">
+                <li><i class="fas fa-check"></i> <strong>Vocational Training:</strong> For individuals without a skill who wish to join our platform, we can provide them with vocational training to become certified professionals.</li>
+                <li><i class="fas fa-check"></i> <strong>Institutional Search:</strong> If you perform a search, you can also locate the nearest Government Authorities, Police/Security Agencies, Hospitals, or Schools, along with their contact numbers.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Our Presence -->
+      <section id="our-presence" class="our-presence">
+        <div class="container">
+          <h2 class="section-title">Our Global Presence</h2>
+          <div class="presence-content">
+            <div class="presence-section">
+              <h3>Nigeria</h3>
+              <div class="locations">
+                <div class="location-item"><i class="fas fa-map-marker-alt"></i><span>Kano</span></div>
+                <div class="location-item"><i class="fas fa-map-marker-alt"></i><span>Abuja</span></div>
+                <div class="location-item"><i class="fas fa-map-marker-alt"></i><span>Lagos</span></div>
+                <div class="location-item"><i class="fas fa-map-marker-alt"></i><span>Kaduna</span></div>
+                <div class="location-item"><i class="fas fa-map-marker-alt"></i><span>Bauchi</span></div>
+                <div class="location-item"><i class="fas fa-map-marker-alt"></i><span>Yobe</span></div>
+              </div>
+            </div>
+            <div class="presence-section">
+              <h3>International Operations</h3>
+              <div class="locations">
+                <div class="location-item"><i class="fas fa-globe"></i><span>Qatar</span></div>
+                <div class="location-item"><i class="fas fa-globe"></i><span>Saudi Arabia</span></div>
+                <div class="location-item"><i class="fas fa-globe"></i><span>UAE</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Who We Help -->
+      <section id="who-we-help" class="who-we-help">
+        <div class="container">
+          <h2 class="section-title">Our Clientele</h2>
+          <div class="help-grid">
+            <div class="help-card"><i class="fas fa-user-tie"></i><h3>Skilled Professionals</h3><p>Engineers, technicians, and specialists pursuing international career opportunities.</p></div>
+            <div class="help-card"><i class="fas fa-hammer"></i><h3>Artisans</h3><p>Craftspeople and skilled workers seeking to formalize and certify their expertise.</p></div>
+            <div class="help-card"><i class="fas fa-search"></i><h3>Job Seekers</h3><p>Individuals pursuing employment opportunities in domestic and international markets.</p></div>
+            <div class="help-card"><i class="fas fa-briefcase"></i><h3>Employers</h3><p>Organizations seeking qualified, certified professionals for their workforce needs.</p></div>
+            <div class="help-card"><i class="fas fa-school"></i><h3>Institutions</h3><p>Educational and training institutions pursuing strategic partnerships and development.</p></div>
+            <div class="help-card"><i class="fas fa-hands-helping"></i><h3>NGOs</h3><p>Non-governmental organizations focused on skills development and workforce empowerment.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Certification Program -->
+      <section id="certification" class="certification">
+        <div class="container">
+          <h2 class="section-title">Certification Program</h2>
+          <div class="certification-content">
+            <div class="certification-info">
+              <h3>Digital & Physical Certificates</h3>
+              <p>
+                Our comprehensive certification program offers both digital and physical credentials 
+                that are internationally recognized and professionally verified. These certifications 
+                validate professional competencies and facilitate access to global employment opportunities.
+                <strong>DUNS 669827104 certified entity – ensuring global compliance and trust.</strong>
+              </p>
+              <div class="benefits">
+                <div class="benefit-item"><i class="fas fa-check-circle"></i><span>Verified Skills Recognition</span></div>
+                <div class="benefit-item"><i class="fas fa-check-circle"></i><span>Global Job Matching</span></div>
+                <div class="benefit-item"><i class="fas fa-check-circle"></i><span>International Standards</span></div>
+                <div class="benefit-item"><i class="fas fa-check-circle"></i><span>Career Advancement</span></div>
+              </div>
+            </div>
+            <div class="certification-visual">
+              <div class="cert-card">
+                <i class="fas fa-award"></i>
+                <h4>Professional Certificate</h4>
+                <p>Internationally Recognized</p>
+                <small><i class="fas fa-chart-line"></i> DUNS: 669827104</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Contact Section -->
+      <section id="contact" class="contact">
+        <div class="container">
+          <h2 class="section-title">Contact Us</h2>
+          <div class="contact-content">
+            <div class="contact-info">
+              <h3>Get in Touch</h3>
+              <p>Ready to begin your journey with S MAHI Global Services? Contact us today to learn more about our programs and opportunities.</p>
+              <div class="contact-details">
+                <div class="contact-item">
+                  <i class="fas fa-envelope"></i>
+                  <div>
+                    <h4>Email Addresses</h4>
+                    <div class="email-options">
+                      <div class="email-option">
+                        <i class="fas fa-user-tie"></i>
+                        <span><strong>CEO:</strong> ceo@smahiglobalservices.com</span>
+                      </div>
+                      <div class="email-option">
+                        <i class="fas fa-info-circle"></i>
+                        <span><strong>General Inquiries:</strong> info@smahiglobalservices.com</span>
+                      </div>
+                      <div class="email-option">
+                        <i class="fas fa-headset"></i>
+                        <span><strong>Customer Support:</strong> customer@smahiglobalservices.com</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="contact-item"><i class="fas fa-phone"></i><div><h4>Phone / WhatsApp</h4><p>+2349066062541</p><p>+2349052373245</p></div></div>
+                <div class="contact-item"><i class="fas fa-link"></i><div><h4>Social Media</h4><p><a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" style="color:#004aad; text-decoration: none;"><i class="fab fa-tiktok"></i> TikTok: @smahiglobalservices</a></p><p>Google Business: Coming Soon</p><p>LinkedIn: Coming Soon</p></div></div>
+              </div>
+              <div style="margin-top: 20px; background: #eef2ff; padding: 12px; border-radius: 12px;">
+                <i class="fas fa-building"></i> <strong>Official DUNS Number:</strong> 669827104 | <i class="fas fa-registered"></i> RC: 8681627
+              </div>
+            </div>
+            <div class="contact-form-container">
+              <form class="contact-form" id="contactForm">
+                <div class="form-group"><label for="name">Full Name</label><input type="text" id="name" name="name" required></div>
+                <div class="form-group"><label for="email">Email Address</label><input type="email" id="email" name="email" required></div>
+                <div class="form-group"><label for="phone">Phone Number</label><input type="tel" id="phone" name="phone"></div>
+                <div class="form-group">
+                  <label for="service">Service of Interest</label>
+                  <select id="service" name="service">
+                    <option value="">Select a service</option>
+                    <option value="construction">Construction & Engineering</option>
+                    <option value="education">Education & Training</option>
+                    <option value="certification">Certification</option>
+                    <option value="workforce">Workforce Matching</option>
+                    <option value="partnership">International Partnership</option>
+                    <option value="institution">Institution Setup</option>
+                    <option value="expert-app">Expert Search Application</option>
+                    <option value="ai-verification">AI Verification</option>
+                    <option value="token-wallet">S MAHI Token Wallet</option>
+                  </select>
+                </div>
+                <div class="form-group"><label for="message">Message</label><textarea id="message" name="message" rows="5" required></textarea></div>
+                <button type="submit" class="btn btn-primary">Send Message</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-section">
+            <div class="footer-logo"><i class="fas fa-globe-americas"></i><span>S MAHI Global Services Ltd</span>
+              <div class="footer-rc"><i class="fas fa-registered"></i> RC Number: 8681627</div>
+              <div class="footer-duns"><i class="fas fa-chart-line"></i> DUNS Number: 669827104</div>
+            </div>
+            <p class="mission">"To bridge the gap between skills and opportunities — making global impact through local empowerment."</p>
+            <div style="margin-top: 12px;">
+              <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" style="color:white; background:#000; padding: 6px 12px; border-radius: 30px; display: inline-block; font-size:0.85rem;"><i class="fab fa-tiktok"></i> Follow on TikTok</a>
+            </div>
+          </div>
+          <div class="footer-section">
+            <h4>Quick Links</h4>
+            <ul>
+              <li><a href="#home">Home</a></li>
+              <li><a href="#what-we-do">What We Do</a></li>
+              <li><a href="#exclusive-services">Exclusive Services</a></li>
+              <li><a href="#our-presence">Our Presence</a></li>
+              <li><a href="#certification">Certification</a></li>
+            </ul>
+          </div>
+          <div class="footer-section">
+            <h4>Contact Info</h4>
+            <div class="email-options">
+              <div class="email-option">
+                <i class="fas fa-user-tie"></i>
+                <span>ceo@smahiglobalservices.com</span>
+              </div>
+              <div class="email-option">
+                <i class="fas fa-info-circle"></i>
+                <span>info@smahiglobalservices.com</span>
+              </div>
+              <div class="email-option">
+                <i class="fas fa-headset"></i>
+                <span>customer@smahiglobalservices.com</span>
+              </div>
+            </div>
+            <p style="margin-top: 15px;">+2349066062541</p>
+            <p>+2349052373245</p>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p class="disclaimer">We do not support fraud, impersonation, or unlawful recruitment. DUNS: 669827104 | RC: 8681627</p>
+          <p class="copyright">© 2026 S MAHI Global Services. DUNS: 669827104 | RC: 8681627 | All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

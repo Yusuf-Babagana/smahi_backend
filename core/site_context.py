@@ -11,8 +11,10 @@ Configure in .env / settings:
     SMAHI_INFO_PAGES    optional comma-separated paths, e.g. /contact,/coordinators
 
 NOTE: on a PythonAnywhere FREE account, outbound requests only reach
-whitelisted domains. If the website's domain is blocked, host the info page
-under your own pythonanywhere domain instead.
+whitelisted domains, so the website itself is unreachable from the server.
+Fallback: a GitHub Action (.github/workflows/mirror-site.yml) refreshes a
+copy of the site in this repo every 6 hours, and raw.githubusercontent.com
+IS whitelisted — so when the direct fetch fails we read the mirror instead.
 """
 
 import re
@@ -24,6 +26,12 @@ from django.conf import settings
 
 SITE_CACHE_TTL_SECONDS = 10 * 60   # re-fetch the website at most every 10 min
 SITE_CONTEXT_MAX_CHARS = 12000     # keep the prompt (and cost) bounded
+
+# Kept fresh by .github/workflows/mirror-site.yml; reachable from
+# PythonAnywhere free tier where the website's own domain is not.
+SITE_MIRROR_URL = (
+    'https://raw.githubusercontent.com/Yusuf-Babagana/smahi_backend/main/site_mirror.html'
+)
 
 _site_cache = {'fetched_at': 0.0, 'text': ''}
 
@@ -89,6 +97,17 @@ def get_site_context():
             sections.append('--- Page: %s ---\n%s' % (url, _fetch_page_text(url)))
         except Exception:
             continue  # one broken page must not take the assistant down
+
+    if not sections:
+        # Direct fetch blocked (e.g. PythonAnywhere free-tier proxy):
+        # fall back to the GitHub-hosted mirror of the site.
+        try:
+            sections.append(
+                '--- Page: %s (mirror) ---\n%s'
+                % (base_url, _fetch_page_text(SITE_MIRROR_URL))
+            )
+        except Exception:
+            pass
 
     if sections:
         _site_cache['text'] = '\n\n'.join(sections)[:SITE_CONTEXT_MAX_CHARS]

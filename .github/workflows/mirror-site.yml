@@ -1,0 +1,33 @@
+name: Mirror website for AI assistant
+
+# PythonAnywhere's free-tier proxy blocks outbound requests to
+# smahiglobalservices.com, but allows raw.githubusercontent.com.
+# This job keeps a copy of the website in the repo so the backend's
+# AI assistant can read current info (coordinator numbers, etc.).
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch:         # manual "Run workflow" button
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch website
+        run: curl -fsSL -A 'S-MAHII-Assistant/1.0' https://www.smahiglobalservices.com/ -o site_mirror.html
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add site_mirror.html
+          git diff --cached --quiet || {
+            git commit -m "chore: refresh website mirror for AI assistant"
+            git push
+          }
