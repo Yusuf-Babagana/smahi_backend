@@ -17,12 +17,17 @@ copy of the site in this repo every 6 hours, and raw.githubusercontent.com
 IS whitelisted — so when the direct fetch fails we read the mirror instead.
 """
 
+import os
 import re
 import time
 import urllib.request
 from html.parser import HTMLParser
 
 from django.conf import settings
+
+# Hand-maintained facts (CEO name, coordinators, ...) that are not on the
+# website yet. Lives at the repo root so it's easy to edit on GitHub.
+KNOWLEDGE_FILE = os.path.join(settings.BASE_DIR, 'ai_knowledge.md')
 
 SITE_CACHE_TTL_SECONDS = 10 * 60   # re-fetch the website at most every 10 min
 SITE_CONTEXT_MAX_CHARS = 12000     # keep the prompt (and cost) bounded
@@ -113,3 +118,12 @@ def get_site_context():
         _site_cache['text'] = '\n\n'.join(sections)[:SITE_CONTEXT_MAX_CHARS]
     _site_cache['fetched_at'] = now  # even on total failure, don't retry every request
     return _site_cache['text']
+
+
+def get_local_knowledge():
+    """Contents of ai_knowledge.md — official facts maintained by hand."""
+    try:
+        with open(KNOWLEDGE_FILE, encoding='utf-8') as f:
+            return f.read().strip()
+    except OSError:
+        return ''

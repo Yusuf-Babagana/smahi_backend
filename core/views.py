@@ -326,7 +326,7 @@ import openai
 from django.conf import settings
 from rest_framework.views import APIView
 
-from .site_context import get_site_context
+from .site_context import get_site_context, get_local_knowledge
 
 
 class AIChatView(APIView):
@@ -363,8 +363,15 @@ class AIChatView(APIView):
     )
 
     def _build_system_prompt(self):
-        """Base rules plus the live website content (coordinator numbers etc.)."""
+        """Base rules plus curated facts and the live website content."""
         system_content = self.SYSTEM_PROMPT
+        knowledge = get_local_knowledge()
+        if knowledge:
+            system_content += (
+                "\n\n===== OFFICIAL S-MAHII FACTS =====\n"
+                + knowledge
+                + "\n===== END OF FACTS ====="
+            )
         site_context = get_site_context()
         if site_context:
             system_content += (
