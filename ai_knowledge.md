@@ -63,6 +63,7 @@ information, same as website content.
 - Lagos: 07083244890
 - Taraba: 08062848002
 - Yobe: +234 706 898 5863
+- Additional contact line: 08062848002
 
 ## Head office contact (also on the website)
 
