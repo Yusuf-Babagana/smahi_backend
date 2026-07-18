@@ -4,6 +4,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
+from django.conf import settings
+import uuid
+import requests as http_requests
 from .serializers import UserRegistrationSerializer, UserSerializer, UserUpdateSerializer
 from notifications.services import send_otp, verify_otp, OTPError, OTPCooldown
 
@@ -17,6 +20,12 @@ def register_view(request):
     if serializer.is_valid():
         user = serializer.save()
 
+        # Artisans must pay a registration fee before their account is active.
+        # Set account to inactive; it gets activated after Paystack verification.
+        if user.role == 'artisan':
+            user.account_status = 'inactive'
+            user.save(update_fields=['account_status'])
+
         # Best-effort: email an OTP so the new user can verify their address.
         # Registration must succeed even if the email provider is down.
         try:
@@ -26,13 +35,20 @@ def register_view(request):
 
         refresh = RefreshToken.for_user(user)
 
-        return Response({
+        response_data = {
             'user': UserSerializer(user).data,
             'tokens': {
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
             }
-        }, status=status.HTTP_201_CREATED)
+        }
+
+        # Tell the frontend that an artisan must pay before they can use the app
+        if user.role == 'artisan':
+            response_data['requires_payment'] = True
+            response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -71,13 +87,20 @@ def login_view(request):
 
     refresh = RefreshToken.for_user(user)
 
-    return Response({
+    response_data = {
         'user': UserSerializer(user).data,
         'tokens': {
             'refresh': str(refresh),
             'access': str(refresh.access_token),
         }
-    })
+    }
+
+    # Artisans who haven't paid the registration fee need to be redirected
+    if user.role == 'artisan' and not user.registration_fee_paid:
+        response_data['requires_payment'] = True
+        response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
+
+    return Response(response_data)
 
 
 @api_view(['POST'])
@@ -201,3 +224,163 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         if self.request.method == 'PUT' or self.request.method == 'PATCH':
             return UserUpdateSerializer
         return UserSerializer
+
+
+# ---------------------------------------------------------------------------
+# Paystack Registration Fee
+# ---------------------------------------------------------------------------
+
+PAYSTACK_BASE_URL = 'https://api.paystack.co'
+
+
+def _paystack_headers():
+    return {
+        'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}',
+        'Content-Type': 'application/json',
+    }
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def initialize_registration_payment(request):
+    """Initialize a Paystack transaction for the artisan registration fee.
+
+    Returns the authorization URL the frontend should open in a WebView/browser.
+    """
+    user = request.user
+
+    if user.role != 'artisan':
+        return Response(
+            {'error': 'Registration fee applies to artisans only.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if user.registration_fee_paid:
+        return Response(
+            {'error': 'Registration fee has already been paid.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    amount_kobo = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500) * 100
+    reference = f"SMAHI-REG-{uuid.uuid4().hex[:12].upper()}"
+
+    payload = {
+        'email': user.email,
+        'amount': amount_kobo,
+        'reference': reference,
+        'currency': 'NGN',
+        'metadata': {
+            'user_id': user.id,
+            'purpose': 'artisan_registration',
+        },
+    }
+
+    try:
+        resp = http_requests.post(
+            f'{PAYSTACK_BASE_URL}/transaction/initialize',
+            json=payload,
+            headers=_paystack_headers(),
+            timeout=15,
+        )
+        data = resp.json()
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to connect to payment provider: {str(e)}'},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    if not data.get('status'):
+        return Response(
+            {'error': data.get('message', 'Payment initialization failed.')},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    from core.models import RegistrationPayment
+    RegistrationPayment.objects.create(
+        user=user,
+        reference=reference,
+        amount=amount_kobo,
+        status='pending',
+        paystack_response=data,
+    )
+
+    return Response({
+        'authorization_url': data['data']['authorization_url'],
+        'reference': reference,
+        'amount': getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def verify_registration_payment(request, reference):
+    """Verify a Paystack transaction and activate the artisan account."""
+
+    user = request.user
+
+    if user.role != 'artisan':
+        return Response(
+            {'error': 'Registration fee applies to artisans only.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    from core.models import RegistrationPayment
+
+    try:
+        payment = RegistrationPayment.objects.get(reference=reference, user=user)
+    except RegistrationPayment.DoesNotExist:
+        return Response(
+            {'error': 'Payment record not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if payment.status == 'success':
+        return Response({'message': 'Payment already verified.', 'status': 'success'})
+
+    # Ask Paystack to verify the transaction
+    try:
+        resp = http_requests.get(
+            f'{PAYSTACK_BASE_URL}/transaction/verify/{reference}',
+            headers=_paystack_headers(),
+            timeout=15,
+        )
+        data = resp.json()
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to verify payment: {str(e)}'},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    if not data.get('status'):
+        payment.status = 'failed'
+        payment.paystack_response = data
+        payment.save(update_fields=['status', 'paystack_response', 'updated_at'])
+        return Response(
+            {'error': data.get('message', 'Payment verification failed.')},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    tx_data = data.get('data', {})
+
+    if tx_data.get('status') == 'success':
+        payment.status = 'success'
+        payment.paystack_response = data
+        payment.save(update_fields=['status', 'paystack_response', 'updated_at'])
+
+        # Activate the artisan account
+        user.registration_fee_paid = True
+        user.account_status = 'active'
+        user.save(update_fields=['registration_fee_paid', 'account_status', 'updated_at'])
+
+        return Response({
+            'message': 'Payment verified successfully. Your account is now active!',
+            'status': 'success',
+        })
+    else:
+        payment.status = 'failed'
+        payment.paystack_response = data
+        payment.save(update_fields=['status', 'paystack_response', 'updated_at'])
+        return Response(
+            {'error': 'Payment was not successful. Please try again.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )

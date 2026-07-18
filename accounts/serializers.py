@@ -72,9 +72,10 @@ class UserSerializer(serializers.ModelSerializer):
             'address', 'profile_picture', 'country', 'state', 'lga',
             'country_details', 'state_details', 'lga_details',
             'latitude', 'longitude',
-            'is_verified', 'email_verified', 'created_at', 'updated_at'
+            'is_verified', 'email_verified', 'registration_fee_paid',
+            'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'role', 'is_verified', 'email_verified', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'role', 'is_verified', 'email_verified', 'registration_fee_paid', 'created_at', 'updated_at']
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):

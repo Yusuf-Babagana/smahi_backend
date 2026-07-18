@@ -61,6 +61,8 @@ class User(AbstractUser):
     is_verified = models.BooleanField(default=False)
     # Email ownership confirmed via OTP — independent of the artisan verification badge above
     email_verified = models.BooleanField(default=False)
+    # Artisans must pay a registration fee before their account is activated
+    registration_fee_paid = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -190,3 +190,26 @@ class Review(models.Model):
         super().save(*args, **kwargs)
         artisan_profile = self.booking.artisan.artisan_profile
         artisan_profile.update_rating()
+
+
+class RegistrationPayment(models.Model):
+    """Tracks Paystack registration fee payments for artisans."""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('success', 'Success'),
+        ('failed', 'Failed'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='registration_payments')
+    reference = models.CharField(max_length=100, unique=True)
+    amount = models.PositiveIntegerField(help_text="Amount in Kobo")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    paystack_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Payment {self.reference} - {self.user.email} - {self.status}"

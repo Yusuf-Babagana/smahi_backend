@@ -175,3 +175,8 @@ SMAHI_INFO_PAGES = config('SMAHI_INFO_PAGES', default='')
 BREVO_API_KEY = config('BREVO_API_KEY', default='')
 BREVO_SENDER_EMAIL = config('BREVO_SENDER_EMAIL', default='no-reply@smahi.app')
 BREVO_SENDER_NAME = config('BREVO_SENDER_NAME', default='S-MAHII')
+
+# Paystack (artisan registration fee)
+PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
+PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
+ARTISAN_REGISTRATION_FEE = 2500  # Naira
