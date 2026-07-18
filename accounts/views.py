@@ -233,6 +233,29 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 PAYSTACK_BASE_URL = 'https://api.paystack.co'
 
 
+def _resolve_user_from_request(request):
+    """Identify the user from a JWT token OR from the ``email`` body field.
+
+    Mobile clients sometimes fail to attach the Authorization header (e.g.
+    SecureStore timing issues on Android).  This helper lets the endpoint
+    work either way so the payment flow isn't blocked.
+    """
+    # 1. Try standard JWT authentication
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated:
+        return user
+
+    # 2. Fallback: look up by email in the request body
+    email = (request.data or {}).get('email', '').strip().lower()
+    if email:
+        try:
+            return User.objects.get(email=email)
+        except User.DoesNotExist:
+            pass
+
+    return None
+
+
 def _paystack_headers():
     return {
         'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}',
@@ -241,13 +264,23 @@ def _paystack_headers():
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def initialize_registration_payment(request):
     """Initialize a Paystack transaction for the artisan registration fee.
 
-    Returns the authorization URL the frontend should open in a WebView/browser.
+    Accepts either:
+      - A valid JWT in the Authorization header (standard flow), OR
+      - An ``email`` field in the request body (fallback for mobile clients
+        where the token may not be attached).
+
+    Returns the authorization URL the frontend should open in a WebView.
     """
-    user = request.user
+    user = _resolve_user_from_request(request)
+    if user is None:
+        return Response(
+            {'error': 'Could not identify the user. Please log in again.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
 
     if user.role != 'artisan':
         return Response(
@@ -312,11 +345,16 @@ def initialize_registration_payment(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def verify_registration_payment(request, reference):
     """Verify a Paystack transaction and activate the artisan account."""
 
-    user = request.user
+    user = _resolve_user_from_request(request)
+    if user is None:
+        return Response(
+            {'error': 'Could not identify the user. Please log in again.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
 
     if user.role != 'artisan':
         return Response(
