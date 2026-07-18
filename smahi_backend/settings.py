@@ -165,6 +165,12 @@ ALLOWED_HOSTS = ['*', '192.168.1.254', 'localhost', '127.0.0.1']
 
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 
+# Public S-MAHII website the AI assistant reads live info from
+# (coordinator phone numbers, announcements, ...). Optional extra pages
+# as comma-separated paths, e.g. /contact,/coordinators
+SMAHI_WEBSITE_URL = config('SMAHI_WEBSITE_URL', default='')
+SMAHI_INFO_PAGES = config('SMAHI_INFO_PAGES', default='')
+
 # Brevo (transactional email — OTP delivery)
 BREVO_API_KEY = config('BREVO_API_KEY', default='')
 BREVO_SENDER_EMAIL = config('BREVO_SENDER_EMAIL', default='no-reply@smahi.app')
