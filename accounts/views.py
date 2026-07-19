@@ -312,8 +312,14 @@ def initialize_registration_payment(request):
         )
 
     if user.registration_fee_paid:
+        # Not an error from the user's perspective — their account is settled.
+        # Make sure the status reflects that, and tell the client explicitly
+        # so it can route to the dashboard instead of showing a failure.
+        if user.account_status != 'active':
+            user.account_status = 'active'
+            user.save(update_fields=['account_status'])
         return Response(
-            {'error': 'Registration fee has already been paid.'},
+            {'error': 'Registration fee has already been paid.', 'already_paid': True},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
