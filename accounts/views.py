@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from rest_framework import status, generics
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
@@ -98,6 +99,14 @@ def login_view(request):
             'access': str(refresh.access_token),
         }
     }
+
+    # Self-heal: an artisan may have PAID without the app managing to verify
+    # (connection lost / app closed on the payment page). Check Paystack for
+    # their recent pending references before demanding payment again.
+    if user.role == 'artisan' and not user.registration_fee_paid:
+        _reconcile_pending_payments(user)
+        if user.registration_fee_paid:
+            response_data['user'] = UserSerializer(user).data
 
     # Artisans who haven't paid the registration fee need to be redirected
     if user.role == 'artisan' and not user.registration_fee_paid:
@@ -288,6 +297,46 @@ def _paystack_headers():
     }
 
 
+def _apply_successful_payment(payment, user):
+    """Mark the payment successful and activate the artisan account."""
+    payment.status = 'success'
+    payment.save(update_fields=['status', 'paystack_response', 'updated_at'])
+    user.registration_fee_paid = True
+    user.account_status = 'active'
+    user.save(update_fields=['registration_fee_paid', 'account_status', 'updated_at'])
+
+
+def _reconcile_pending_payments(user):
+    """Self-heal artisans who PAID but were never verified.
+
+    If the app closed or lost connection before calling the verify endpoint,
+    the money left the user's account but registration_fee_paid stayed False,
+    trapping them on the payment screen forever. Called at login: check the
+    user's recent pending references directly with Paystack and apply any
+    completed transaction.
+    """
+    if user.registration_fee_paid or not settings.PAYSTACK_SECRET_KEY:
+        return
+    from core.models import RegistrationPayment
+    pending = RegistrationPayment.objects.filter(
+        user=user, status='pending'
+    ).order_by('-id')[:3]
+    for payment in pending:
+        try:
+            resp = http_requests.get(
+                f'{PAYSTACK_BASE_URL}/transaction/verify/{payment.reference}',
+                headers=_paystack_headers(),
+                timeout=10,
+            )
+            data = resp.json()
+        except Exception:
+            continue  # Paystack unreachable: try again next login
+        if data.get('status') and data.get('data', {}).get('status') == 'success':
+            payment.paystack_response = data
+            _apply_successful_payment(payment, user)
+            return
+
+
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -338,11 +387,24 @@ def initialize_registration_payment(request):
     amount_kobo = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500) * 100
     reference = f"SMAHI-REG-{uuid.uuid4().hex[:12].upper()}"
 
+    # Where Paystack redirects the browser after payment. The app's WebView
+    # watches for 'reference=' in the URL to trigger verification — without
+    # a callback_url Paystack never redirects, verification never runs, and
+    # paid artisans stay stuck on the payment screen.
+    callback_url = request.build_absolute_uri(
+        f'/api/auth/payments/callback/?reference={reference}'
+    )
+    if callback_url.startswith('http://') and not any(
+        h in callback_url for h in ('localhost', '127.0.0.1', '192.168.')
+    ):
+        callback_url = 'https://' + callback_url[len('http://'):]
+
     payload = {
         'email': user.email,
         'amount': amount_kobo,
         'reference': reference,
         'currency': 'NGN',
+        'callback_url': callback_url,
         'metadata': {
             'user_id': user.id,
             'purpose': 'artisan_registration',
@@ -383,6 +445,20 @@ def initialize_registration_payment(request):
         'reference': reference,
         'amount': getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500),
     })
+
+
+def registration_payment_callback(request):
+    """Paystack redirects here after checkout. The app's WebView reacts to
+    the 'reference=' query param before this page even renders; the HTML is
+    only a fallback for anyone completing payment in a normal browser."""
+    return HttpResponse(
+        '<html><head><meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<title>S-MAHII Payment</title></head>'
+        '<body style="font-family:sans-serif;text-align:center;padding-top:60px">'
+        '<h2>&#9989; Payment received</h2>'
+        '<p>Return to the S-MAHII app to continue.</p>'
+        '</body></html>'
+    )
 
 
 @api_view(['POST'])

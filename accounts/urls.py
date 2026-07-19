@@ -5,6 +5,7 @@ from .views import (
     request_email_verification_view, confirm_email_verification_view,
     password_reset_request_view, password_reset_confirm_view,
     initialize_registration_payment, verify_registration_payment,
+    registration_payment_callback,
 )
 
 urlpatterns = [
@@ -18,4 +19,5 @@ urlpatterns = [
     path('password-reset/confirm/', password_reset_confirm_view, name='password-reset-confirm'),
     path('payments/initialize/', initialize_registration_payment, name='pay-initialize'),
     path('payments/verify/<str:reference>/', verify_registration_payment, name='pay-verify'),
+    path('payments/callback/', registration_payment_callback, name='pay-callback'),
 ]
