@@ -252,9 +252,21 @@ def _resolve_user_from_request(request):
     SecureStore timing issues on Android).  This helper lets the endpoint
     work either way so the payment flow isn't blocked.
     """
-    # 1. Try JWT authentication manually. The payment views disable DRF's
-    # automatic authentication so that a stale/invalid token in the header
-    # degrades to the email fallback instead of a hard 401 before the view.
+    # 1. An email in the body wins. The app sends it explicitly in payment
+    # flows, and a stale-but-valid JWT from a PREVIOUS session (e.g. a
+    # client account that never logged out) must not override who the
+    # payment is actually for — that produced "Registration fee applies to
+    # artisans only" right after registering a new artisan.
+    # Case-insensitive: registration stores the email as typed.
+    email = str((request.data or {}).get('email', '')).strip()
+    if email:
+        user = User.objects.filter(email__iexact=email).first()
+        if user:
+            return user
+
+    # 2. Fall back to JWT, validated manually: the payment views disable
+    # DRF's automatic authentication so an invalid token degrades to a 401
+    # from this helper instead of a hard 401 before the view runs.
     try:
         auth = JWTAuthentication().authenticate(request)
         if auth is not None:
@@ -265,15 +277,6 @@ def _resolve_user_from_request(request):
     user = getattr(request, 'user', None)
     if user and user.is_authenticated:
         return user
-
-    # 2. Fallback: look up by email in the request body. Case-insensitive:
-    # registration stores the email as typed, so an exact-match lookup on the
-    # lowercased value silently missed users who registered with capitals.
-    email = str((request.data or {}).get('email', '')).strip()
-    if email:
-        user = User.objects.filter(email__iexact=email).first()
-        if user:
-            return user
 
     return None
 
