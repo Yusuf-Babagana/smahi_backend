@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment
 
 
 @admin.register(Category)
@@ -40,3 +40,20 @@ class ReviewAdmin(admin.ModelAdmin):
     list_filter = ['rating', 'created_at']
     search_fields = ['booking__client__email', 'booking__artisan__email', 'comment']
     readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(RegistrationPayment)
+class RegistrationPaymentAdmin(admin.ModelAdmin):
+    list_display = ['reference', 'user', 'amount_naira', 'status', 'fee_paid', 'created_at']
+    list_filter = ['status', 'created_at']
+    search_fields = ['reference', 'user__email', 'user__first_name', 'user__last_name']
+    readonly_fields = ['reference', 'amount', 'paystack_response', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+
+    @admin.display(description='Amount (₦)')
+    def amount_naira(self, obj):
+        return f'{obj.amount / 100:,.0f}'  # stored in kobo
+
+    @admin.display(boolean=True, description='Account activated')
+    def fee_paid(self, obj):
+        return obj.user.registration_fee_paid
