@@ -315,9 +315,21 @@ def _reconcile_pending_payments(user):
     user's recent pending references directly with Paystack and apply any
     completed transaction.
     """
-    if user.registration_fee_paid or not settings.PAYSTACK_SECRET_KEY:
+    if user.registration_fee_paid:
         return
     from core.models import RegistrationPayment
+
+    # A payment already recorded as success (e.g. verified earlier, or marked
+    # by an admin) is proof enough — activate without asking Paystack.
+    recorded = RegistrationPayment.objects.filter(
+        user=user, status='success'
+    ).order_by('-id').first()
+    if recorded:
+        _apply_successful_payment(recorded, user)
+        return
+
+    if not settings.PAYSTACK_SECRET_KEY:
+        return
     pending = RegistrationPayment.objects.filter(
         user=user, status='pending'
     ).order_by('-id')[:3]

@@ -49,6 +49,30 @@ class RegistrationPaymentAdmin(admin.ModelAdmin):
     search_fields = ['reference', 'user__email', 'user__first_name', 'user__last_name']
     readonly_fields = ['reference', 'amount', 'paystack_response', 'created_at', 'updated_at']
     date_hierarchy = 'created_at'
+    actions = ['mark_paid_and_activate']
+
+    @staticmethod
+    def _activate(user):
+        if not user.registration_fee_paid or user.account_status != 'active':
+            user.registration_fee_paid = True
+            user.account_status = 'active'
+            user.save(update_fields=['registration_fee_paid', 'account_status', 'updated_at'])
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Setting status to success must actually unlock the artisan: the
+        # app checks user.registration_fee_paid, not this payment record.
+        if obj.status == 'success':
+            self._activate(obj.user)
+
+    @admin.action(description='Mark as paid and activate the artisan account')
+    def mark_paid_and_activate(self, request, queryset):
+        for payment in queryset:
+            if payment.status != 'success':
+                payment.status = 'success'
+                payment.save(update_fields=['status', 'updated_at'])
+            self._activate(payment.user)
+        self.message_user(request, f'{queryset.count()} payment(s) marked paid; accounts activated.')
 
     @admin.display(description='Amount (₦)')
     def amount_naira(self, obj):
