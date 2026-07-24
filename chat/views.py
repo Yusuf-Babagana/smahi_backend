@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from django.db.models import Q
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
@@ -18,8 +19,13 @@ class ConversationViewSet(viewsets.ModelViewSet):
         recipient_id = request.data.get('recipient_id')
         if not recipient_id:
             return Response({'error': 'recipient_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if int(recipient_id) == request.user.id:
+
+        try:
+            recipient_id = int(recipient_id)
+        except (TypeError, ValueError):
+            return Response({'error': 'recipient_id must be a valid user id'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if recipient_id == request.user.id:
             return Response({'error': 'You cannot start a conversation with yourself'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Check if conversation already exists
@@ -49,7 +55,10 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         conversation_id = self.request.data.get('conversation_id')
-        conversation = Conversation.objects.get(id=conversation_id, participants=self.request.user)
+        try:
+            conversation = Conversation.objects.get(id=conversation_id, participants=self.request.user)
+        except (Conversation.DoesNotExist, ValueError, TypeError):
+            raise ValidationError({'conversation_id': 'Invalid conversation, or you are not a participant.'})
         serializer.save(sender=self.request.user, conversation=conversation)
 
     @action(detail=False, methods=['post'])

@@ -1,5 +1,8 @@
 from rest_framework import viewsets, status, generics, mixins, serializers as drf_serializers
+import logging
 import math
+
+logger = logging.getLogger(__name__)
 
 def calculate_haversine_distance(lat1, lon1, lat2, lon2):
     """Calculates the distance between two GPS coordinates in kilometers."""
@@ -18,6 +21,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.throttling import ScopedRateThrottle
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.contrib.auth import get_user_model
@@ -31,7 +35,7 @@ from .serializers import (
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer
 )
-from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent
+from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin
 from accounts.serializers import UserSerializer
 
 User = get_user_model()
@@ -254,6 +258,102 @@ class AgentDashboardStatsView(APIView):
         })
 
 
+class AgentRegisterArtisanView(APIView):
+    """Agent/state-coordinator initiated artisan registration.
+
+    Generates a one-time password server-side rather than accepting one
+    from the client — the old frontend flow sent the literal hardcoded
+    string 'Password@123' for every artisan an agent registered.
+    """
+    permission_classes = [IsAuthenticated, IsStateAgent]
+
+    def post(self, request):
+        import secrets
+        from accounts.serializers import UserRegistrationSerializer
+
+        generated_password = secrets.token_urlsafe(9)
+
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        data['role'] = 'artisan'
+        data['password'] = generated_password
+        data['password_confirm'] = generated_password
+
+        serializer = UserRegistrationSerializer(data=data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user = serializer.save()
+
+        return Response({
+            'user': UserSerializer(user).data,
+            'generated_password': generated_password,
+            'message': 'Artisan registered. Share this one-time password with them securely — it will not be shown again.',
+        }, status=status.HTTP_201_CREATED)
+
+
+class AgentVerifyArtisanView(APIView):
+    """Agent/state-coordinator approves an artisan's verification, scoped to
+    their own state — thin equivalent of VerificationRequestViewSet.process
+    operating directly on the artisan's user id."""
+    permission_classes = [IsAuthenticated, IsStateAgent]
+
+    def post(self, request, user_id):
+        state_id = request.user.state_id
+        if not state_id:
+            return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            artisan_user = User.objects.get(id=user_id, role='artisan', state_id=state_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Artisan not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
+
+        artisan_profile, _ = ArtisanProfile.objects.get_or_create(user=artisan_user)
+        artisan_profile.verification_status = 'approved'
+        artisan_profile.save(update_fields=['verification_status'])
+
+        artisan_user.is_verified = True
+        artisan_user.save(update_fields=['is_verified'])
+
+        # Resolve any matching pending VerificationRequest too, so it
+        # doesn't linger in the separate verification queue.
+        VerificationRequest.objects.filter(artisan=artisan_user, status='pending').update(
+            status='approved', reviewed_by=request.user, reviewed_at=timezone.now()
+        )
+
+        return Response({
+            'message': 'Artisan verified successfully.',
+            'artisan': ArtisanProfileSerializer(artisan_profile).data,
+        })
+
+
+class AdminStatsView(APIView):
+    """Global summary counts for the admin dashboard — unscoped by state."""
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        artisans = ArtisanProfile.objects.all()
+        return Response({
+            'total_users': User.objects.count(),
+            'total_artisans': artisans.count(),
+            'verified_artisans': artisans.filter(verification_status='approved').count(),
+            'pending_verification': artisans.filter(verification_status='pending').count(),
+            'total_clients': User.objects.filter(role='client').count(),
+            'total_agents': User.objects.filter(role='agent').count(),
+            'total_bookings': Booking.objects.count(),
+        })
+
+
+class AdminUserListView(generics.ListAPIView):
+    """Paginated list of all users for the admin dashboard."""
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    filterset_fields = ['role']
+    search_fields = ['first_name', 'last_name', 'email']
+
+    def get_queryset(self):
+        return User.objects.all().select_related('state', 'lga', 'country').order_by('-created_at')
+
+
 class VerificationRequestViewSet(viewsets.ModelViewSet):
     serializer_class = VerificationRequestSerializer
     permission_classes = [IsAuthenticated]
@@ -262,14 +362,20 @@ class VerificationRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role == 'artisan':
             return VerificationRequest.objects.filter(artisan=user)
-        elif user.role == 'agent':
-            return VerificationRequest.objects.filter(status='pending')
+        elif user.role in ('agent', 'state_coordinator'):
+            # Scoped to the caller's own state, consistent with the
+            # IsStateAgent pattern used for artisans/clients/dashboard-stats.
+            if not user.state_id:
+                return VerificationRequest.objects.none()
+            return VerificationRequest.objects.filter(
+                status='pending', artisan__state_id=user.state_id
+            )
         return VerificationRequest.objects.none()
 
     def perform_create(self, serializer):
         serializer.save(artisan=self.request.user)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAgent])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsStateAgent])
     def process(self, request, pk=None):
         verification_request = self.get_object()
         serializer = VerificationProcessSerializer(data=request.data)
@@ -387,6 +493,8 @@ from .site_context import get_site_context, get_local_knowledge
 
 class AIChatView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai'
 
     SYSTEM_PROMPT = (
         "You are the S-MAHII AI assistant, a friendly and helpful guide for the "
@@ -790,15 +898,18 @@ class AIChatView(APIView):
                 {"error": "Rate limit exceeded. Please try again later."},
                 status=status.HTTP_429_TOO_MANY_REQUESTS
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("AI chat request failed")
             return Response(
-                {"error": f"AI Service temporarily unavailable: {str(e)}"},
+                {"error": "AI service temporarily unavailable. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
 class TranscribeView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai'
 
     def post(self, request):
         audio_file = request.FILES.get("audio")
@@ -827,8 +938,9 @@ class TranscribeView(APIView):
             text = (response.text or "").strip()
             return Response({"text": text}, status=status.HTTP_200_OK)
 
-        except Exception as e:
+        except Exception:
+            logger.exception("Audio transcription failed")
             return Response(
-                {"error": f"Transcription failed: {str(e)}"},
+                {"error": "Transcription failed. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

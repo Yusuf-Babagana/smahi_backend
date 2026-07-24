@@ -1,8 +1,10 @@
+import logging
 from django.http import HttpResponse
 from rest_framework import status, generics
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth import get_user_model
@@ -13,6 +15,7 @@ from .serializers import UserRegistrationSerializer, UserSerializer, UserUpdateS
 from notifications.services import send_otp, verify_otp, OTPError, OTPCooldown
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 @api_view(['POST'])
@@ -60,6 +63,7 @@ def register_view(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def login_view(request):
     email = request.data.get('email')
     password = request.data.get('password')
@@ -122,6 +126,9 @@ def login_view(request):
             response_data['user'] = UserSerializer(user).data
 
     return Response(response_data)
+
+
+login_view.throttle_scope = 'login'  # rate: settings.py REST_FRAMEWORK.DEFAULT_THROTTLE_RATES['login']
 
 
 @api_view(['POST'])
@@ -241,6 +248,38 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def delete_account_view(request):
+    """Account deletion (Play Store data-safety requirement).
+
+    Deactivates rather than hard-deletes — preserves referential integrity
+    with the user's existing bookings/reviews/chat history — but the
+    account can never authenticate again and every outstanding token is
+    blacklisted immediately.
+    """
+    password = request.data.get('password', '')
+    if not password:
+        return Response({'error': 'Current password is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = request.user
+    if not user.check_password(password):
+        return Response({'error': 'Incorrect password.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.is_active = False
+    user.account_status = 'inactive'
+    user.save(update_fields=['is_active', 'account_status'])
+
+    try:
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+        for token in OutstandingToken.objects.filter(user=user):
+            BlacklistedToken.objects.get_or_create(token=token)
+    except Exception:
+        logger.exception('Failed to blacklist outstanding tokens for user %s during account deletion', user.id)
+
+    return Response({'message': 'Your account has been deactivated.'})
+
     def get_serializer_class(self):
         if self.request.method == 'PUT' or self.request.method == 'PATCH':
             return UserUpdateSerializer
@@ -258,24 +297,22 @@ def _resolve_user_from_request(request):
     """Identify the user from a JWT token OR from the ``email`` body field.
 
     Mobile clients sometimes fail to attach the Authorization header (e.g.
-    SecureStore timing issues on Android).  This helper lets the endpoint
+    SecureStore timing issues on Android). This helper lets the endpoint
     work either way so the payment flow isn't blocked.
-    """
-    # 1. An email in the body wins. The app sends it explicitly in payment
-    # flows, and a stale-but-valid JWT from a PREVIOUS session (e.g. a
-    # client account that never logged out) must not override who the
-    # payment is actually for — that produced "Registration fee applies to
-    # artisans only" right after registering a new artisan.
-    # Case-insensitive: registration stores the email as typed.
-    email = str((request.data or {}).get('email', '')).strip()
-    if email:
-        user = User.objects.filter(email__iexact=email).first()
-        if user:
-            return user
 
-    # 2. Fall back to JWT, validated manually: the payment views disable
-    # DRF's automatic authentication so an invalid token degrades to a 401
-    # from this helper instead of a hard 401 before the view runs.
+    JWT is checked FIRST. A prior version checked the body ``email`` first,
+    which let an unauthenticated (or differently-authenticated) caller
+    resolve to ANY account just by naming its email — a user-enumeration
+    and impersonation vector on endpoints that disable DRF's automatic auth.
+    A valid JWT is proof of ownership; it must win over a client-supplied
+    email. The email fallback still exists, but only kicks in when there is
+    genuinely no valid token at all — the real-world case this was written
+    for (Authorization header not attached yet right after register/login).
+    """
+    # 1. Validated JWT wins — proof the caller actually owns the account.
+    # The payment views disable DRF's automatic authentication so an
+    # invalid token degrades to a controlled 401 from this helper instead
+    # of a hard 401 before the view runs.
     try:
         auth = JWTAuthentication().authenticate(request)
         if auth is not None:
@@ -286,6 +323,13 @@ def _resolve_user_from_request(request):
     user = getattr(request, 'user', None)
     if user and user.is_authenticated:
         return user
+
+    # 2. No valid JWT at all: fall back to the body email (mobile
+    # header-timing fallback). Case-insensitive: registration stores the
+    # email as typed.
+    email = str((request.data or {}).get('email', '')).strip()
+    if email:
+        return User.objects.filter(email__iexact=email).first()
 
     return None
 
@@ -431,9 +475,10 @@ def initialize_registration_payment(request):
             timeout=15,
         )
         data = resp.json()
-    except Exception as e:
+    except Exception:
+        logger.exception('Failed to connect to Paystack while initializing payment')
         return Response(
-            {'error': f'Failed to connect to payment provider: {str(e)}'},
+            {'error': 'Failed to connect to the payment provider. Please try again.'},
             status=status.HTTP_502_BAD_GATEWAY,
         )
 
@@ -513,9 +558,10 @@ def verify_registration_payment(request, reference):
             timeout=15,
         )
         data = resp.json()
-    except Exception as e:
+    except Exception:
+        logger.exception('Failed to verify payment with Paystack')
         return Response(
-            {'error': f'Failed to verify payment: {str(e)}'},
+            {'error': 'Failed to verify payment with the payment provider. Please try again.'},
             status=status.HTTP_502_BAD_GATEWAY,
         )
 

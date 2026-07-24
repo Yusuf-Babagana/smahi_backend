@@ -5,7 +5,7 @@ from .views import (
     request_email_verification_view, confirm_email_verification_view,
     password_reset_request_view, password_reset_confirm_view,
     initialize_registration_payment, verify_registration_payment,
-    registration_payment_callback,
+    registration_payment_callback, delete_account_view,
 )
 
 urlpatterns = [
@@ -13,6 +13,7 @@ urlpatterns = [
     path('login/', login_view, name='login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('profile/', ProfileView.as_view(), name='profile'),
+    path('account/delete/', delete_account_view, name='account-delete'),
     path('email/verify/request/', request_email_verification_view, name='email-verify-request'),
     path('email/verify/confirm/', confirm_email_verification_view, name='email-verify-confirm'),
     path('password-reset/request/', password_reset_request_view, name='password-reset-request'),

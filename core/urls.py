@@ -4,7 +4,8 @@ from .views import (
     CategoryViewSet, ArtisanViewSet, ArtisanProfileView,
     VerificationRequestViewSet, BookingViewSet, ReviewViewSet,
     AIChatView, TranscribeView, AgentArtisanListView, AgentClientListView,
-    AgentDashboardStatsView
+    AgentDashboardStatsView, AgentRegisterArtisanView, AgentVerifyArtisanView,
+    AdminStatsView, AdminUserListView
 )
 
 router = DefaultRouter()
@@ -20,6 +21,10 @@ urlpatterns = [
     path('agent/artisans/', AgentArtisanListView.as_view(), name='agent-artisans'),
     path('agent/clients/', AgentClientListView.as_view(), name='agent-clients'),
     path('agent/dashboard-stats/', AgentDashboardStatsView.as_view(), name='agent-dashboard-stats'),
+    path('agent/register-artisan/', AgentRegisterArtisanView.as_view(), name='agent-register-artisan'),
+    path('agent/verify-artisan/<int:user_id>/', AgentVerifyArtisanView.as_view(), name='agent-verify-artisan'),
+    path('admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
+    path('admin/users/', AdminUserListView.as_view(), name='admin-users'),
     path('ai/chat/', AIChatView.as_view(), name='ai-chat'),
     path('ai/transcribe/', TranscribeView.as_view(), name='ai-transcribe'),
 ]

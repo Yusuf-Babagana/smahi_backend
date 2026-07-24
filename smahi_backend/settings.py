@@ -5,25 +5,9 @@ from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-key-change-in-production-12345')
+SECRET_KEY = config('SECRET_KEY')  # no insecure fallback — fail loudly if unset
 
-DEBUG = config('DEBUG', default=True, cast=bool)
-
-ALLOWED_HOSTS = ['*']
-
-# settings.py
-CORS_ALLOW_ALL_ORIGINS = True  # For development only
-CORS_ALLOW_CREDENTIALS = True
-
-# Or specify your Expo URLs:
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "exp://192.168.1.*:3000",  # Your local IP
-    "http://192.168.1.*:3000", # Your local IP
-]
-
-
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -34,6 +18,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     'accounts',
@@ -46,6 +31,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -106,6 +92,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -128,21 +115,36 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour',
+        # Scoped throttles applied explicitly via throttle_scope on
+        # sensitive/costly views (login, AI chat/transcribe).
+        'login': '10/min',
+        'ai': '20/hour',
+    },
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=6),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': False,
+    'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=True, cast=bool)
+# CORS_ALLOW_ALL_ORIGINS deliberately NOT enabled — this API is consumed by
+# the mobile app (JWT bearer, no cookies) plus a small set of known web
+# origins. Combining allow-all with allow-credentials is a known anti-pattern.
+CORS_ALLOW_ALL_ORIGINS = False
 
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://localhost:19006',
+    default='https://www.smahiglobalservices.com,https://smahiglobalservices.com,http://localhost:3000,http://localhost:19006',
     cast=lambda v: [s.strip() for s in v.split(',')]
 )
 
@@ -160,8 +162,19 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='smahi1.pythonanywhere.com,localhost,127.0.0.1',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
 
-ALLOWED_HOSTS = ['*', '192.168.1.254', 'localhost', '127.0.0.1']
+# Cookie hardening for production. SECURE_SSL_REDIRECT/HSTS deliberately NOT
+# set here — PythonAnywhere terminates SSL at a proxy, and enabling a
+# redirect without confirming SECURE_PROXY_SSL_HEADER matches its actual
+# X-Forwarded-Proto behavior risks a redirect loop on the live site.
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 
