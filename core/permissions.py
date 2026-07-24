@@ -16,6 +16,17 @@ class IsAgent(permissions.BasePermission):
         return request.user and request.user.is_authenticated and request.user.role == 'agent'
 
 
+class IsStateAgent(permissions.BasePermission):
+    """Agents and state coordinators overseeing artisans/clients within their own state."""
+
+    def has_permission(self, request, view):
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in ('agent', 'state_coordinator')
+        )
+
+
 class IsProfileOwner(permissions.BasePermission):
     """Object-level guard: only the user a profile belongs to may modify it."""
 

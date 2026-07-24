@@ -30,7 +30,8 @@ from .serializers import (
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer
 )
-from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner
+from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent
+from accounts.serializers import UserSerializer
 
 User = get_user_model()
 
@@ -196,6 +197,37 @@ class ArtisanProfileView(generics.RetrieveUpdateAPIView):
         if self.request.method in ['PUT', 'PATCH']:
             return ArtisanProfileUpdateSerializer
         return ArtisanProfileSerializer
+
+
+class AgentArtisanListView(generics.ListAPIView):
+    """All artisans in the requesting agent/state coordinator's own state,
+    regardless of availability or verification status — unlike the public
+    ArtisanViewSet list, which hides offline/unavailable artisans."""
+    serializer_class = ArtisanProfileSerializer
+    permission_classes = [IsAuthenticated, IsStateAgent]
+    filterset_fields = ['category', 'verification_status']
+    search_fields = ['user__first_name', 'user__last_name', 'bio']
+
+    def get_queryset(self):
+        state_id = self.request.user.state_id
+        if not state_id:
+            return ArtisanProfile.objects.none()
+        return ArtisanProfile.objects.select_related('user', 'category').filter(
+            user__state_id=state_id
+        ).distinct()
+
+
+class AgentClientListView(generics.ListAPIView):
+    """All clients registered in the requesting agent/state coordinator's own state."""
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, IsStateAgent]
+    search_fields = ['first_name', 'last_name', 'email', 'phone_number']
+
+    def get_queryset(self):
+        state_id = self.request.user.state_id
+        if not state_id:
+            return User.objects.none()
+        return User.objects.filter(role='client', state_id=state_id).select_related('state', 'lga', 'country')
 
 
 class VerificationRequestViewSet(viewsets.ModelViewSet):
