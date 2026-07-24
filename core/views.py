@@ -16,6 +16,7 @@ def calculate_haversine_distance(lat1, lon1, lat2, lon2):
 
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
@@ -230,6 +231,29 @@ class AgentClientListView(generics.ListAPIView):
         return User.objects.filter(role='client', state_id=state_id).select_related('state', 'lga', 'country')
 
 
+class AgentDashboardStatsView(APIView):
+    """Summary counts for the agent/state-coordinator dashboard, scoped to their own state."""
+    permission_classes = [IsAuthenticated, IsStateAgent]
+
+    def get(self, request):
+        state_id = request.user.state_id
+        if not state_id:
+            return Response({
+                'total_artisans': 0,
+                'verified_artisans': 0,
+                'pending_verification': 0,
+                'total_clients': 0,
+            })
+
+        artisans = ArtisanProfile.objects.filter(user__state_id=state_id)
+        return Response({
+            'total_artisans': artisans.count(),
+            'verified_artisans': artisans.filter(verification_status='approved').count(),
+            'pending_verification': artisans.filter(verification_status='pending').count(),
+            'total_clients': User.objects.filter(role='client', state_id=state_id).count(),
+        })
+
+
 class VerificationRequestViewSet(viewsets.ModelViewSet):
     serializer_class = VerificationRequestSerializer
     permission_classes = [IsAuthenticated]
@@ -357,7 +381,6 @@ class ReviewViewSet(viewsets.ModelViewSet):
 import json
 import openai
 from django.conf import settings
-from rest_framework.views import APIView
 
 from .site_context import get_site_context, get_local_knowledge
 
