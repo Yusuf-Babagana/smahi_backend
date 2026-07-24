@@ -140,13 +140,21 @@ SIMPLE_JWT = {
 # CORS_ALLOW_ALL_ORIGINS deliberately NOT enabled — this API is consumed by
 # the mobile app (JWT bearer, no cookies) plus a small set of known web
 # origins. Combining allow-all with allow-credentials is a known anti-pattern.
+#
+# Hardcoded rather than env-driven: a stale/malformed CORS_ALLOWED_ORIGINS
+# value in the live .env (missing scheme, trailing comma producing an empty
+# entry) repeatedly broke `manage.py migrate` in production. The mobile app
+# doesn't need CORS at all (JWT bearer, not a browser) — only the website
+# and local dev genuinely need to be listed here, so there's no real need
+# for this to be configurable per-environment.
 CORS_ALLOW_ALL_ORIGINS = False
 
-CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS',
-    default='https://www.smahiglobalservices.com,https://smahiglobalservices.com,http://localhost:3000,http://localhost:19006',
-    cast=lambda v: [s.strip() for s in v.split(',')]
-)
+CORS_ALLOWED_ORIGINS = [
+    'https://www.smahiglobalservices.com',
+    'https://smahiglobalservices.com',
+    'http://localhost:3000',
+    'http://localhost:19006',
+]
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -162,11 +170,11 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-ALLOWED_HOSTS = config(
-    'ALLOWED_HOSTS',
-    default='smahi1.pythonanywhere.com,localhost,127.0.0.1',
-    cast=lambda v: [s.strip() for s in v.split(',')]
-)
+# Hardcoded rather than env-driven, same reasoning as CORS_ALLOWED_ORIGINS
+# above — a stale env value took the entire live site down with
+# DisallowedHost errors on every request. This app has one deployment
+# target; there's no real need for this to be configurable.
+ALLOWED_HOSTS = ['smahi1.pythonanywhere.com', 'localhost', '127.0.0.1']
 
 # Cookie hardening for production. SECURE_SSL_REDIRECT/HSTS deliberately NOT
 # set here — PythonAnywhere terminates SSL at a proxy, and enabling a
