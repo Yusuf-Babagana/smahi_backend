@@ -1,5 +1,34 @@
 from django.contrib import admin
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment
+from django.shortcuts import redirect
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment, PlatformSettings
+
+
+@admin.register(PlatformSettings)
+class PlatformSettingsAdmin(admin.ModelAdmin):
+    """Singleton — every business rule (fees, thresholds, windows) lives
+    here instead of a hardcoded constant, editable without a deploy."""
+    fieldsets = (
+        ('Registration', {'fields': ('registration_fee',)}),
+        ('Service fee (charged to the artisan after a completed job — the job payment itself stays off-platform)', {
+            'fields': ('has_percentage_service_fee', 'service_fee_flat_amount', 'service_fee_percentage'),
+        }),
+        ('Agent commission', {'fields': ('agent_commission_amount',)}),
+        ('Wallet', {'fields': ('minimum_withdrawal', 'maximum_withdrawal')}),
+        ('Booking policy', {'fields': ('cancellation_window_hours', 'refund_window_days')}),
+        ('Platform', {'fields': ('supported_payment_gateways', 'maintenance_mode', 'vat_percentage', 'currency')}),
+    )
+    readonly_fields = ['updated_at']
+
+    def has_add_permission(self, request):
+        return not PlatformSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        # Only ever one row — skip the list page, go straight to editing it.
+        obj = PlatformSettings.current()
+        return redirect('admin:core_platformsettings_change', obj.pk)
 
 
 @admin.register(Category)

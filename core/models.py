@@ -192,6 +192,68 @@ class Review(models.Model):
         artisan_profile.update_rating()
 
 
+class PlatformSettings(models.Model):
+    """Singleton row of business rules that must be changeable without a
+    deploy. Always read via PlatformSettings.current() — never query this
+    model directly, and never hardcode a fee/threshold/window elsewhere."""
+
+    registration_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, default=2500,
+        help_text="Artisan registration fee in NGN (replaces the old hardcoded ARTISAN_REGISTRATION_FEE)."
+    )
+
+    # Service fee (owed by the artisan after a job completes — the job
+    # payment itself stays off-platform, this is only the platform's cut).
+    # Flat is the safer default: it's immune to under-reporting job value.
+    # Percentage is opt-in via has_percentage_service_fee.
+    service_fee_flat_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    service_fee_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
+    has_percentage_service_fee = models.BooleanField(
+        default=False,
+        help_text="Off = flat fee (default, recommended). On = percentage of artisan-reported job value."
+    )
+
+    agent_commission_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    minimum_withdrawal = models.DecimalField(max_digits=10, decimal_places=2, default=1000)
+    maximum_withdrawal = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    cancellation_window_hours = models.PositiveIntegerField(
+        default=24, help_text="Hours before scheduled_date a client can cancel without penalty."
+    )
+    refund_window_days = models.PositiveIntegerField(default=7)
+
+    supported_payment_gateways = models.JSONField(default=list, blank=True, help_text='e.g. ["paystack"]')
+    maintenance_mode = models.BooleanField(default=False)
+
+    vat_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    currency = models.CharField(max_length=3, default='NGN')
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Platform Settings'
+        verbose_name_plural = 'Platform Settings'
+
+    def __str__(self):
+        return 'Platform Settings'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1  # enforce singleton
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        pass  # the singleton row is never deletable
+
+    @classmethod
+    def current(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
 class RegistrationPayment(models.Model):
     """Tracks Paystack registration fee payments for artisans."""
     STATUS_CHOICES = [
