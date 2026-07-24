@@ -248,6 +248,11 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
+    def get_serializer_class(self):
+        if self.request.method == 'PUT' or self.request.method == 'PATCH':
+            return UserUpdateSerializer
+        return UserSerializer
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -279,11 +284,6 @@ def delete_account_view(request):
         logger.exception('Failed to blacklist outstanding tokens for user %s during account deletion', user.id)
 
     return Response({'message': 'Your account has been deactivated.'})
-
-    def get_serializer_class(self):
-        if self.request.method == 'PUT' or self.request.method == 'PATCH':
-            return UserUpdateSerializer
-        return UserSerializer
 
 
 # ---------------------------------------------------------------------------
