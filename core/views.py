@@ -29,6 +29,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, F, Count, Sum
 from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite
+from notifications.models import DeviceToken
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
     ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
@@ -1189,4 +1190,33 @@ class PresenceHeartbeatView(APIView):
 
     def post(self, request):
         User.objects.filter(id=request.user.id).update(last_seen_at=timezone.now())
+        return Response({'ok': True})
+
+
+class DeviceTokenRegisterView(APIView):
+    """Registers (or reassigns) one Expo push token to the requesting user.
+    token is globally unique, so logging in as someone else on the same
+    device correctly moves it rather than leaving a stale duplicate."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get('token')
+        if not token:
+            return Response({'error': 'token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        platform = request.data.get('platform', '')
+        DeviceToken.objects.update_or_create(
+            token=token, defaults={'user': request.user, 'platform': platform}
+        )
+        return Response({'ok': True})
+
+
+class DeviceTokenUnregisterView(APIView):
+    """Called on logout so a signed-out device stops receiving pushes for
+    the account that just logged out."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get('token')
+        if token:
+            DeviceToken.objects.filter(token=token, user=request.user).delete()
         return Response({'ok': True})

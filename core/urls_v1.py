@@ -9,6 +9,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     DisputeReportViewSet, CoordinatorAgentListView, CoordinatorAgentStatusView,
     FavoriteListView, FavoriteToggleView, PresenceHeartbeatView,
+    DeviceTokenRegisterView, DeviceTokenUnregisterView,
 )
 
 router = DefaultRouter()
@@ -21,4 +22,6 @@ urlpatterns = [
     path('favorites/', FavoriteListView.as_view(), name='favorites-list'),
     path('favorites/toggle/', FavoriteToggleView.as_view(), name='favorites-toggle'),
     path('presence/heartbeat/', PresenceHeartbeatView.as_view(), name='presence-heartbeat'),
+    path('devices/register/', DeviceTokenRegisterView.as_view(), name='device-register'),
+    path('devices/unregister/', DeviceTokenUnregisterView.as_view(), name='device-unregister'),
 ]

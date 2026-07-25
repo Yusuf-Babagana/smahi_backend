@@ -53,6 +53,28 @@ class Notification(models.Model):
         return f"{self.get_event_type_display()} -> {self.recipient.email}"
 
 
+class DeviceToken(models.Model):
+    """One Expo push token for one device. token is globally unique (not
+    per-user) — reinstalling the app or logging in as someone else on the
+    same device reassigns it via update_or_create rather than leaving
+    duplicate stale rows."""
+    PLATFORM_CHOICES = [('ios', 'iOS'), ('android', 'Android')]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='device_tokens'
+    )
+    token = models.CharField(max_length=200, unique=True)
+    platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.user.email} ({self.platform or 'unknown'})"
+
+
 class OTPCode(models.Model):
     PURPOSE_CHOICES = [
         ('email_verify', 'Email Verification'),

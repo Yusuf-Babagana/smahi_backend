@@ -44,8 +44,8 @@ def emit(event_type, recipient, title, body='', related_object=None):
         related_object_id=related_id,
     )
 
-    # --- push channel: stub until expo-notifications exists on the client ---
-    _send_push(recipient, title, body)
+    # --- push channel ---
+    _send_push(recipient, title, body, event_type, related_type, related_id)
 
     # --- email channel: stub, opt-in per event, reuses the existing Brevo integration ---
     if event_type in EMAIL_ENABLED_EVENTS:
@@ -57,10 +57,13 @@ def emit(event_type, recipient, title, body='', related_object=None):
     return notification
 
 
-def _send_push(recipient, title, body):
-    """No-op until push notifications are built. Logs only, so this
-    function's call site above never has to change when it becomes real."""
-    logger.debug('push (not yet implemented): %s -> %s: %s', recipient.email, title, body)
+def _send_push(recipient, title, body, event_type, related_type, related_id):
+    from .push import send_push_to_user
+    send_push_to_user(recipient, title, body, data={
+        'event_type': event_type,
+        'related_object_type': related_type,
+        'related_object_id': related_id,
+    })
 
 
 def _track_analytics(event_type, recipient):

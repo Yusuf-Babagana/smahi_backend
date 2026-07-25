@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import OTPCode, Notification
+from .models import OTPCode, Notification, DeviceToken
 
 
 @admin.register(Notification)
@@ -32,3 +32,16 @@ class OTPCodeAdmin(admin.ModelAdmin):
         'user', 'email', 'purpose', 'code_hash',
         'attempts', 'is_used', 'expires_at', 'created_at'
     ]
+
+
+@admin.register(DeviceToken)
+class DeviceTokenAdmin(admin.ModelAdmin):
+    """System-managed (register/unregister endpoints) — no manual add, but
+    delete stays available for support to force-clear a broken token."""
+    list_display = ['user', 'platform', 'created_at', 'updated_at']
+    list_filter = ['platform', 'created_at']
+    search_fields = ['user__email', 'token']
+    readonly_fields = ['user', 'token', 'platform', 'created_at', 'updated_at']
+
+    def has_add_permission(self, request):
+        return False
