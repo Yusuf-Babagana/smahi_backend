@@ -27,13 +27,13 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, F, Count, Sum
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment, DisputeReport
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
     ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
-    ReviewSerializer, PublicReviewSerializer
+    ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer
 )
 from notifications.events import emit
 from .services import approve_artisan_verification
@@ -565,6 +565,34 @@ class ReviewViewSet(viewsets.ModelViewSet):
             body=f'{booking.client.first_name} left you a {review.rating}-star review.',
             related_object=review,
         )
+
+
+class DisputeReportViewSet(viewsets.ModelViewSet):
+    """Report a problem — minimal by design (see DisputeReport's
+    docstring). Create + read only; resolution lives in Django Admin."""
+    serializer_class = DisputeReportSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        return DisputeReport.objects.filter(reporter=self.request.user).select_related('booking')
+
+    def get_throttles(self):
+        # Only the write path is throttled — checking your own past
+        # reports shouldn't count against the same limit as filing new
+        # ones. Rate: settings.py REST_FRAMEWORK.DEFAULT_THROTTLE_RATES['dispute'].
+        if self.action == 'create':
+            self.throttle_scope = 'dispute'
+            return [ScopedRateThrottle()]
+        return []
+
+    def perform_create(self, serializer):
+        booking = serializer.validated_data.get('booking')
+        if booking and self.request.user not in (booking.client, booking.artisan):
+            raise drf_serializers.ValidationError(
+                {'booking': "You can only report a problem on your own booking."}
+            )
+        serializer.save(reporter=self.request.user)
 
 
 import json

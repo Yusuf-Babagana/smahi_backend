@@ -123,9 +123,11 @@ REST_FRAMEWORK = {
         'anon': '100/hour',
         'user': '1000/hour',
         # Scoped throttles applied explicitly via throttle_scope on
-        # sensitive/costly views (login, AI chat/transcribe).
+        # sensitive/costly views (login, AI chat/transcribe, filing a
+        # dispute report).
         'login': '10/min',
         'ai': '20/hour',
+        'dispute': '10/hour',
     },
 }
 

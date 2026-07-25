@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, DisputeReport
 from accounts.serializers import UserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
@@ -325,3 +325,15 @@ class PublicReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Review
         fields = ['id', 'rating', 'comment', 'client_first_name', 'created_at']
+
+
+class DisputeReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DisputeReport
+        fields = [
+            'id', 'booking', 'category', 'description',
+            'status', 'resolution_notes', 'created_at', 'updated_at',
+        ]
+        # reporter comes from request.user in the view, never client input.
+        # status/resolution_notes only ever change via Django Admin.
+        read_only_fields = ['status', 'resolution_notes']

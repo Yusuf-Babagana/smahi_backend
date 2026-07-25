@@ -1,6 +1,11 @@
 from django.contrib import admin
 from django.shortcuts import redirect
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment, PlatformSettings
+from django.utils import timezone
+from .models import (
+    Category, ArtisanProfile, VerificationRequest, Booking, Review,
+    RegistrationPayment, PlatformSettings, DisputeReport,
+)
+from notifications.events import emit
 
 
 @admin.register(PlatformSettings)
@@ -142,3 +147,64 @@ class RegistrationPaymentAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description='Account activated')
     def fee_paid(self, obj):
         return obj.user.registration_fee_paid
+
+
+@admin.register(DisputeReport)
+class DisputeReportAdmin(admin.ModelAdmin):
+    list_display = ['id', 'reporter', 'category', 'status', 'booking', 'created_at']
+    list_filter = ['status', 'category', 'created_at']
+    search_fields = ['reporter__email', 'reporter__first_name', 'reporter__last_name', 'description']
+    readonly_fields = ['reporter', 'booking', 'category', 'description', 'resolved_by', 'resolved_at', 'created_at', 'updated_at']
+    actions = ['mark_investigating', 'mark_resolved', 'mark_dismissed']
+    date_hierarchy = 'created_at'
+
+    @staticmethod
+    def _notify_if_closed(dispute, new_status):
+        if new_status in ('resolved', 'dismissed'):
+            emit(
+                'dispute_resolved',
+                recipient=dispute.reporter,
+                title='Your report has been reviewed',
+                body=dispute.resolution_notes or f'Your dispute report has been marked as {new_status}.',
+                related_object=dispute,
+            )
+
+    def save_model(self, request, obj, form, change):
+        # Covers editing a single dispute's status directly in the change
+        # form, not just the bulk actions below — both paths must stamp
+        # resolved_by/resolved_at and notify consistently.
+        status_changed = change and 'status' in form.changed_data
+        super().save_model(request, obj, form, change)
+        if status_changed and obj.status in ('resolved', 'dismissed'):
+            update_fields = []
+            if not obj.resolved_by:
+                obj.resolved_by = request.user
+                update_fields.append('resolved_by')
+            if not obj.resolved_at:
+                obj.resolved_at = timezone.now()
+                update_fields.append('resolved_at')
+            if update_fields:
+                obj.save(update_fields=update_fields)
+            self._notify_if_closed(obj, obj.status)
+
+    def _bulk_transition(self, request, queryset, new_status):
+        for dispute in queryset:
+            dispute.status = new_status
+            if new_status in ('resolved', 'dismissed'):
+                dispute.resolved_by = request.user
+                dispute.resolved_at = timezone.now()
+            dispute.save()
+            self._notify_if_closed(dispute, new_status)
+        self.message_user(request, f'{queryset.count()} dispute(s) marked {new_status}.')
+
+    @admin.action(description='Mark as investigating')
+    def mark_investigating(self, request, queryset):
+        self._bulk_transition(request, queryset, 'investigating')
+
+    @admin.action(description='Mark as resolved')
+    def mark_resolved(self, request, queryset):
+        self._bulk_transition(request, queryset, 'resolved')
+
+    @admin.action(description='Dismiss')
+    def mark_dismissed(self, request, queryset):
+        self._bulk_transition(request, queryset, 'dismissed')

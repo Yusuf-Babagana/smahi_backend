@@ -8,6 +8,7 @@ urlpatterns = [
     path('api/auth/', include('accounts.urls')),
     path('api/locations/', include('locations.urls')),
     path('api/', include('core.urls')),
+    path('api/v1/', include('core.urls_v1')),
     path('api/chat/', include('chat.urls')),
 ]
 

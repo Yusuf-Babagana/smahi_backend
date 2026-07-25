@@ -204,6 +204,55 @@ class Review(models.Model):
         artisan_profile.update_rating()
 
 
+class DisputeReport(models.Model):
+    """A client or artisan reporting a problem. Deliberately minimal —
+    this is a real complaint channel, not a full ticketing system (the
+    earlier Tickets feature had no backend at all and was hidden this
+    session). Resolution happens exclusively in Django Admin; the API
+    only supports creating and reading your own reports."""
+
+    CATEGORY_CHOICES = [
+        ('payment', 'Payment Issue'),
+        ('quality', 'Quality Issue'),
+        ('no_show', 'No Show'),
+        ('harassment', 'Harassment'),
+        ('other', 'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('investigating', 'Investigating'),
+        ('resolved', 'Resolved'),
+        ('dismissed', 'Dismissed'),
+    ]
+
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='disputes_filed')
+    # Nullable: not every complaint is tied to a specific booking.
+    booking = models.ForeignKey(
+        Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name='disputes'
+    )
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    # max_length on TextField isn't DB-enforced, but DRF's ModelSerializer
+    # picks it up as a real input-length validator — cheap spam/abuse guard.
+    description = models.TextField(max_length=2000)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    resolution_notes = models.TextField(blank=True)
+    resolved_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='disputes_resolved'
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['status'])]
+
+    def __str__(self):
+        return f"Dispute #{self.id} - {self.reporter.email} ({self.status})"
+
+
 class PlatformSettings(models.Model):
     """Singleton row of business rules that must be changeable without a
     deploy. Always read via PlatformSettings.current() — never query this
