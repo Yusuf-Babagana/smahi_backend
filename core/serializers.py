@@ -250,6 +250,21 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'location': "An address is required."}
             )
+
+        # Double-booking guard: the mobile app offers a fixed set of time
+        # slots, so an exact scheduled_date match for the same artisan
+        # means two clients are trying to claim the identical slot.
+        # Cancelled bookings don't block a new request at that time.
+        artisan = attrs.get('artisan')
+        if artisan and Booking.objects.filter(
+            artisan=artisan,
+            scheduled_date=attrs['scheduled_date'],
+            status__in=['pending', 'confirmed', 'in_progress'],
+        ).exists():
+            raise serializers.ValidationError(
+                {'scheduled_date': "This artisan already has a booking at that time. Please choose a different slot."}
+            )
+
         return attrs
 
 
