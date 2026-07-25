@@ -45,6 +45,27 @@ class ArtisanProfileAdmin(admin.ModelAdmin):
     search_fields = ['user__email', 'user__first_name', 'user__last_name', 'bio']
     filter_horizontal = ['service_countries', 'service_states', 'service_lgas']
     readonly_fields = ['rating', 'total_reviews', 'total_bookings']
+    actions = ['approve_verification', 'reject_verification']
+
+    @admin.action(description='Approve verification (also sets is_verified on the user)')
+    def approve_verification(self, request, queryset):
+        from .services import approve_artisan_verification
+        for profile in queryset:
+            approve_artisan_verification(profile.user, reviewed_by=request.user)
+        self.message_user(request, f'{queryset.count()} artisan(s) verified.')
+
+    @admin.action(description='Reject verification')
+    def reject_verification(self, request, queryset):
+        # Bulk action, so this uses a generic reason. For a specific,
+        # per-artisan reason, edit the matching VerificationRequest's
+        # rejection_reason field directly instead.
+        from .services import reject_artisan_verification
+        for profile in queryset:
+            reject_artisan_verification(
+                profile.user, reviewed_by=request.user,
+                reason='Your verification documents did not meet our requirements. Please contact support.'
+            )
+        self.message_user(request, f'{queryset.count()} artisan(s) rejected.')
 
 
 @admin.register(VerificationRequest)

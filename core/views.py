@@ -26,8 +26,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q, F
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review
+from django.db.models import Q, F, Count, Sum
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
     ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
@@ -36,6 +36,7 @@ from .serializers import (
     ReviewSerializer, PublicReviewSerializer
 )
 from notifications.events import emit
+from .services import approve_artisan_verification
 from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin
 from accounts.serializers import UserSerializer
 
@@ -325,18 +326,7 @@ class AgentVerifyArtisanView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'Artisan not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
 
-        artisan_profile, _ = ArtisanProfile.objects.get_or_create(user=artisan_user)
-        artisan_profile.verification_status = 'approved'
-        artisan_profile.save(update_fields=['verification_status'])
-
-        artisan_user.is_verified = True
-        artisan_user.save(update_fields=['is_verified'])
-
-        # Resolve any matching pending VerificationRequest too, so it
-        # doesn't linger in the separate verification queue.
-        VerificationRequest.objects.filter(artisan=artisan_user, status='pending').update(
-            status='approved', reviewed_by=request.user, reviewed_at=timezone.now()
-        )
+        artisan_profile = approve_artisan_verification(artisan_user, reviewed_by=request.user)
 
         return Response({
             'message': 'Artisan verified successfully.',
@@ -345,11 +335,46 @@ class AgentVerifyArtisanView(APIView):
 
 
 class AdminStatsView(APIView):
-    """Global summary counts for the admin dashboard — unscoped by state."""
+    """Global summary counts for the mobile admin dashboard — read-only
+    monitoring only (see IsAdmin). Every privileged write stays in Django
+    Admin. Additive-only across phases: existing keys never change shape,
+    new phases (Wallet, Service Fee, Disputes) just add new keys here
+    without breaking whatever version of the app is already installed."""
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
         artisans = ArtisanProfile.objects.all()
+        bookings = Booking.objects.all()
+        booking_total = bookings.count()
+
+        booking_counts = {
+            row['status']: row['n']
+            for row in bookings.values('status').annotate(n=Count('id'))
+        }
+        completed = booking_counts.get('completed', 0)
+        cancelled = booking_counts.get('cancelled', 0)
+
+        successful_payments = RegistrationPayment.objects.filter(status='success')
+        # amount is stored in kobo
+        revenue_kobo = successful_payments.aggregate(total=Sum('amount'))['total'] or 0
+
+        recent_users = User.objects.order_by('-created_at')[:10]
+
+        verification_rate = (
+            artisans.filter(verification_status='approved').count() / artisans.count() * 100
+            if artisans.count() else 0
+        )
+        completion_rate = (completed / booking_total * 100) if booking_total else 0
+        cancellation_rate = (cancelled / booking_total * 100) if booking_total else 0
+        # Simple, transparent composite — not a black box: rewards more
+        # verified artisans and more completed (vs. cancelled) bookings.
+        # Recalculated fresh on every request from the same numbers above,
+        # nothing hidden in a stored field.
+        marketplace_health = round(
+            (verification_rate * 0.5) + (completion_rate * 0.5) - (cancellation_rate * 0.2), 1
+        )
+        marketplace_health = max(0, min(100, marketplace_health))
+
         return Response({
             'total_users': User.objects.count(),
             'total_artisans': artisans.count(),
@@ -357,7 +382,31 @@ class AdminStatsView(APIView):
             'pending_verification': artisans.filter(verification_status='pending').count(),
             'total_clients': User.objects.filter(role='client').count(),
             'total_agents': User.objects.filter(role='agent').count(),
-            'total_bookings': Booking.objects.count(),
+            'total_bookings': booking_total,
+
+            'booking_analytics': {
+                'pending': booking_counts.get('pending', 0),
+                'confirmed': booking_counts.get('confirmed', 0),
+                'in_progress': booking_counts.get('in_progress', 0),
+                'completed': completed,
+                'cancelled': cancelled,
+                'completion_rate': round(completion_rate, 1),
+                'cancellation_rate': round(cancellation_rate, 1),
+            },
+            'revenue': {
+                # Service-fee revenue joins this once that phase ships —
+                # additive, not a breaking shape change.
+                'registration_fees_naira': revenue_kobo / 100,
+                'registration_fees_count': successful_payments.count(),
+            },
+            'recent_registrations': [
+                {
+                    'id': u.id, 'email': u.email, 'first_name': u.first_name,
+                    'last_name': u.last_name, 'role': u.role, 'created_at': u.created_at,
+                }
+                for u in recent_users
+            ],
+            'marketplace_health': marketplace_health,
         })
 
 
