@@ -3,7 +3,7 @@ from django.shortcuts import redirect
 from django.utils import timezone
 from .models import (
     Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review,
-    RegistrationPayment, PlatformSettings, DisputeReport,
+    RegistrationPayment, PlatformSettings, DisputeReport, Favorite,
 )
 from notifications.events import emit
 
@@ -216,3 +216,11 @@ class DisputeReportAdmin(admin.ModelAdmin):
     @admin.action(description='Dismiss')
     def mark_dismissed(self, request, queryset):
         self._bulk_transition(request, queryset, 'dismissed')
+
+
+@admin.register(Favorite)
+class FavoriteAdmin(admin.ModelAdmin):
+    list_display = ['client', 'artisan', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['client__email', 'artisan__user__email']
+    readonly_fields = ['created_at']

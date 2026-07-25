@@ -28,7 +28,7 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, F, Count, Sum
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
     ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
@@ -1135,3 +1135,41 @@ class TranscribeView(APIView):
                 {"error": "Transcription failed. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class FavoriteListView(generics.ListAPIView):
+    """Artisans the requesting client has saved, most recently favorited
+    first. Reuses ArtisanProfileSerializer — same shape as search results,
+    so the frontend can render this list with the existing ArtisanCard."""
+    serializer_class = ArtisanProfileSerializer
+    permission_classes = [IsAuthenticated, IsClient]
+
+    def get_queryset(self):
+        return ArtisanProfile.objects.filter(
+            favorited_by__client=self.request.user
+        ).select_related('user', 'category').order_by('-favorited_by__created_at')
+
+
+class FavoriteToggleView(APIView):
+    """Add/remove one artisan from the requesting client's favorites in a
+    single call — the frontend just needs the artisan id, never a
+    separate favorite-object id to delete."""
+    permission_classes = [IsAuthenticated, IsClient]
+
+    def post(self, request):
+        artisan_id = request.data.get('artisan')
+        if not artisan_id:
+            return Response({'error': 'artisan is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            artisan = ArtisanProfile.objects.get(id=artisan_id)
+        except ArtisanProfile.DoesNotExist:
+            return Response({'error': 'Artisan not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        favorite = Favorite.objects.filter(client=request.user, artisan=artisan).first()
+        if favorite:
+            favorite.delete()
+            return Response({'favorited': False})
+
+        Favorite.objects.create(client=request.user, artisan=artisan)
+        return Response({'favorited': True})

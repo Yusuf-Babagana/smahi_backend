@@ -93,6 +93,24 @@ class ArtisanProfile(models.Model):
         self.save(update_fields=['rating', 'total_reviews'])
 
 
+class Favorite(models.Model):
+    """A client's saved artisan. Purely a client-side bookmark — no effect
+    on search ranking, notifications, or anything artisan-facing."""
+    client = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='favorites',
+        limit_choices_to={'role': 'client'}
+    )
+    artisan = models.ForeignKey(ArtisanProfile, on_delete=models.CASCADE, related_name='favorited_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('client', 'artisan')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.client.email} → {self.artisan}"
+
+
 class VerificationRequest(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),

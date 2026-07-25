@@ -60,6 +60,8 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     # 🔥 1. Add this new custom field
     profession_name = serializers.SerializerMethodField()
 
+    is_favorited = serializers.SerializerMethodField()
+
     class Meta:
         model = ArtisanProfile
         fields = [
@@ -68,9 +70,15 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
             'service_countries', 'service_states', 'service_lgas',
             'service_countries_details', 'service_states_details', 'service_lgas_details',
             'verification_status', 'is_available', 'rating', 'total_reviews', 'total_bookings',
-            'created_at', 'updated_at', 'distance'
+            'created_at', 'updated_at', 'distance', 'is_favorited'
         ]
         read_only_fields = ['user', 'verification_status', 'rating', 'total_reviews', 'total_bookings']
+
+    def get_is_favorited(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated or request.user.role != 'client':
+            return False
+        return obj.favorited_by.filter(client=request.user).exists()
 
     # 👇 3. Create the method to extract the calculated distance
     def get_distance(self, obj):
