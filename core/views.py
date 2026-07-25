@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status, generics, mixins, serializers as drf_serializers
 import logging
 import math
+from decimal import Decimal, InvalidOperation
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +28,17 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, F, Count, Sum
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment, DisputeReport
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment, DisputeReport, Wallet
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
     ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
-    ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer
+    ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
+    WalletSerializer, WalletTransactionSerializer,
 )
 from notifications.events import emit
-from .services import approve_artisan_verification
+from .services import approve_artisan_verification, request_withdrawal
 from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin
 from accounts.serializers import UserSerializer
 
@@ -593,6 +595,47 @@ class DisputeReportViewSet(viewsets.ModelViewSet):
                 {'booking': "You can only report a problem on your own booking."}
             )
         serializer.save(reporter=self.request.user)
+
+
+class WalletView(APIView):
+    """Own wallet balance + summary. Nothing here is writable — balance
+    only ever changes through core.services functions."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        wallet = Wallet.for_user(request.user)
+        return Response(WalletSerializer(wallet).data)
+
+
+class WalletTransactionListView(generics.ListAPIView):
+    """Own transaction history, paginated with the project's default
+    PageNumberPagination — same pattern as every other list endpoint."""
+    serializer_class = WalletTransactionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        wallet = Wallet.for_user(self.request.user)
+        return wallet.transactions.all()
+
+
+class WithdrawalRequestView(APIView):
+    """Request a payout. Reserves against available balance immediately
+    (see core.services.request_withdrawal) but stays 'pending' until an
+    admin approves or rejects it in Django Admin."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            amount = Decimal(str(request.data.get('amount', '')))
+        except (InvalidOperation, TypeError):
+            return Response({'error': 'A valid amount is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            tx = request_withdrawal(request.user, amount)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(WalletTransactionSerializer(tx).data, status=status.HTTP_201_CREATED)
 
 
 import json

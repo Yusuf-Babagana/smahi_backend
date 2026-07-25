@@ -315,6 +315,77 @@ class PlatformSettings(models.Model):
         return obj
 
 
+class Wallet(models.Model):
+    """One per user who can earn on the platform (artisans, agents,
+    coordinators). balance is a cache, not the source of truth —
+    WalletTransaction is. Never edit balance directly; always go through
+    core.services.create_wallet_transaction()/request_withdrawal(), which
+    update it atomically alongside the transaction that justifies the
+    change. A nightly reconciliation job (management command) independently
+    recomputes balance from the transaction log and flags any drift."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet')
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=3, default='NGN')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Wallet({self.user.email}) = {self.currency} {self.balance}"
+
+    @classmethod
+    def for_user(cls, user):
+        wallet, _ = cls.objects.get_or_create(user=user)
+        return wallet
+
+
+class WalletTransaction(models.Model):
+    TYPE_CHOICES = [
+        ('agent_commission', 'Agent Commission'),
+        ('booking_earning', 'Booking Earning'),
+        ('payout', 'Payout'),
+        ('refund', 'Refund'),
+        ('reversal', 'Reversal'),
+        ('manual_adjustment', 'Manual Adjustment'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('reversed', 'Reversed'),
+    ]
+
+    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='transactions')
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    # Signed: positive = credit, negative = debit. One column, not a
+    # separate credit/debit pair -- balance is just the running sum of
+    # completed transactions' amounts.
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='completed')
+    description = models.CharField(max_length=255, blank=True)
+
+    # Lightweight (type, id) pointer, same pattern as Notification.related_object
+    # -- points back at whatever justified this transaction (a booking, a
+    # RegistrationPayment, ...) without a new FK per transaction type.
+    reference_type = models.CharField(max_length=50, blank=True)
+    reference_id = models.PositiveIntegerField(null=True, blank=True)
+
+    # Set only for manual_adjustment -- which admin made it. Django's own
+    # LogEntry also records this, but keeping it on the row itself makes
+    # it visible directly in the wallet's own transaction list.
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='wallet_transactions_created'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['wallet', 'status'])]
+
+    def __str__(self):
+        return f"{self.get_type_display()} {self.amount} -> {self.wallet.user.email} ({self.status})"
+
+
 class RegistrationPayment(models.Model):
     """Tracks Paystack registration fee payments for artisans."""
     STATUS_CHOICES = [

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, DisputeReport
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, DisputeReport, Wallet, WalletTransaction
 from accounts.serializers import UserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
@@ -337,3 +337,18 @@ class DisputeReportSerializer(serializers.ModelSerializer):
         # reporter comes from request.user in the view, never client input.
         # status/resolution_notes only ever change via Django Admin.
         read_only_fields = ['status', 'resolution_notes']
+
+
+class WalletTransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WalletTransaction
+        fields = [
+            'id', 'type', 'amount', 'status', 'description',
+            'reference_type', 'reference_id', 'created_at',
+        ]
+
+
+class WalletSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Wallet
+        fields = ['balance', 'currency', 'updated_at']

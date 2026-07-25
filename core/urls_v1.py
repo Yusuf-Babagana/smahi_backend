@@ -6,11 +6,14 @@
 # here too, not in the legacy unversioned router.
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DisputeReportViewSet
+from .views import DisputeReportViewSet, WalletView, WalletTransactionListView, WithdrawalRequestView
 
 router = DefaultRouter()
 router.register(r'disputes', DisputeReportViewSet, basename='dispute')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('wallet/', WalletView.as_view(), name='wallet'),
+    path('wallet/transactions/', WalletTransactionListView.as_view(), name='wallet-transactions'),
+    path('wallet/withdraw/', WithdrawalRequestView.as_view(), name='wallet-withdraw'),
 ]
