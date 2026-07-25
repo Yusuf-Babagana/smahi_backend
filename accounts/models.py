@@ -61,6 +61,10 @@ class User(AbstractUser):
     is_verified = models.BooleanField(default=False)
     # Email ownership confirmed via OTP — independent of the artisan verification badge above
     email_verified = models.BooleanField(default=False)
+    # Updated by PresenceHeartbeatView, pinged periodically by the frontend
+    # while the app is foregrounded — not by Django middleware, since DRF's
+    # JWT auth resolves request.user inside the view, after middleware runs.
+    last_seen_at = models.DateTimeField(null=True, blank=True)
     # Artisans must pay a registration fee before their account is activated
     registration_fee_paid = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

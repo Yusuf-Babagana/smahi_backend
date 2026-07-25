@@ -580,12 +580,17 @@ class BookingViewSet(viewsets.ModelViewSet):
         # increments on the transition to 'completed' — atomically, to avoid
         # the lost-update race with update_rating()'s full-row save.
         old_status = serializer.instance.status
+        had_responded_at = serializer.instance.responded_at is not None
         with transaction.atomic():
             booking = serializer.save()
             if booking.status == 'completed' and old_status != 'completed':
                 ArtisanProfile.objects.filter(user=booking.artisan).update(
                     total_bookings=F('total_bookings') + 1
                 )
+            if booking.responded_at is not None and not had_responded_at:
+                artisan_profile = ArtisanProfile.objects.filter(user=booking.artisan).first()
+                if artisan_profile:
+                    artisan_profile.update_response_time()
 
     @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def add_photo(self, request, pk=None):
@@ -1173,3 +1178,15 @@ class FavoriteToggleView(APIView):
 
         Favorite.objects.create(client=request.user, artisan=artisan)
         return Response({'favorited': True})
+
+
+class PresenceHeartbeatView(APIView):
+    """Pinged periodically by the frontend while the app is foregrounded —
+    updates User.last_seen_at, which ArtisanProfileSerializer.is_online
+    reads. Not done via middleware: DRF's JWT auth resolves request.user
+    inside the view, after Django's own middleware has already run."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        User.objects.filter(id=request.user.id).update(last_seen_at=timezone.now())
+        return Response({'ok': True})

@@ -8,7 +8,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     DisputeReportViewSet, CoordinatorAgentListView, CoordinatorAgentStatusView,
-    FavoriteListView, FavoriteToggleView,
+    FavoriteListView, FavoriteToggleView, PresenceHeartbeatView,
 )
 
 router = DefaultRouter()
@@ -20,4 +20,5 @@ urlpatterns = [
     path('coordinator/agents/<int:agent_id>/status/', CoordinatorAgentStatusView.as_view(), name='coordinator-agent-status'),
     path('favorites/', FavoriteListView.as_view(), name='favorites-list'),
     path('favorites/toggle/', FavoriteToggleView.as_view(), name='favorites-toggle'),
+    path('presence/heartbeat/', PresenceHeartbeatView.as_view(), name='presence-heartbeat'),
 ]

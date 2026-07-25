@@ -61,6 +61,7 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     profession_name = serializers.SerializerMethodField()
 
     is_favorited = serializers.SerializerMethodField()
+    is_online = serializers.SerializerMethodField()
 
     class Meta:
         model = ArtisanProfile
@@ -70,15 +71,27 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
             'service_countries', 'service_states', 'service_lgas',
             'service_countries_details', 'service_states_details', 'service_lgas_details',
             'verification_status', 'is_available', 'rating', 'total_reviews', 'total_bookings',
-            'created_at', 'updated_at', 'distance', 'is_favorited'
+            'created_at', 'updated_at', 'distance', 'is_favorited', 'is_online', 'avg_response_minutes'
         ]
-        read_only_fields = ['user', 'verification_status', 'rating', 'total_reviews', 'total_bookings']
+        read_only_fields = [
+            'user', 'verification_status', 'rating', 'total_reviews', 'total_bookings', 'avg_response_minutes'
+        ]
 
     def get_is_favorited(self, obj):
         request = self.context.get('request')
         if not request or not request.user.is_authenticated or request.user.role != 'client':
             return False
         return obj.favorited_by.filter(client=request.user).exists()
+
+    ONLINE_THRESHOLD_MINUTES = 5
+
+    def get_is_online(self, obj):
+        from django.utils import timezone
+        from datetime import timedelta
+        last_seen = obj.user.last_seen_at
+        if not last_seen:
+            return False
+        return timezone.now() - last_seen < timedelta(minutes=self.ONLINE_THRESHOLD_MINUTES)
 
     # 👇 3. Create the method to extract the calculated distance
     def get_distance(self, obj):
@@ -322,6 +335,10 @@ class BookingUpdateSerializer(serializers.ModelSerializer):
                     {'status': f"A {party} cannot change this booking from "
                                f"'{booking.status}' to '{new_status}'."}
                 )
+
+            if party == 'artisan' and booking.status == 'pending' and booking.responded_at is None:
+                from django.utils import timezone
+                attrs['responded_at'] = timezone.now()
 
             if new_status == 'cancelled':
                 from django.utils import timezone

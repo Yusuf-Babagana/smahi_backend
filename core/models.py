@@ -66,6 +66,10 @@ class ArtisanProfile(models.Model):
     )
     total_reviews = models.PositiveIntegerField(default=0)
     total_bookings = models.PositiveIntegerField(default=0)
+    # Average minutes between a booking request and this artisan's first
+    # response (accept or decline) — see Booking.responded_at and
+    # update_response_time() below. Null until they've responded to one.
+    avg_response_minutes = models.PositiveIntegerField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -91,6 +95,17 @@ class ArtisanProfile(models.Model):
         self.rating = agg['avg'] or 0
         self.total_reviews = agg['count']
         self.save(update_fields=['rating', 'total_reviews'])
+
+    def update_response_time(self):
+        from django.db.models import Avg, F, DurationField, ExpressionWrapper
+        agg = Booking.objects.filter(
+            artisan=self.user, responded_at__isnull=False
+        ).annotate(
+            response_time=ExpressionWrapper(F('responded_at') - F('created_at'), output_field=DurationField())
+        ).aggregate(avg=Avg('response_time'))
+        avg_delta = agg['avg']
+        self.avg_response_minutes = int(avg_delta.total_seconds() // 60) if avg_delta else None
+        self.save(update_fields=['avg_response_minutes'])
 
 
 class Favorite(models.Model):
@@ -198,6 +213,10 @@ class Booking(models.Model):
     # of scheduled_date — see BookingUpdateSerializer.validate(). Purely informational:
     # there is no in-app job payment to charge a fee against.
     is_late_cancellation = models.BooleanField(default=False)
+    # First time the artisan moved this booking away from 'pending' (accept
+    # or decline) — feeds ArtisanProfile.avg_response_minutes. Never reset
+    # once set, even if the booking is later cancelled.
+    responded_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
