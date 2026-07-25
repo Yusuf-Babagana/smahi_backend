@@ -78,6 +78,12 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_favorited(self, obj):
+        # ArtisanViewSet.get_queryset() annotates this for client requests to
+        # avoid one query per artisan on every search page. Other callers
+        # (e.g. FavoriteListView) fall back to the per-object query below.
+        annotated = getattr(obj, 'is_favorited_annotated', None)
+        if annotated is not None:
+            return annotated
         request = self.context.get('request')
         if not request or not request.user.is_authenticated or request.user.role != 'client':
             return False

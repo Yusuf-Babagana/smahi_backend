@@ -26,8 +26,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from django.db import transaction
-from django.db.models import Q, F, Count, Sum
+from django.db import transaction, IntegrityError
+from django.db.models import Q, F, Count, Sum, Exists, OuterRef
 from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite
 from notifications.models import DeviceToken
 from .serializers import (
@@ -135,6 +135,15 @@ class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(user__state__id=state_id)
         if lga_id:
             queryset = queryset.filter(user__lga__id=lga_id)
+
+        user = self.request.user
+        if user and user.is_authenticated and user.role == 'client':
+            # Avoids one is_favorited query per artisan on every search page —
+            # ArtisanProfileSerializer.get_is_favorited reads this annotation
+            # when present instead of hitting the DB per object.
+            queryset = queryset.annotate(
+                is_favorited_annotated=Exists(Favorite.objects.filter(client=user, artisan=OuterRef('pk')))
+            )
 
         return queryset.distinct()
 
@@ -363,12 +372,17 @@ class CoordinatorAgentStatusView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'Agent not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
 
+        # is_active is what login_view actually gates on (accounts/views.py) —
+        # account_status alone is display-only. Set both together, same as
+        # the equivalent Django Admin bulk actions (accounts/admin.py), or a
+        # "suspended" agent could still log in and keep working.
+        agent.is_active = (new_status == 'active')
         agent.account_status = new_status
-        agent.save(update_fields=['account_status'])
+        agent.save(update_fields=['is_active', 'account_status'])
 
         return Response({
             'message': f'Agent account set to {new_status}.',
-            'agent': {'id': agent.id, 'email': agent.email, 'account_status': agent.account_status},
+            'agent': {'id': agent.id, 'email': agent.email, 'account_status': agent.account_status, 'is_active': agent.is_active},
         })
 
 
@@ -573,8 +587,17 @@ class BookingViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
     def perform_create(self, serializer):
-        with transaction.atomic():
-            serializer.save(client=self.request.user)
+        try:
+            with transaction.atomic():
+                serializer.save(client=self.request.user)
+        except IntegrityError:
+            # The unique_active_booking_per_artisan_slot constraint caught a
+            # race that BookingCreateSerializer.validate()'s pre-transaction
+            # check couldn't — same message either way, from the user's
+            # perspective this is just a slower version of that check.
+            raise drf_serializers.ValidationError(
+                {'scheduled_date': "This artisan already has a booking at that time. Please choose a different slot."}
+            )
 
     def perform_update(self, serializer):
         # total_bookings counts finished jobs ("Jobs done" in the app), so it

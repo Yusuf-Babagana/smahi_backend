@@ -223,6 +223,20 @@ class Booking(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            # DB-level backstop for BookingCreateSerializer.validate()'s
+            # same check: that check runs before the transaction commits, so
+            # two concurrent requests for the same artisan/slot can both pass
+            # it and both insert. This constraint is what actually prevents
+            # that — the second insert fails with IntegrityError, which
+            # BookingViewSet.perform_create translates into the same clean
+            # validation message.
+            models.UniqueConstraint(
+                fields=['artisan', 'scheduled_date'],
+                condition=models.Q(status__in=['pending', 'confirmed', 'in_progress']),
+                name='unique_active_booking_per_artisan_slot',
+            ),
+        ]
 
     def __str__(self):
         return f"Booking #{self.id} - {self.client.get_full_name()} -> {self.artisan.get_full_name()}"
