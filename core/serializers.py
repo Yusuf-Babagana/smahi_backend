@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, DisputeReport
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport
 from accounts.serializers import UserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
@@ -127,6 +127,12 @@ class VerificationProcessSerializer(serializers.Serializer):
     rejection_reason = serializers.CharField(required=False, allow_blank=True)
 
 
+class BookingPhotoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BookingPhoto
+        fields = ['id', 'image', 'created_at']
+
+
 class BookingSerializer(serializers.ModelSerializer):
     client_details = UserSerializer(source='client', read_only=True)
     artisan_details = UserSerializer(source='artisan', read_only=True)
@@ -143,6 +149,7 @@ class BookingSerializer(serializers.ModelSerializer):
     # ArtisanProfile id, which is a different number.
     artisan_profile_id = serializers.SerializerMethodField()
     has_review = serializers.SerializerMethodField()
+    photos = BookingPhotoSerializer(many=True, read_only=True)
 
     class Meta:
         model = Booking
@@ -153,7 +160,7 @@ class BookingSerializer(serializers.ModelSerializer):
             'country', 'state', 'lga',
             'country_details', 'state_details', 'lga_details',
             'scheduled_date', 'date', 'time', 'duration_hours', 'total_cost',
-            'status', 'cancellation_reason', 'has_review',
+            'status', 'cancellation_reason', 'has_review', 'photos',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['client', 'status']

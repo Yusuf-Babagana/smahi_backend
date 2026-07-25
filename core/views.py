@@ -22,18 +22,20 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.parsers import MultiPartParser, FormParser
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, F, Count, Sum
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, Review, RegistrationPayment, DisputeReport
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
     ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
-    ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer
+    ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
+    BookingPhotoSerializer,
 )
 from notifications.events import emit
 from .services import approve_artisan_verification
@@ -525,6 +527,25 @@ class BookingViewSet(viewsets.ModelViewSet):
                 ArtisanProfile.objects.filter(user=booking.artisan).update(
                     total_bookings=F('total_bookings') + 1
                 )
+
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def add_photo(self, request, pk=None):
+        # get_object() already scopes to bookings the caller is a party to
+        # (via get_queryset() above) — same as every other action here.
+        booking = self.get_object()
+
+        if booking.photos.count() >= 4:
+            return Response({'error': "A booking can have at most 4 photos."}, status=status.HTTP_400_BAD_REQUEST)
+
+        image = request.FILES.get('image')
+        if not image:
+            return Response({'error': "No image file provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        photo = BookingPhoto.objects.create(booking=booking, image=image, uploaded_by=request.user)
+        return Response(
+            BookingPhotoSerializer(photo, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ReviewViewSet(viewsets.ModelViewSet):

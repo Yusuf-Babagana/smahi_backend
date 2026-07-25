@@ -181,6 +181,22 @@ class Booking(models.Model):
         return f"Booking #{self.id} - {self.client.get_full_name()} -> {self.artisan.get_full_name()}"
 
 
+class BookingPhoto(models.Model):
+    """A photo attached to a booking (e.g. a client showing the leaking
+    pipe). Client-side already limits this to 4 per booking; enforced
+    again server-side in the upload view, not just trusted from the app."""
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='photos')
+    image = models.ImageField(upload_to='booking_photos/')
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Photo for Booking #{self.booking_id}"
+
+
 class Review(models.Model):
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='review')
     rating = models.PositiveIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])

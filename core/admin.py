@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.utils import timezone
 from .models import (
-    Category, ArtisanProfile, VerificationRequest, Booking, Review,
+    Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review,
     RegistrationPayment, PlatformSettings, DisputeReport,
 )
 from notifications.events import emit
@@ -81,12 +81,20 @@ class VerificationRequestAdmin(admin.ModelAdmin):
     readonly_fields = ['created_at', 'updated_at']
 
 
+class BookingPhotoInline(admin.TabularInline):
+    model = BookingPhoto
+    extra = 0
+    readonly_fields = ['image', 'uploaded_by', 'created_at']
+    can_delete = False
+
+
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
     list_display = ['id', 'client', 'artisan', 'status', 'scheduled_date', 'total_cost', 'created_at']
     list_filter = ['status', 'created_at', 'scheduled_date']
     search_fields = ['client__email', 'artisan__email', 'service_description']
     readonly_fields = ['created_at', 'updated_at']
+    inlines = [BookingPhotoInline]
 
 
 @admin.register(Review)
