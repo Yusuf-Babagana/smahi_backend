@@ -71,12 +71,20 @@ class ArtisanProfile(models.Model):
         return f"{self.user.get_full_name()} - {self.category.name if self.category else 'No Category'}"
 
     def update_rating(self):
-        reviews = self.reviews.all()
-        if reviews.exists():
-            total = sum(review.rating for review in reviews)
-            self.rating = total / reviews.count()
-            self.total_reviews = reviews.count()
-            self.save()
+        # Review has no FK to ArtisanProfile — it relates to Booking, whose
+        # artisan is the User, not this profile. self.reviews never existed
+        # (this crashed with AttributeError on every review ever submitted,
+        # which is the actual reason reviews were unreachable — not just
+        # the missing frontend). Query through the real relationship, at
+        # the DB level (Avg/Count) rather than pulling every row into
+        # Python. Hidden (moderated) reviews don't count toward the rating.
+        from django.db.models import Avg, Count
+        agg = Review.objects.filter(
+            booking__artisan=self.user, is_hidden=False
+        ).aggregate(avg=Avg('rating'), count=Count('id'))
+        self.rating = agg['avg'] or 0
+        self.total_reviews = agg['count']
+        self.save(update_fields=['rating', 'total_reviews'])
 
 
 class VerificationRequest(models.Model):
@@ -177,6 +185,10 @@ class Review(models.Model):
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='review')
     rating = models.PositiveIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
     comment = models.TextField()
+    # Admin-only moderation flag — hidden reviews stay in the DB (so
+    # ArtisanProfile.rating history is never silently rewritten) but are
+    # excluded from the public artisan-reviews endpoint.
+    is_hidden = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -142,6 +142,7 @@ class BookingSerializer(serializers.ModelSerializer):
     # 'artisan' is a User id; the app's artisan screens navigate by
     # ArtisanProfile id, which is a different number.
     artisan_profile_id = serializers.SerializerMethodField()
+    has_review = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -152,7 +153,7 @@ class BookingSerializer(serializers.ModelSerializer):
             'country', 'state', 'lga',
             'country_details', 'state_details', 'lga_details',
             'scheduled_date', 'date', 'time', 'duration_hours', 'total_cost',
-            'status', 'cancellation_reason',
+            'status', 'cancellation_reason', 'has_review',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['client', 'status']
@@ -160,6 +161,9 @@ class BookingSerializer(serializers.ModelSerializer):
     def get_artisan_profile_id(self, obj):
         profile = getattr(obj.artisan, 'artisan_profile', None)
         return profile.id if profile else None
+
+    def get_has_review(self, obj):
+        return hasattr(obj, 'review')
 
     def get_date(self, obj):
         from django.utils import timezone
@@ -303,9 +307,21 @@ class ReviewSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Rating must be between 1 and 5.")
         return value
 
-    def validate_booking(self, value):
-        if value.status != 'completed':
-            raise serializers.ValidationError("Can only review completed bookings.")
-        if hasattr(value, 'review'):
-            raise serializers.ValidationError("This booking has already been reviewed.")
-        return value
+    # No validate_booking here: 'booking' is read_only above, and DRF never
+    # calls validate_<field> for read-only fields. The real "completed" and
+    # "not already reviewed" checks live in ReviewViewSet.perform_create,
+    # where 'booking' is actually resolved from the request.
+
+
+class PublicReviewSerializer(serializers.ModelSerializer):
+    """For the public artisan-reviews endpoint. Deliberately NOT ReviewSerializer:
+    that one nests booking_details -> client_details -> full UserSerializer,
+    which includes the reviewing client's phone number, email, and address —
+    fine for the client/artisan viewing their own review, a real PII leak if
+    shown to any stranger browsing an artisan's profile. This serializer
+    exposes only a first name, nothing else about the reviewer."""
+    client_first_name = serializers.CharField(source='booking.client.first_name', read_only=True)
+
+    class Meta:
+        model = Review
+        fields = ['id', 'rating', 'comment', 'client_first_name', 'created_at']

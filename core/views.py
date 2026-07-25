@@ -33,8 +33,9 @@ from .serializers import (
     ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
-    ReviewSerializer
+    ReviewSerializer, PublicReviewSerializer
 )
+from notifications.events import emit
 from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin
 from accounts.serializers import UserSerializer
 
@@ -187,6 +188,23 @@ class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
             return self.get_paginated_response(serializer.data)
 
         serializer = self.get_serializer(artisans, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], permission_classes=[AllowAny])
+    def reviews(self, request, pk=None):
+        """Public reviews for this artisan — PublicReviewSerializer only,
+        never ReviewSerializer (see its docstring for why: PII leakage)."""
+        artisan_profile = self.get_object()
+        queryset = Review.objects.filter(
+            booking__artisan=artisan_profile.user, is_hidden=False
+        ).select_related('booking__client').order_by('-created_at')
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = PublicReviewSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = PublicReviewSerializer(queryset, many=True)
         return Response(serializer.data)
 
 
@@ -477,11 +495,27 @@ class ReviewViewSet(viewsets.ModelViewSet):
         booking_id = self.request.data.get('booking')
         try:
             booking = Booking.objects.get(id=booking_id, client=self.request.user)
-            if booking.status != 'completed':
-                raise drf_serializers.ValidationError("Can only review completed bookings.")
-            serializer.save(booking=booking)
         except Booking.DoesNotExist:
             raise drf_serializers.ValidationError("Booking not found or you don't have permission to review it.")
+
+        if booking.status != 'completed':
+            raise drf_serializers.ValidationError("Can only review completed bookings.")
+        # 'booking' is read_only on ReviewSerializer, so its validate_booking
+        # duplicate-check never actually runs (DRF skips validate_<field> for
+        # read-only fields) — this was the real, only guard, just missing.
+        # Without it, a second submission hit the DB's UNIQUE constraint
+        # directly and 500'd instead of returning a clean error.
+        if hasattr(booking, 'review'):
+            raise drf_serializers.ValidationError("This booking has already been reviewed.")
+
+        review = serializer.save(booking=booking)
+        emit(
+            'review_submitted',
+            recipient=booking.artisan,
+            title='New review received',
+            body=f'{booking.client.first_name} left you a {review.rating}-star review.',
+            related_object=review,
+        )
 
 
 import json

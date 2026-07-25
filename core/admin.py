@@ -65,10 +65,21 @@ class BookingAdmin(admin.ModelAdmin):
 
 @admin.register(Review)
 class ReviewAdmin(admin.ModelAdmin):
-    list_display = ['booking', 'rating', 'created_at']
-    list_filter = ['rating', 'created_at']
+    list_display = ['booking', 'rating', 'is_hidden', 'created_at']
+    list_filter = ['rating', 'is_hidden', 'created_at']
     search_fields = ['booking__client__email', 'booking__artisan__email', 'comment']
     readonly_fields = ['created_at', 'updated_at']
+    actions = ['hide_reviews', 'unhide_reviews']
+
+    @admin.action(description='Hide selected reviews (removes from public artisan profile)')
+    def hide_reviews(self, request, queryset):
+        updated = queryset.update(is_hidden=True)
+        self.message_user(request, f'{updated} review(s) hidden.')
+
+    @admin.action(description='Unhide selected reviews')
+    def unhide_reviews(self, request, queryset):
+        updated = queryset.update(is_hidden=False)
+        self.message_user(request, f'{updated} review(s) unhidden.')
 
 
 @admin.register(RegistrationPayment)
