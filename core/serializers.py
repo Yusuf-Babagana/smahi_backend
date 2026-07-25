@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport
+from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings
 from accounts.serializers import UserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
@@ -160,10 +160,10 @@ class BookingSerializer(serializers.ModelSerializer):
             'country', 'state', 'lga',
             'country_details', 'state_details', 'lga_details',
             'scheduled_date', 'date', 'time', 'duration_hours', 'total_cost',
-            'status', 'cancellation_reason', 'has_review', 'photos',
+            'status', 'cancellation_reason', 'is_late_cancellation', 'has_review', 'photos',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['client', 'status']
+        read_only_fields = ['client', 'status', 'is_late_cancellation']
 
     def get_artisan_profile_id(self, obj):
         profile = getattr(obj.artisan, 'artisan_profile', None)
@@ -292,7 +292,8 @@ class BookingUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Booking
-        fields = ['status', 'cancellation_reason']
+        fields = ['status', 'cancellation_reason', 'is_late_cancellation']
+        read_only_fields = ['is_late_cancellation']
 
     def validate(self, attrs):
         new_status = attrs.get('status')
@@ -313,6 +314,20 @@ class BookingUpdateSerializer(serializers.ModelSerializer):
                     {'status': f"A {party} cannot change this booking from "
                                f"'{booking.status}' to '{new_status}'."}
                 )
+
+            if new_status == 'cancelled':
+                from django.utils import timezone
+                window_hours = PlatformSettings.current().cancellation_window_hours
+                hours_until = (booking.scheduled_date - timezone.now()).total_seconds() / 3600
+                is_late = hours_until < window_hours
+                # No in-app job payment exists to charge a fee against — this
+                # only requires a reason and flags the booking for oversight.
+                if is_late and not (attrs.get('cancellation_reason') or '').strip():
+                    raise serializers.ValidationError(
+                        {'cancellation_reason': f"This booking is within {window_hours}h of its "
+                                                 f"scheduled time — please give a reason for cancelling."}
+                    )
+                attrs['is_late_cancellation'] = is_late
         return attrs
 
 

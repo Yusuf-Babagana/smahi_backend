@@ -176,6 +176,10 @@ class Booking(models.Model):
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     cancellation_reason = models.TextField(blank=True)
+    # Set when this booking was cancelled inside PlatformSettings.cancellation_window_hours
+    # of scheduled_date — see BookingUpdateSerializer.validate(). Purely informational:
+    # there is no in-app job payment to charge a fee against.
+    is_late_cancellation = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
