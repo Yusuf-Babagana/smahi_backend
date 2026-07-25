@@ -359,3 +359,22 @@ class DisputeReportSerializer(serializers.ModelSerializer):
         # reporter comes from request.user in the view, never client input.
         # status/resolution_notes only ever change via Django Admin.
         read_only_fields = ['status', 'resolution_notes']
+
+
+class AgentOverviewSerializer(serializers.ModelSerializer):
+    """One agent, as seen by their state coordinator — identity plus the
+    two counts CoordinatorAgentListView annotates onto the queryset."""
+    state_details = StateLiteSerializer(source='state', read_only=True)
+    # source names differ from the annotation aliases in CoordinatorAgentListView
+    # only in that those aliases can't reuse 'artisans_registered' itself — that
+    # name is already the FK related_name and Django's ORM rejects the collision.
+    artisans_registered = serializers.IntegerField(source='registered_artisans_count', read_only=True)
+    artisans_verified = serializers.IntegerField(source='verified_artisans_count', read_only=True)
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'id', 'first_name', 'last_name', 'email', 'phone_number',
+            'account_status', 'state_details', 'created_at',
+            'artisans_registered', 'artisans_verified',
+        ]

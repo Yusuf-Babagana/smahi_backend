@@ -35,11 +35,11 @@ from .serializers import (
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
-    BookingPhotoSerializer,
+    BookingPhotoSerializer, AgentOverviewSerializer,
 )
 from notifications.events import emit
 from .services import approve_artisan_verification
-from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin
+from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
 from accounts.serializers import UserSerializer
 
 User = get_user_model()
@@ -305,11 +305,70 @@ class AgentRegisterArtisanView(APIView):
 
         user = serializer.save()
 
+        if hasattr(user, 'artisan_profile'):
+            user.artisan_profile.registered_by = request.user
+            user.artisan_profile.save(update_fields=['registered_by'])
+
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
             'message': 'Artisan registered. Share this one-time password with them securely — it will not be shown again.',
         }, status=status.HTTP_201_CREATED)
+
+
+class CoordinatorAgentListView(generics.ListAPIView):
+    """All agents in the requesting state coordinator's own state, each
+    annotated with how many artisans they've registered and verified —
+    the actual oversight a coordinator needs that a bare agent list
+    (identical to IsStateAgent's artisan/client scoping) doesn't give."""
+    serializer_class = AgentOverviewSerializer
+    permission_classes = [IsAuthenticated, IsStateCoordinator]
+    search_fields = ['first_name', 'last_name', 'email']
+
+    def get_queryset(self):
+        state_id = self.request.user.state_id
+        if not state_id:
+            return User.objects.none()
+        # Alias names can't be 'artisans_registered'/'reviewed_verifications' —
+        # those are already the reverse-FK related_names on this model, and
+        # Django's ORM rejects an annotation that collides with a real field.
+        return User.objects.filter(role='agent', state_id=state_id).select_related('state').annotate(
+            registered_artisans_count=Count('artisans_registered', distinct=True),
+            verified_artisans_count=Count(
+                'reviewed_verifications',
+                filter=Q(reviewed_verifications__status='approved'),
+                distinct=True,
+            ),
+        ).order_by('-created_at')
+
+
+class CoordinatorAgentStatusView(APIView):
+    """Coordinator suspends/reactivates one of their own state's agents.
+    Scoped to the same state as the coordinator — can't touch an agent
+    in a different state, and can't touch anything but an 'agent'."""
+    permission_classes = [IsAuthenticated, IsStateCoordinator]
+
+    def post(self, request, agent_id):
+        new_status = request.data.get('status')
+        if new_status not in ('active', 'suspended'):
+            return Response({'error': "status must be 'active' or 'suspended'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        state_id = request.user.state_id
+        if not state_id:
+            return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            agent = User.objects.get(id=agent_id, role='agent', state_id=state_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Agent not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
+
+        agent.account_status = new_status
+        agent.save(update_fields=['account_status'])
+
+        return Response({
+            'message': f'Agent account set to {new_status}.',
+            'agent': {'id': agent.id, 'email': agent.email, 'account_status': agent.account_status},
+        })
 
 
 class AgentVerifyArtisanView(APIView):

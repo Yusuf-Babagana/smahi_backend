@@ -35,6 +35,12 @@ class ArtisanProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='artisan_profile')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='artisans')
+    # Agent/coordinator who registered this artisan via AgentRegisterArtisanView.
+    # Blank for artisans who self-registered through the public signup flow.
+    registered_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='artisans_registered'
+    )
     bio = models.TextField(blank=True)
     experience_years = models.PositiveIntegerField(default=0)
     hourly_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
