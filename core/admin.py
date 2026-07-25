@@ -1,10 +1,9 @@
 from django.contrib import admin
-from django.db import transaction as db_transaction
 from django.shortcuts import redirect
 from django.utils import timezone
 from .models import (
     Category, ArtisanProfile, VerificationRequest, Booking, Review,
-    RegistrationPayment, PlatformSettings, DisputeReport, Wallet, WalletTransaction,
+    RegistrationPayment, PlatformSettings, DisputeReport,
 )
 from notifications.events import emit
 
@@ -209,79 +208,3 @@ class DisputeReportAdmin(admin.ModelAdmin):
     @admin.action(description='Dismiss')
     def mark_dismissed(self, request, queryset):
         self._bulk_transition(request, queryset, 'dismissed')
-
-
-@admin.register(Wallet)
-class WalletAdmin(admin.ModelAdmin):
-    """Read-only — balance is a cache maintained exclusively by
-    core.services functions. Wallets are created automatically
-    (Wallet.for_user()), never manually."""
-    list_display = ['user', 'balance', 'currency', 'updated_at']
-    search_fields = ['user__email', 'user__first_name', 'user__last_name']
-    readonly_fields = ['user', 'balance', 'currency', 'created_at', 'updated_at']
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(WalletTransaction)
-class WalletTransactionAdmin(admin.ModelAdmin):
-    """Existing transactions are immutable (ledger integrity — editing a
-    past entry would silently desync it from Wallet.balance). The one
-    thing this admin CAN create is a manual_adjustment, which goes
-    through the same atomic balance update as every other transaction
-    type instead of a raw INSERT that would leave balance stale."""
-    list_display = ['id', 'wallet', 'type', 'amount', 'status', 'created_at']
-    list_filter = ['type', 'status', 'created_at']
-    search_fields = ['wallet__user__email', 'description']
-    date_hierarchy = 'created_at'
-    actions = ['approve_withdrawal', 'reject_withdrawal']
-
-    def get_readonly_fields(self, request, obj=None):
-        if obj:  # editing an existing row — nothing is editable
-            return [f.name for f in self.model._meta.fields]
-        return ['created_by']  # set programmatically below, not via the form
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-    def save_model(self, request, obj, form, change):
-        if change:
-            super().save_model(request, obj, form, change)
-            return
-
-        obj.status = 'completed'
-        obj.created_by = request.user
-        with db_transaction.atomic():
-            super().save_model(request, obj, form, change)
-            wallet = Wallet.objects.select_for_update().get(pk=obj.wallet_id)
-            wallet.balance = wallet.balance + obj.amount
-            wallet.save(update_fields=['balance', 'updated_at'])
-
-        if obj.amount > 0:
-            emit(
-                'wallet_credited', recipient=obj.wallet.user, title='Wallet credited',
-                body=obj.description or f'Your wallet was adjusted by {obj.amount}.',
-                related_object=obj,
-            )
-
-    @admin.action(description='Approve selected pending withdrawals')
-    def approve_withdrawal(self, request, queryset):
-        from .services import finalize_withdrawal
-        count = 0
-        for tx in queryset.filter(type='payout', status='pending'):
-            finalize_withdrawal(tx, approve=True, admin_user=request.user)
-            count += 1
-        self.message_user(request, f'{count} withdrawal(s) approved.')
-
-    @admin.action(description='Reject selected pending withdrawals')
-    def reject_withdrawal(self, request, queryset):
-        from .services import finalize_withdrawal
-        count = 0
-        for tx in queryset.filter(type='payout', status='pending'):
-            finalize_withdrawal(tx, approve=False, admin_user=request.user)
-            count += 1
-        self.message_user(request, f'{count} withdrawal(s) rejected.')
