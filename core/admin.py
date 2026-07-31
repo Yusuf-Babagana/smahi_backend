@@ -125,6 +125,11 @@ class RegistrationPaymentAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
     actions = ['mark_paid_and_activate']
 
+    def has_add_permission(self, request):
+        # These are created by the Paystack initiation flow only — a
+        # hand-typed row here would have no real reference to verify against.
+        return False
+
     @staticmethod
     def _activate(user):
         if not user.registration_fee_paid or user.account_status != 'active':
