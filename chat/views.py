@@ -61,15 +61,21 @@ class MessageViewSet(viewsets.ModelViewSet):
         except (Conversation.DoesNotExist, ValueError, TypeError):
             raise ValidationError({'conversation_id': 'Invalid conversation, or you are not a participant.'})
 
-        # Trust the sender's own language setting when they've explicitly
-        # chosen one (cheaper and per the feature spec's own guidance);
-        # only fall back to detection for users who never set a preference.
+        # Detect the language of what was actually typed, not what the
+        # sender has chosen as their preference — those two silently
+        # diverge whenever someone types in a language other than their own
+        # (an artisan whose preferred_language is Hausa answering a client
+        # in English, a bilingual user, etc.). Trusting the stored
+        # preference blindly mislabeled those messages' original_language,
+        # which made the "same language, don't translate" check fire
+        # incorrectly and left the recipient stuck seeing the untranslated
+        # original. Detection only costs one small (max_tokens=5) call and
+        # is cached like everything else the translation service does, so
+        # it's cheap; the stored preference is now just the fallback for
+        # when detection itself fails (API error, empty text).
         sender = self.request.user
         text = serializer.validated_data.get('text', '')
-        if sender.preferred_language:
-            original_language = sender.preferred_language
-        else:
-            original_language = translation_service.detect_language(text) or 'en'
+        original_language = translation_service.detect_language(text) or sender.preferred_language or 'en'
 
         serializer.save(sender=sender, conversation=conversation, original_language=original_language)
 

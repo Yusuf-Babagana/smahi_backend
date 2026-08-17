@@ -47,6 +47,14 @@ class TranslationIntegrationTests(APITestCase):
                 ("How are you today?", "en", "ha"): "Yaya kake yau?",
                 ("How are you today?", "en", "ar"): "كيف حالك اليوم؟",
             },
+            # original_language is now determined by DETECTING what was
+            # actually typed (see chat/views.py perform_create) — map every
+            # literal used in this file to its real language so the fake
+            # provider mirrors what the real one would return.
+            detections={
+                "Ina son sanin yadda zan yi amfani da wannan app.": "ha",
+                "How are you today?": "en",
+            },
         )
         translation_service.provider = self.provider
 
@@ -68,9 +76,9 @@ class TranslationIntegrationTests(APITestCase):
         data = response.data
         return data if isinstance(data, list) else data['results']
 
-    # --- Send: original_language captured from the sender's own setting ---
+    # --- Send: original_language is DETECTED from what was actually typed ---
 
-    def test_send_captures_sender_preferred_language(self):
+    def test_send_detects_the_actual_language_typed(self):
         response = self.send_as(self.hausa_user, "Ina son sanin yadda zan yi amfani da wannan app.")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         message = Message.objects.get(id=response.data['id'])
@@ -78,7 +86,7 @@ class TranslationIntegrationTests(APITestCase):
         # Original text is never touched/overwritten by translation.
         self.assertEqual(message.text, "Ina son sanin yadda zan yi amfani da wannan app.")
 
-    def test_send_falls_back_to_detection_when_sender_has_no_preference(self):
+    def test_send_falls_back_to_sender_preference_only_if_detection_fails(self):
         undecided_user = User.objects.create_user(
             email='undecided@test.com', password='pass12345',
             first_name='New', last_name='User', role='client',
@@ -92,6 +100,29 @@ class TranslationIntegrationTests(APITestCase):
         self.assertEqual(self.provider.detect_calls, 1)
         message = Message.objects.get(id=response.data['id'])
         self.assertEqual(message.original_language, 'fr')
+
+    def test_detection_overrides_a_stale_sender_preference(self):
+        # Regression test: a Hausa-preferring artisan answering in English
+        # (or any sender typing in something other than their own chosen
+        # language) must have THAT message correctly tagged 'en', not
+        # silently mislabeled 'ha' from their stored preference — the old
+        # "trust the sender's preference, skip detection" behavior made a
+        # recipient with a matching preferred_language ('ha') see the raw,
+        # untranslated English text because source and target both looked
+        # like 'ha' even though the message itself was never Hausa.
+        hausa_preferring_but_typed_english = User.objects.create_user(
+            email='bilingual@test.com', password='pass12345',
+            first_name='Bilingual', last_name='User', role='artisan',
+            preferred_language='ha',
+        )
+        self.conversation.participants.add(hausa_preferring_but_typed_english)
+        self.provider.detections["Actually typed in English"] = 'en'
+
+        response = self.send_as(hausa_preferring_but_typed_english, "Actually typed in English")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        message = Message.objects.get(id=response.data['id'])
+        self.assertEqual(message.original_language, 'en', "detection must win over the stale stored preference")
 
     # --- Read: same message, different language per recipient ---
 
@@ -153,7 +184,10 @@ class TranslationIntegrationTests(APITestCase):
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         message = Message.objects.get(id=response.data['id'])
-        self.assertEqual(message.original_language, 'ha', "server-computed value must win, not the client's")
+        # Server-detected value must win, not the client's spoofed value —
+        # and not blindly the sender's own preferred_language either (this
+        # Hausa-preferring sender actually typed English here).
+        self.assertEqual(message.original_language, 'en')
 
 
 class PreferredLanguageSecurityTests(APITestCase):
@@ -240,6 +274,10 @@ class FinalSignOffTests(APITestCase):
             translations={
                 ("How are you today?", "en", "ha"): "Yaya kake yau?",
                 ("Ina kwana?", "ha", "en"): "Good morning?",
+            },
+            detections={
+                "How are you today?": "en",
+                "Ina kwana?": "ha",
             },
         )
         self._original_provider = translation_service.provider
