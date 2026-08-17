@@ -227,3 +227,156 @@ class NewConversationFlowTests(APITestCase):
             'recipient_id': self.artisan_user.id,
         })
         self.assertEqual(first.data['id'], second.data['id'])
+
+
+class FinalSignOffTests(APITestCase):
+    """Explicit sign-off for the feature's core promise: whatever language a
+    user picks in their profile, every message THEY receive arrives in that
+    language — regardless of role (client or artisan/service-provider),
+    and regardless of which language the other side actually typed in."""
+
+    def setUp(self):
+        self.provider = FakeTranslationProvider(
+            translations={
+                ("How are you today?", "en", "ha"): "Yaya kake yau?",
+                ("Ina kwana?", "ha", "en"): "Good morning?",
+            },
+        )
+        self._original_provider = translation_service.provider
+        translation_service.provider = self.provider
+
+    def tearDown(self):
+        translation_service.provider = self._original_provider
+
+    def results(self, response):
+        data = response.data
+        return data if isinstance(data, list) else data['results']
+
+    def test_client_picks_hausa_artisan_types_english_client_reads_hausa(self):
+        client_user = User.objects.create_user(
+            email='signoff_client@test.com', password='pass12345',
+            first_name='Sign', last_name='Client', role='client',
+            preferred_language='ha',
+        )
+        artisan_user = User.objects.create_user(
+            email='signoff_artisan@test.com', password='pass12345',
+            first_name='Sign', last_name='Artisan', role='artisan',
+            preferred_language='en',
+        )
+        conversation = Conversation.objects.create()
+        conversation.participants.add(client_user, artisan_user)
+
+        # Artisan sends in English (their own language)
+        self.client.force_authenticate(user=artisan_user)
+        send = self.client.post('/api/chat/messages/', {
+            'conversation_id': conversation.id,
+            'text': 'How are you today?',
+        })
+        self.assertEqual(send.status_code, status.HTTP_201_CREATED)
+
+        # Client (Hausa) reads it back — must arrive in Hausa
+        self.client.force_authenticate(user=client_user)
+        view = self.results(self.client.get(
+            f'/api/chat/messages/?conversation_id={conversation.id}'
+        ))[0]
+        self.assertEqual(view['text'], 'Yaya kake yau?')
+        self.assertEqual(view['original_text'], 'How are you today?')
+        self.assertTrue(view['is_translated'])
+        self.assertEqual(view['display_language'], 'ha')
+
+    def test_reverse_artisan_picks_hausa_client_types_hausa_artisan_reads_hausa_unchanged(self):
+        # And the "vice versa": an artisan who picked Hausa gets Hausa
+        # messages shown as-is (no unnecessary translation).
+        client_user = User.objects.create_user(
+            email='signoff_client2@test.com', password='pass12345',
+            first_name='Sign', last_name='Client2', role='client',
+            preferred_language='ha',
+        )
+        artisan_user = User.objects.create_user(
+            email='signoff_artisan2@test.com', password='pass12345',
+            first_name='Sign', last_name='Artisan2', role='artisan',
+            preferred_language='ha',
+        )
+        conversation = Conversation.objects.create()
+        conversation.participants.add(client_user, artisan_user)
+
+        self.client.force_authenticate(user=client_user)
+        send = self.client.post('/api/chat/messages/', {
+            'conversation_id': conversation.id,
+            'text': 'Ina kwana?',
+        })
+        self.assertEqual(send.status_code, status.HTTP_201_CREATED)
+
+        self.client.force_authenticate(user=artisan_user)
+        view = self.results(self.client.get(
+            f'/api/chat/messages/?conversation_id={conversation.id}'
+        ))[0]
+        self.assertEqual(view['text'], 'Ina kwana?')
+        self.assertFalse(view['is_translated'])
+        self.assertEqual(self.provider.translate_calls, 0, "same-language pair must never call the provider")
+
+    def test_reverse_artisan_picks_hausa_client_types_english_artisan_reads_hausa(self):
+        client_user = User.objects.create_user(
+            email='signoff_client3@test.com', password='pass12345',
+            first_name='Sign', last_name='Client3', role='client',
+            preferred_language='en',
+        )
+        artisan_user = User.objects.create_user(
+            email='signoff_artisan3@test.com', password='pass12345',
+            first_name='Sign', last_name='Artisan3', role='artisan',
+            preferred_language='ha',
+        )
+        conversation = Conversation.objects.create()
+        conversation.participants.add(client_user, artisan_user)
+
+        self.client.force_authenticate(user=client_user)
+        self.client.post('/api/chat/messages/', {
+            'conversation_id': conversation.id,
+            'text': 'How are you today?',
+        })
+
+        self.client.force_authenticate(user=artisan_user)
+        view = self.results(self.client.get(
+            f'/api/chat/messages/?conversation_id={conversation.id}'
+        ))[0]
+        self.assertEqual(view['text'], 'Yaya kake yau?')
+        self.assertEqual(view['display_language'], 'ha')
+
+    def test_changing_language_mid_conversation_affects_future_reads_immediately(self):
+        # Simulates exactly what personal-info.tsx / artisan/profile.tsx do:
+        # PATCH preferred_language, then re-read messages — no caching bug
+        # should leave a reader stuck on their old language.
+        client_user = User.objects.create_user(
+            email='signoff_client4@test.com', password='pass12345',
+            first_name='Sign', last_name='Client4', role='client',
+            preferred_language='en',
+        )
+        artisan_user = User.objects.create_user(
+            email='signoff_artisan4@test.com', password='pass12345',
+            first_name='Sign', last_name='Artisan4', role='artisan',
+            preferred_language='en',
+        )
+        conversation = Conversation.objects.create()
+        conversation.participants.add(client_user, artisan_user)
+
+        self.client.force_authenticate(user=artisan_user)
+        self.client.post('/api/chat/messages/', {
+            'conversation_id': conversation.id,
+            'text': 'How are you today?',
+        })
+
+        self.client.force_authenticate(user=client_user)
+        before = self.results(self.client.get(
+            f'/api/chat/messages/?conversation_id={conversation.id}'
+        ))[0]
+        self.assertEqual(before['text'], 'How are you today?')  # same language, no translation yet
+
+        # Client switches to Hausa via the profile endpoint, exactly like the app does
+        patch = self.client.patch('/api/auth/profile/', {'preferred_language': 'ha'})
+        self.assertEqual(patch.status_code, status.HTTP_200_OK)
+
+        after = self.results(self.client.get(
+            f'/api/chat/messages/?conversation_id={conversation.id}'
+        ))[0]
+        self.assertEqual(after['text'], 'Yaya kake yau?')
+        self.assertTrue(after['is_translated'])
