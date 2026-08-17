@@ -185,3 +185,45 @@ class PreferredLanguageSecurityTests(APITestCase):
         self.client.force_authenticate(user=self.user_a)
         response = self.client.patch('/api/auth/profile/', {'preferred_language': 'not-a-real-language'})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class NewConversationFlowTests(APITestCase):
+    """Regression test for the exact mobile flow: open a brand-new chat
+    (id='new' + recipientId in app/chat/[id].tsx) then send the first
+    message — reproduces "Please wait — initializing conversation..."
+    getting stuck if get_or_create or the first send ever breaks."""
+
+    def setUp(self):
+        self.client_user = User.objects.create_user(
+            email='newflow_client@test.com', password='pass12345',
+            first_name='New', last_name='Client', role='client',
+        )
+        self.artisan_user = User.objects.create_user(
+            email='newflow_artisan@test.com', password='pass12345',
+            first_name='New', last_name='Artisan', role='artisan',
+        )
+
+    def test_get_or_create_then_send_first_message(self):
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.post('/api/chat/conversations/get_or_create/', {
+            'recipient_id': self.artisan_user.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        conversation_id = response.data['id']
+
+        send_response = self.client.post('/api/chat/messages/', {
+            'conversation_id': conversation_id,
+            'text': 'Hello from the debug flow test',
+        })
+        self.assertEqual(send_response.status_code, status.HTTP_201_CREATED, send_response.data)
+
+    def test_get_or_create_is_idempotent(self):
+        self.client.force_authenticate(user=self.client_user)
+        first = self.client.post('/api/chat/conversations/get_or_create/', {
+            'recipient_id': self.artisan_user.id,
+        })
+        second = self.client.post('/api/chat/conversations/get_or_create/', {
+            'recipient_id': self.artisan_user.id,
+        })
+        self.assertEqual(first.data['id'], second.data['id'])
