@@ -383,3 +383,98 @@ class ArtisanAvailabilityTests(BookingTestBase):
     def test_reads_expose_is_available(self):
         response = self.client.get('/api/artisans/')
         self.assertTrue(response.data['results'][0]['is_available'])
+
+
+class FakeTranslationProvider:
+    """Deterministic stand-in for OpenAITranslationProvider — no network,
+    no cost, and lets tests assert exactly how many times it was called."""
+
+    def __init__(self, translations=None, detections=None, fail=False):
+        self.translations = translations or {}
+        self.detections = detections or {}
+        self.fail = fail
+        self.translate_calls = 0
+        self.detect_calls = 0
+
+    def translate(self, text, source_language, target_language):
+        self.translate_calls += 1
+        if self.fail:
+            raise RuntimeError("provider unavailable")
+        return self.translations.get((text, source_language, target_language), f"[{target_language}] {text}")
+
+    def detect_language(self, text):
+        self.detect_calls += 1
+        if self.fail:
+            raise RuntimeError("provider unavailable")
+        return self.detections.get(text, 'en')
+
+
+class TranslationServiceTests(APITestCase):
+    """core.translation.TranslationService — caching, fallback, and the
+    behaviours the automatic-translation feature depends on for safety
+    and cost control."""
+
+    def setUp(self):
+        from core.translation import TranslationService
+        self.provider = FakeTranslationProvider()
+        self.service = TranslationService(provider=self.provider)
+
+    def test_same_language_is_a_passthrough(self):
+        text, was_translated = self.service.translate("Hello", "en", "en")
+        self.assertEqual(text, "Hello")
+        self.assertFalse(was_translated)
+        self.assertEqual(self.provider.translate_calls, 0)
+
+    def test_empty_text_is_a_passthrough(self):
+        text, was_translated = self.service.translate("", "en", "ha")
+        self.assertEqual(text, "")
+        self.assertFalse(was_translated)
+        self.assertEqual(self.provider.translate_calls, 0)
+
+    def test_translates_and_caches(self):
+        from core.models import TranslationCache
+
+        text, was_translated = self.service.translate("How are you?", "en", "ha")
+        self.assertTrue(was_translated)
+        self.assertEqual(text, "[ha] How are you?")
+        self.assertEqual(self.provider.translate_calls, 1)
+        self.assertEqual(TranslationCache.objects.count(), 1)
+
+    def test_cache_hit_skips_the_provider(self):
+        self.service.translate("How are you?", "en", "ha")
+        self.assertEqual(self.provider.translate_calls, 1)
+
+        # Same content/source/target again — even via a brand new service
+        # instance, i.e. this is a DB-level cache, not an in-memory one.
+        from core.translation import TranslationService
+        second_service = TranslationService(provider=self.provider)
+        text, was_translated = second_service.translate("How are you?", "en", "ha")
+
+        self.assertEqual(text, "[ha] How are you?")
+        self.assertTrue(was_translated)
+        self.assertEqual(self.provider.translate_calls, 1, "second call should have hit the cache")
+
+    def test_cache_does_not_mix_different_language_pairs(self):
+        self.service.translate("Hello", "en", "ha")
+        self.service.translate("Hello", "en", "fr")
+        self.assertEqual(self.provider.translate_calls, 2)
+
+    def test_provider_failure_falls_back_to_original_text(self):
+        failing_provider = FakeTranslationProvider(fail=True)
+        from core.translation import TranslationService
+        service = TranslationService(provider=failing_provider)
+
+        text, was_translated = service.translate("Hello", "en", "ha")
+
+        self.assertEqual(text, "Hello")
+        self.assertFalse(was_translated)
+
+    def test_detect_language_failure_returns_empty_string(self):
+        failing_provider = FakeTranslationProvider(fail=True)
+        from core.translation import TranslationService
+        service = TranslationService(provider=failing_provider)
+
+        self.assertEqual(service.detect_language("Ina son sanin"), '')
+
+    def test_detect_language_empty_text(self):
+        self.assertEqual(self.service.detect_language(""), '')

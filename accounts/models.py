@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from locations.models import Country, State, LGA
+from core.languages import SUPPORTED_LANGUAGES
 
 
 class UserManager(BaseUserManager):
@@ -67,6 +68,11 @@ class User(AbstractUser):
     last_seen_at = models.DateTimeField(null=True, blank=True)
     # Artisans must pay a registration fee before their account is activated
     registration_fee_paid = models.BooleanField(default=False)
+    # Default language messages are automatically translated into for this
+    # user (chat.translation). Blank = never explicitly chosen — treated as
+    # "unset" (falls back to detecting the sender's language instead of
+    # trusting it) rather than as an implicit choice of English.
+    preferred_language = models.CharField(max_length=10, choices=SUPPORTED_LANGUAGES, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

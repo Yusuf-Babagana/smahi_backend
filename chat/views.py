@@ -6,6 +6,7 @@ from rest_framework.exceptions import ValidationError
 from django.db.models import Q
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
+from core.translation import translation_service
 
 class ConversationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -59,7 +60,18 @@ class MessageViewSet(viewsets.ModelViewSet):
             conversation = Conversation.objects.get(id=conversation_id, participants=self.request.user)
         except (Conversation.DoesNotExist, ValueError, TypeError):
             raise ValidationError({'conversation_id': 'Invalid conversation, or you are not a participant.'})
-        serializer.save(sender=self.request.user, conversation=conversation)
+
+        # Trust the sender's own language setting when they've explicitly
+        # chosen one (cheaper and per the feature spec's own guidance);
+        # only fall back to detection for users who never set a preference.
+        sender = self.request.user
+        text = serializer.validated_data.get('text', '')
+        if sender.preferred_language:
+            original_language = sender.preferred_language
+        else:
+            original_language = translation_service.detect_language(text) or 'en'
+
+        serializer.save(sender=sender, conversation=conversation, original_language=original_language)
 
     @action(detail=False, methods=['post'])
     def mark_as_read(self, request):

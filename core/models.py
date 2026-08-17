@@ -413,3 +413,27 @@ class RegistrationPayment(models.Model):
 
     def __str__(self):
         return f"Payment {self.reference} - {self.user.email} - {self.status}"
+
+
+class TranslationCache(models.Model):
+    """Content-addressed translation cache shared by chat, notifications,
+    and any future translation consumer. Keyed by (source, target, content
+    hash) — NOT by message id — so identical text is reused across every
+    message/conversation that needs the same source->target pair, per the
+    automatic-translation feature's cost-optimization requirement.
+
+    Populated/read exclusively through core.translation.translation_service.
+    """
+    source_language = models.CharField(max_length=10)
+    target_language = models.CharField(max_length=10)
+    source_text_hash = models.CharField(max_length=64, db_index=True)  # sha256(source_text)
+    source_text = models.TextField()
+    translated_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('source_language', 'target_language', 'source_text_hash')]
+        indexes = [models.Index(fields=['source_language', 'target_language', 'source_text_hash'])]
+
+    def __str__(self):
+        return f"{self.source_language}->{self.target_language}: {self.source_text[:40]}"

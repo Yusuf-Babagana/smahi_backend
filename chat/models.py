@@ -18,6 +18,11 @@ class Message(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
     text = models.TextField()
+    # Detected/known source language of `text`, set once at creation (see
+    # MessageViewSet.perform_create). Never changes afterwards — `text`
+    # itself is always the untouched original; per-recipient translations
+    # are computed on read via core.translation and never stored here.
+    original_language = models.CharField(max_length=10, blank=True, default='')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
