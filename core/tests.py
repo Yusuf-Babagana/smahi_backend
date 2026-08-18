@@ -478,3 +478,54 @@ class TranslationServiceTests(APITestCase):
 
     def test_detect_language_empty_text(self):
         self.assertEqual(self.service.detect_language(""), '')
+
+
+class AgentRegisterArtisanStateScopingTests(APITestCase):
+    """AgentRegisterArtisanView must force the new artisan into the AGENT'S
+    OWN state/lga/country server-side — trusting whatever the client sends
+    let a modified client register an artisan into a different state
+    entirely, invisible to that state's own dashboards."""
+
+    def setUp(self):
+        from locations.models import Country, State
+
+        self.country = Country.objects.create(name='Nigeria')
+        self.kano = State.objects.create(name='Kano', country=self.country)
+        self.lagos = State.objects.create(name='Lagos', country=self.country)
+
+        self.agent = User.objects.create_user(
+            email='kano_agent@test.com', password='pass12345',
+            first_name='Kano', last_name='Agent', role='agent',
+            country=self.country, state=self.kano,
+        )
+        self.stateless_agent = User.objects.create_user(
+            email='stateless_agent@test.com', password='pass12345',
+            first_name='Stateless', last_name='Agent', role='agent',
+        )
+
+    def register_url(self):
+        return '/api/agent/register-artisan/'
+
+    def test_new_artisan_lands_in_agents_own_state_even_if_client_sends_another(self):
+        self.client.force_authenticate(user=self.agent)
+        response = self.client.post(self.register_url(), {
+            'email': 'spoofed_artisan@test.com',
+            'first_name': 'Spoofed',
+            'last_name': 'Artisan',
+            # Attempting to place this artisan in Lagos despite a Kano agent registering them
+            'state': self.lagos.id,
+            'country': self.country.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_artisan = User.objects.get(email='spoofed_artisan@test.com')
+        self.assertEqual(new_artisan.state_id, self.kano.id, "server must force the agent's own state, not the client's")
+
+    def test_agent_with_no_state_cannot_register_artisans(self):
+        self.client.force_authenticate(user=self.stateless_agent)
+        response = self.client.post(self.register_url(), {
+            'email': 'orphan_artisan@test.com',
+            'first_name': 'Orphan',
+            'last_name': 'Artisan',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='orphan_artisan@test.com').exists())

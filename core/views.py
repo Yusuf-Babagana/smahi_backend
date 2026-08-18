@@ -302,12 +302,24 @@ class AgentRegisterArtisanView(APIView):
         import secrets
         from accounts.serializers import UserRegistrationSerializer
 
+        if not request.user.state_id:
+            return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+
         generated_password = secrets.token_urlsafe(9)
 
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         data['role'] = 'artisan'
         data['password'] = generated_password
         data['password_confirm'] = generated_password
+        # Force the new artisan into the AGENT'S OWN location, same as
+        # role/password above — every other agent endpoint (AgentArtisanListView,
+        # AgentClientListView, AgentDashboardStatsView) scopes strictly to
+        # request.user.state_id, so trusting client-supplied state/lga/country
+        # here let a modified client register an artisan into a different
+        # state entirely, invisible to that state's own team.
+        data['country'] = request.user.country_id
+        data['state'] = request.user.state_id
+        data['lga'] = request.user.lga_id
 
         serializer = UserRegistrationSerializer(data=data)
         if not serializer.is_valid():

@@ -20,6 +20,19 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     category_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     custom_category_name = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=100)
 
+    # Self-service registration (accounts.views.register_view, AllowAny —
+    # no authentication) must never be able to mint a privileged account.
+    # Every authorization check in this API (IsAdmin/IsStateAgent/
+    # IsStateCoordinator in core/permissions.py) tests request.user.role
+    # alone, not is_staff/is_superuser — so without this restriction,
+    # POSTing role="admin" here from an anonymous client was a complete
+    # privilege-escalation bypass. Agent/state_coordinator/admin accounts
+    # are provisioned through authenticated, permission-checked paths only
+    # (AgentRegisterArtisanView forces role='artisan' before ever reaching
+    # this serializer; coordinator/admin accounts are created in Django
+    # Admin) — never through this serializer's public entry point.
+    PUBLIC_REGISTRATION_ROLES = {'client', 'artisan'}
+
     class Meta:
         model = User
         fields = [
@@ -27,6 +40,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'role', 'phone_number', 'address', 'country', 'state', 'lga',
             'category_id', 'custom_category_name'
         ]
+
+    def validate_role(self, value):
+        if value not in self.PUBLIC_REGISTRATION_ROLES:
+            raise serializers.ValidationError(
+                "Only client and artisan accounts can be created through registration."
+            )
+        return value
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
