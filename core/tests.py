@@ -10,7 +10,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import ArtisanProfile, Booking
+from .models import ArtisanProfile, Booking, Category
+from .views import AIChatView
 
 User = get_user_model()
 
@@ -529,3 +530,111 @@ class AgentRegisterArtisanStateScopingTests(APITestCase):
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(User.objects.filter(email='orphan_artisan@test.com').exists())
+
+
+class AIVerificationStatusTests(APITestCase):
+    """The AI assistant must report an artisan's verification status from
+    the real database, never invent or guess it (audit request: the AI and
+    the Service Directory should agree — a client asking the AI about
+    "Ahmed the mechanic" must get the same ✓/pending truth the artisan card
+    in the app shows, not a plausible-sounding hallucination)."""
+
+    def setUp(self):
+        self.category = Category.objects.create(name='Mechanic')
+        self.verified_user = User.objects.create_user(
+            email='verified_mechanic@test.com', password='pass12345',
+            first_name='Ahmed', last_name='Bello', role='artisan',
+            is_verified=True,
+        )
+        ArtisanProfile.objects.create(user=self.verified_user, category=self.category)
+
+        self.unverified_user = User.objects.create_user(
+            email='unverified_mechanic@test.com', password='pass12345',
+            first_name='Musa', last_name='Danjuma', role='artisan',
+            is_verified=False,
+        )
+        ArtisanProfile.objects.create(user=self.unverified_user, category=self.category)
+
+    def _mock_openai_tool_flow(self, mock_openai_cls, tool_name, tool_args):
+        """Wires a fake OpenAI client through the exact two-call tool flow
+        AIChatView uses, and returns the fake client so the test can inspect
+        every message actually sent to the "model"."""
+        import json as _json
+        from types import SimpleNamespace
+
+        fake_client = mock_openai_cls.return_value
+        tool_call = SimpleNamespace(
+            id='call_1',
+            function=SimpleNamespace(name=tool_name, arguments=_json.dumps(tool_args)),
+        )
+        first_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content='', tool_calls=[tool_call],
+        ))])
+        second_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content='Here is what I found.', tool_calls=None,
+        ))])
+        fake_client.chat.completions.create.side_effect = [first_response, second_response]
+        return fake_client
+
+    def test_search_tool_result_carries_the_real_is_verified_value(self):
+        """The is_verified S-MAHII sends back to the model must be the actual
+        database value, not something the model could plausibly override."""
+        from unittest.mock import patch
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            fake_client = self._mock_openai_tool_flow(mock_openai_cls, 'search_artisans', {'query': 'mechanic'})
+
+            response = self.client.post('/api/ai/chat/', {'text': 'find me a mechanic'}, format='json')
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+            # Inspect exactly what was sent to the model for the second
+            # (reply-writing) call — this is the real source of truth the
+            # model is instructed to use. Both a verified and an unverified
+            # "mechanic" exist (setUp) — order isn't guaranteed, so match by
+            # name rather than assuming which comes first.
+            import json as _json
+            second_call_messages = fake_client.chat.completions.create.call_args_list[1].kwargs['messages']
+            tool_messages = [m for m in second_call_messages if m['role'] == 'tool']
+            self.assertEqual(len(tool_messages), 1)
+            results = _json.loads(tool_messages[0]['content'])['data']['results']
+            by_name = {r['name']: r['is_verified'] for r in results}
+            self.assertTrue(by_name['Ahmed Bello'])
+            self.assertFalse(by_name['Musa Danjuma'])
+
+    def test_verification_status_rule_is_present_in_the_system_prompt(self):
+        # A regression guard for the actual instruction text, not just its
+        # presence — catches someone accidentally deleting/weakening it.
+        prompt = AIChatView.SYSTEM_PROMPT
+        self.assertIn('is_verified', prompt)
+        self.assertIn('Never state, imply, or guess', prompt)
+
+    def test_reinforcement_reminder_is_injected_before_the_reply_is_written(self):
+        from unittest.mock import patch
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            fake_client = self._mock_openai_tool_flow(mock_openai_cls, 'view_artisan', {'name': 'Ahmed'})
+
+            response = self.client.post('/api/ai/chat/', {'text': 'tell me about Ahmed'}, format='json')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+            second_call_messages = fake_client.chat.completions.create.call_args_list[1].kwargs['messages']
+            # The very last message before generation must be the reminder —
+            # recency matters for how strongly a model follows an instruction.
+            last_message = second_call_messages[-1]
+            self.assertEqual(last_message['role'], 'system')
+            self.assertIn('is_verified', last_message['content'])
+
+    def test_view_artisan_reports_the_real_status_for_an_unverified_artisan(self):
+        from unittest.mock import patch
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            fake_client = self._mock_openai_tool_flow(mock_openai_cls, 'view_artisan', {'name': 'Musa Danjuma'})
+
+            self.client.post('/api/ai/chat/', {'text': 'tell me about Musa Danjuma'}, format='json')
+
+            import json as _json
+            second_call_messages = fake_client.chat.completions.create.call_args_list[1].kwargs['messages']
+            tool_payload = [m for m in second_call_messages if m['role'] == 'tool'][0]['content']
+            tool_data = _json.loads(tool_payload)
+            self.assertFalse(tool_data['data']['is_verified'])
