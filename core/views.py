@@ -790,6 +790,11 @@ class AIChatView(APIView):
         "general assumption that S-MAHII artisans are verified). If you "
         "haven't called one of those tools for a given artisan, say you "
         "don't know their verification status rather than guessing.\n\n"
+        "DISTANCE RULE: The same applies to distance. Only mention how far an "
+        "artisan is if the tool result includes a distance_km value for them "
+        "(it's null when the user's location isn't available) — use that "
+        "exact figure, never estimate or say someone is \"nearby\"/\"close by\" "
+        "without it.\n\n"
         "Be warm, helpful, and concise. Keep responses conversational and friendly."
     )
 
@@ -896,7 +901,31 @@ class AIChatView(APIView):
             )
         return system_content
 
-    def _execute_tool(self, tool_name, arguments):
+    @staticmethod
+    def _artisan_summary(artisan_profile, client_lat, client_lon):
+        """Common fields for one artisan across all three AI tools — photo,
+        name, profession, rating, verification, and distance, matching what
+        the Service Directory's ArtisanCard shows (real DB data throughout,
+        same as is_verified already was)."""
+        u = artisan_profile.user
+        distance_km = None
+        if client_lat is not None and client_lon is not None and u.latitude and u.longitude:
+            distance_km = round(
+                calculate_haversine_distance(client_lat, client_lon, float(u.latitude), float(u.longitude)),
+                1,
+            )
+        return {
+            "id": artisan_profile.id,
+            "user_id": u.id,
+            "name": f"{u.first_name} {u.last_name}".strip(),
+            "category": artisan_profile.category.name if artisan_profile.category else "",
+            "rating": float(artisan_profile.rating),
+            "is_verified": u.is_verified,
+            "profile_picture": u.profile_picture.url if u.profile_picture else None,
+            "distance_km": distance_km,
+        }
+
+    def _execute_tool(self, tool_name, arguments, client_lat=None, client_lon=None):
         """Execute an AI tool call by querying the Django ORM.
 
         Returns a dict with 'type' and 'data' keys for the frontend.
@@ -912,17 +941,7 @@ class AIChatView(APIView):
                 | Q(bio__icontains=query)
                 | Q(category__name__icontains=query)
             ).filter(is_available=True)[:5]
-            results = []
-            for a in artisans:
-                u = a.user
-                results.append({
-                    "id": a.id,
-                    "user_id": u.id,
-                    "name": f"{u.first_name} {u.last_name}".strip(),
-                    "category": a.category.name if a.category else "",
-                    "rating": float(a.rating),
-                    "is_verified": u.is_verified,
-                })
+            results = [self._artisan_summary(a, client_lat, client_lon) for a in artisans]
             return {"type": "search_results", "data": {"query": query, "results": results}}
 
         elif tool_name == "filter_by_category":
@@ -941,17 +960,7 @@ class AIChatView(APIView):
             artisans = ArtisanProfile.objects.select_related("user", "category").filter(
                 category=cat, is_available=True
             )[:10]
-            results = []
-            for a in artisans:
-                u = a.user
-                results.append({
-                    "id": a.id,
-                    "user_id": u.id,
-                    "name": f"{u.first_name} {u.last_name}".strip(),
-                    "category": cat.name,
-                    "rating": float(a.rating),
-                    "is_verified": u.is_verified,
-                })
+            results = [self._artisan_summary(a, client_lat, client_lon) for a in artisans]
             return {
                 "type": "category_filter",
                 "data": {"category": cat.name, "category_id": cat.id, "results": results},
@@ -969,18 +978,12 @@ class AIChatView(APIView):
             artisan = ArtisanProfile.objects.select_related("user", "category").filter(q).first()
             if not artisan:
                 return {"type": "artisan_profile", "data": {"found": False, "name": name}}
-            u = artisan.user
             return {
                 "type": "artisan_profile",
                 "data": {
                     "found": True,
-                    "id": artisan.id,
-                    "user_id": u.id,
-                    "name": f"{u.first_name} {u.last_name}".strip(),
-                    "category": artisan.category.name if artisan.category else "",
-                    "rating": float(artisan.rating),
-                    "is_verified": u.is_verified,
                     "bio": artisan.bio,
+                    **self._artisan_summary(artisan, client_lat, client_lon),
                 },
             }
 
@@ -1009,6 +1012,20 @@ class AIChatView(APIView):
     def post(self, request):
         messages = request.data.get("messages")
         user_text = request.data.get("text", "").strip()
+
+        # Live GPS from the client (app/chat/ai.tsx, when location permission
+        # is granted) takes priority; an authenticated user's saved profile
+        # location is the fallback — same precedence ArtisanViewSet uses.
+        client_lat = request.data.get("latitude")
+        client_lon = request.data.get("longitude")
+        if (client_lat is None or client_lon is None) and request.user.is_authenticated:
+            client_lat = client_lat if client_lat is not None else request.user.latitude
+            client_lon = client_lon if client_lon is not None else request.user.longitude
+        try:
+            client_lat = float(client_lat) if client_lat is not None else None
+            client_lon = float(client_lon) if client_lon is not None else None
+        except (TypeError, ValueError):
+            client_lat = client_lon = None
 
         if messages and isinstance(messages, list):
             recent = [
@@ -1055,14 +1072,20 @@ class AIChatView(APIView):
             tool_calls = message.tool_calls or []
 
             if tool_calls:
-                # Execute each tool call and collect actions
+                # Execute each tool call exactly once (this used to run every
+                # DB query twice — once to build `actions`, again a few
+                # lines later to build the tool-result messages — pure
+                # waste, and now that _execute_tool also does a haversine
+                # calc per artisan it's worth avoiding).
                 actions = []
+                tool_results = []
                 for tc in tool_calls:
                     try:
                         func_args = json.loads(tc.function.arguments)
                     except (json.JSONDecodeError, TypeError):
                         func_args = {}
-                    action_result = self._execute_tool(tc.function.name, func_args)
+                    action_result = self._execute_tool(tc.function.name, func_args, client_lat, client_lon)
+                    tool_results.append(action_result)
                     if action_result:
                         actions.append(action_result)
 
@@ -1084,12 +1107,7 @@ class AIChatView(APIView):
                 })
 
                 # Add tool results
-                for tc in tool_calls:
-                    try:
-                        func_args = json.loads(tc.function.arguments)
-                    except (json.JSONDecodeError, TypeError):
-                        func_args = {}
-                    action_result = self._execute_tool(tc.function.name, func_args)
+                for tc, action_result in zip(tool_calls, tool_results):
                     api_messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -1109,7 +1127,10 @@ class AIChatView(APIView):
                         "above exactly as given for every artisan you mention — "
                         "true is \"✓ Verified\", false is \"not yet verified\". "
                         "Do not describe any artisan as verified unless is_verified "
-                        "is true for that specific artisan."
+                        "is true for that specific artisan. Same for distance_km — "
+                        "only state a distance if it's present (not null), using "
+                        "that exact number; never guess or say someone is nearby "
+                        "without it."
                     ),
                 })
 

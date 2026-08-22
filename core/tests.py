@@ -638,3 +638,107 @@ class AIVerificationStatusTests(APITestCase):
             tool_payload = [m for m in second_call_messages if m['role'] == 'tool'][0]['content']
             tool_data = _json.loads(tool_payload)
             self.assertFalse(tool_data['data']['is_verified'])
+
+
+class AICardCompletenessTests(APITestCase):
+    """The AI's artisan cards must carry the same fields the Service
+    Directory's ArtisanCard shows: photo, name, profession, rating,
+    verification, and distance — all from real data, computed the same way
+    ArtisanViewSet already does (calculate_haversine_distance)."""
+
+    def setUp(self):
+        self.category = Category.objects.create(name='Electrician')
+        # Kano city center-ish coordinates for the artisan; a nearby point
+        # ~5km away for the "client".
+        self.artisan_user = User.objects.create_user(
+            email='distance_artisan@test.com', password='pass12345',
+            first_name='Bala', last_name='Sani', role='artisan',
+            is_verified=True, latitude=12.0000, longitude=8.5167,
+        )
+        self.artisan_profile = ArtisanProfile.objects.create(
+            user=self.artisan_user, category=self.category,
+        )
+
+        self.no_gps_user = User.objects.create_user(
+            email='no_gps_artisan@test.com', password='pass12345',
+            first_name='Tanko', last_name='Yusuf', role='artisan',
+            is_verified=False,
+        )
+        ArtisanProfile.objects.create(user=self.no_gps_user, category=self.category)
+
+    def _mock_and_call(self, mock_openai_cls, payload):
+        import json as _json
+        from types import SimpleNamespace
+
+        fake_client = mock_openai_cls.return_value
+        tool_call = SimpleNamespace(
+            id='call_1',
+            function=SimpleNamespace(name='filter_by_category', arguments=_json.dumps({'category': 'Electrician'})),
+        )
+        first_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content='', tool_calls=[tool_call],
+        ))])
+        second_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content='Here you go.', tool_calls=None,
+        ))])
+        fake_client.chat.completions.create.side_effect = [first_response, second_response]
+
+        response = self.client.post('/api/ai/chat/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        second_call_messages = fake_client.chat.completions.create.call_args_list[1].kwargs['messages']
+        tool_payload = [m for m in second_call_messages if m['role'] == 'tool'][0]['content']
+        return _json.loads(tool_payload)['data']['results']
+
+    def test_distance_is_computed_when_client_sends_live_gps(self):
+        from unittest.mock import patch
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            results = self._mock_and_call(mock_openai_cls, {
+                'text': 'show me electricians',
+                'latitude': 12.05, 'longitude': 8.52,
+            })
+
+        by_name = {r['name']: r for r in results}
+        # Bala has GPS set — must get a real, non-null distance.
+        self.assertIsNotNone(by_name['Bala Sani']['distance_km'])
+        self.assertIsInstance(by_name['Bala Sani']['distance_km'], float)
+        # Tanko has no GPS at all — must be null, never guessed.
+        self.assertIsNone(by_name['Tanko Yusuf']['distance_km'])
+
+    def test_distance_is_null_for_everyone_without_client_location(self):
+        from unittest.mock import patch
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            results = self._mock_and_call(mock_openai_cls, {'text': 'show me electricians'})
+
+        for r in results:
+            self.assertIsNone(r['distance_km'])
+
+    def test_saved_profile_location_is_used_when_no_live_gps_sent(self):
+        from unittest.mock import patch
+
+        self.client.force_authenticate(user=self.artisan_user)  # any authenticated user works
+        self.artisan_user.latitude = 12.05
+        self.artisan_user.longitude = 8.52
+        self.artisan_user.save(update_fields=['latitude', 'longitude'])
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            results = self._mock_and_call(mock_openai_cls, {'text': 'show me electricians'})
+
+        by_name = {r['name']: r for r in results}
+        self.assertIsNotNone(by_name['Bala Sani']['distance_km'])
+
+    def test_profile_picture_field_is_present_on_every_result(self):
+        from unittest.mock import patch
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            results = self._mock_and_call(mock_openai_cls, {'text': 'show me electricians'})
+
+        for r in results:
+            self.assertIn('profile_picture', r)  # None here (no upload in the test), but key must exist
+
+    def test_distance_rule_is_present_in_the_system_prompt(self):
+        prompt = AIChatView.SYSTEM_PROMPT
+        self.assertIn('distance_km', prompt)
+        self.assertIn('DISTANCE RULE', prompt)
