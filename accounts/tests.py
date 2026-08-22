@@ -130,3 +130,64 @@ class ProfilePictureUploadTests(APITestCase):
             '/api/auth/profile/', {'profile_picture': self._tiny_png()}, format='multipart',
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class CustomCategoryIconTests(APITestCase):
+    """Registering with a custom "Other" profession lets the person pick a
+    default icon for it (app/register.tsx step 4) — the choice must
+    actually persist (Category.material_icon) and, critically, must never
+    overwrite an icon an EARLIER registrant already set for the same
+    category name."""
+
+    def register(self, **overrides):
+        from core.models import DEFAULT_OTHER_ICONS
+        payload = {
+            'email': 'custom_icon_test@example.com',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'first_name': 'Custom',
+            'last_name': 'Artisan',
+            'role': 'artisan',
+            'custom_category_name': 'Drone Photography Service',
+            'custom_category_icon': sorted(DEFAULT_OTHER_ICONS)[0],
+        }
+        payload.update(overrides)
+        return self.client.post(REGISTER_URL, payload)
+
+    def test_chosen_icon_is_saved_on_the_new_category(self):
+        from core.models import Category, ArtisanProfile
+
+        response = self.register()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        category = Category.objects.get(name__iexact='Drone Photography Service')
+        self.assertTrue(category.material_icon)
+
+        artisan_profile = ArtisanProfile.objects.get(user__email='custom_icon_test@example.com')
+        self.assertEqual(artisan_profile.category_id, category.id)
+
+    def test_rejects_an_icon_not_in_the_offered_set(self):
+        response = self.register(
+            email='bad_icon_test@example.com',
+            custom_category_icon='not-a-real-option',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_icon_is_optional(self):
+        response = self.register(email='no_icon_test@example.com', custom_category_icon='')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_second_registrant_cannot_override_an_already_set_icon(self):
+        from core.models import Category, DEFAULT_OTHER_ICONS
+
+        first_icon, second_icon = sorted(DEFAULT_OTHER_ICONS)[:2]
+        self.register(email='first_registrant@example.com', custom_category_icon=first_icon)
+
+        # A second person types the exact same custom profession name and
+        # picks a DIFFERENT icon — get_or_create must find the existing
+        # category and leave its icon exactly as the first person set it.
+        self.register(email='second_registrant@example.com', custom_category_icon=second_icon)
+
+        category = Category.objects.get(name__iexact='Drone Photography Service')
+        self.assertEqual(category.material_icon, first_icon)
+        self.assertEqual(Category.objects.filter(name__iexact='Drone Photography Service').count(), 1)

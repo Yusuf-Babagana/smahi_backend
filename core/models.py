@@ -5,6 +5,20 @@ from locations.models import Country, State, LGA
 
 User = get_user_model()
 
+# Offered to someone registering with a custom "Other" profession
+# (accounts.serializers.UserRegistrationSerializer) when they'd rather pick
+# an icon explicitly than let the app guess one from whatever they typed.
+# Deliberately disjoint from the icons the app's keyword-matcher
+# (src/constants/professionIcons.ts) already assigns to a *listed*
+# profession — these read as generic/neutral rather than colliding with an
+# icon a client already associates with a specific trade. Every name here
+# is confirmed to exist in @expo/vector-icons' MaterialIcons set — keep
+# both lists in sync if either changes.
+DEFAULT_OTHER_ICONS = frozenset({
+    'engineering', 'design-services', 'category', 'apps', 'star',
+    'diamond', 'badge', 'palette', 'pets', 'groups', 'public', 'terrain',
+})
+
 
 class Category(models.Model):
     parent = models.ForeignKey(
@@ -15,6 +29,17 @@ class Category(models.Model):
     name_ha = models.CharField(max_length=100, blank=True, help_text="Hausa translation")
     description = models.TextField(blank=True)
     icon = models.CharField(max_length=50, blank=True)
+    # Deliberately separate from `icon` above (Ionicons-style, e.g.
+    # "shirt-outline", often blank, consumed elsewhere/the website) — this
+    # one is a MaterialIcons glyph name for the mobile app specifically.
+    # Normally left blank: the app derives an icon from the category name
+    # itself (src/constants/professionIcons.ts, keyword-matched, works for
+    # any ordinary profession name with zero per-category setup). This
+    # field only gets set when someone registering with a custom "Other"
+    # profession explicitly picks one of the app's default icons for it
+    # (see UserRegistrationSerializer) — an explicit human choice takes
+    # priority over a guessed one wherever it's set.
+    material_icon = models.CharField(max_length=50, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

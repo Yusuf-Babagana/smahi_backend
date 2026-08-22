@@ -13,7 +13,7 @@ class SubcategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'parent_name', 'parent_name_ha']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'material_icon', 'parent_name', 'parent_name_ha']
 
     def get_parent_name(self, obj):
         return obj.parent.name if obj.parent else None
@@ -27,7 +27,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'subcategories', 'created_at']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'material_icon', 'subcategories', 'created_at']
 
 
 class FlatCategorySerializer(serializers.ModelSerializer):
@@ -37,7 +37,7 @@ class FlatCategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'parent_id', 'parent_name', 'parent_name_ha']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'material_icon', 'parent_id', 'parent_name', 'parent_name_ha']
 
     def get_parent_name(self, obj):
         return obj.parent.name if obj.parent else None
@@ -50,6 +50,10 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     category_name_ha = serializers.CharField(source='category.name_ha', read_only=True, default='')
+    # Blank unless this artisan's category was created from a custom "Other"
+    # profession where they explicitly picked a default icon for it — the
+    # app prefers this over its own keyword-guessed icon whenever it's set.
+    category_material_icon = serializers.CharField(source='category.material_icon', read_only=True, default='')
     service_countries_details = CountryLiteSerializer(source='service_countries', many=True, read_only=True)
     service_states_details = StateLiteSerializer(source='service_states', many=True, read_only=True)
     service_lgas_details = LGASerializer(source='service_lgas', many=True, read_only=True)
@@ -66,7 +70,7 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArtisanProfile
         fields = [
-            'id', 'user', 'user_details', 'category', 'category_name', 'category_name_ha', 'profession_name',
+            'id', 'user', 'user_details', 'category', 'category_name', 'category_name_ha', 'category_material_icon', 'profession_name',
             'bio', 'experience_years', 'hourly_rate',
             'service_countries', 'service_states', 'service_lgas',
             'service_countries_details', 'service_states_details', 'service_lgas_details',

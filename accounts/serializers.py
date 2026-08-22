@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
 # 👇 Import ArtisanProfile at the top
-from core.models import ArtisanProfile, Category
+from core.models import ArtisanProfile, Category, DEFAULT_OTHER_ICONS
 
 User = get_user_model()
 
@@ -19,6 +19,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     # 👇 Category: either an existing ID or a custom name to auto-create
     category_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     custom_category_name = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=100)
+    # Only used alongside custom_category_name — an explicit icon choice for
+    # a brand-new category, offered when the person typing it would rather
+    # pick one than let the app guess from their wording. Ignored if the
+    # named category already exists (its icon, guessed or previously
+    # chosen, isn't overridden by a later registrant's preference).
+    custom_category_icon = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=50)
 
     # Self-service registration (accounts.views.register_view, AllowAny —
     # no authentication) must never be able to mint a privileged account.
@@ -38,8 +44,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         fields = [
             'email', 'password', 'password_confirm', 'first_name', 'last_name',
             'role', 'phone_number', 'address', 'country', 'state', 'lga',
-            'category_id', 'custom_category_name'
+            'category_id', 'custom_category_name', 'custom_category_icon'
         ]
+
+    def validate_custom_category_icon(self, value):
+        if value and value not in DEFAULT_OTHER_ICONS:
+            raise serializers.ValidationError("Not one of the offered default icons.")
+        return value
 
     def validate_role(self, value):
         if value not in self.PUBLIC_REGISTRATION_ROLES:
@@ -62,6 +73,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # 1. Pull category data out before creating the user
         category_id = validated_data.pop('category_id', None)
         custom_category_name = validated_data.pop('custom_category_name', '').strip()
+        custom_category_icon = validated_data.pop('custom_category_icon', '').strip()
 
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
@@ -77,10 +89,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 # User picked an existing category from the list
                 resolved_category_id = category_id
             elif custom_category_name:
-                # User typed a custom profession — find or create the Category
+                # User typed a custom profession — find or create the Category.
+                # The icon choice only applies to a genuinely NEW category —
+                # get_or_create's `defaults` are ignored when a row already
+                # matches, so an earlier registrant's (or a guessed) icon for
+                # an existing category is never overwritten by this one.
                 category_obj, _ = Category.objects.get_or_create(
                     name__iexact=custom_category_name,
-                    defaults={'name': custom_category_name},
+                    defaults={'name': custom_category_name, 'material_icon': custom_category_icon},
                 )
                 resolved_category_id = category_obj.id
 

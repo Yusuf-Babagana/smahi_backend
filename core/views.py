@@ -919,6 +919,12 @@ class AIChatView(APIView):
             "user_id": u.id,
             "name": f"{u.first_name} {u.last_name}".strip(),
             "category": artisan_profile.category.name if artisan_profile.category else "",
+            # Blank unless this category is a custom "Other" one whose
+            # registrant explicitly picked an icon for it — the app prefers
+            # this over its own keyword-guessed icon wherever it's set.
+            "category_material_icon": (
+                artisan_profile.category.material_icon if artisan_profile.category else ""
+            ),
             "rating": float(artisan_profile.rating),
             "is_verified": u.is_verified,
             "profile_picture": u.profile_picture.url if u.profile_picture else None,
