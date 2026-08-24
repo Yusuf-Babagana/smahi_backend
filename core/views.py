@@ -928,6 +928,9 @@ class AIChatView(APIView):
             "rating": float(artisan_profile.rating),
             "is_verified": u.is_verified,
             "profile_picture": u.profile_picture.url if u.profile_picture else None,
+            # Blank unless the artisan set it — powers a male/female fallback
+            # avatar in place of initials; blank falls back to initials.
+            "gender": u.gender,
             "distance_km": distance_km,
         }
 

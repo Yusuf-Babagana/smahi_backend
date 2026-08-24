@@ -191,3 +191,63 @@ class CustomCategoryIconTests(APITestCase):
         category = Category.objects.get(name__iexact='Drone Photography Service')
         self.assertEqual(category.material_icon, first_icon)
         self.assertEqual(Category.objects.filter(name__iexact='Drone Photography Service').count(), 1)
+
+
+class GenderFieldTests(APITestCase):
+    """Gender is optional everywhere — registration, and editing an existing
+    account — and powers a male/female fallback avatar (mobile app's Avatar
+    component) in place of initials when no profile_picture is set."""
+
+    def register(self, **overrides):
+        payload = {
+            'email': 'gender_test@example.com',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'first_name': 'Gender',
+            'last_name': 'Test',
+            'role': 'client',
+        }
+        payload.update(overrides)
+        return self.client.post(REGISTER_URL, payload)
+
+    def test_registration_accepts_male(self):
+        response = self.register(gender='male')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(User.objects.get(email='gender_test@example.com').gender, 'male')
+
+    def test_registration_accepts_female(self):
+        response = self.register(email='gender_test2@example.com', gender='female')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(User.objects.get(email='gender_test2@example.com').gender, 'female')
+
+    def test_registration_without_gender_still_works(self):
+        response = self.register(email='gender_test3@example.com')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(User.objects.get(email='gender_test3@example.com').gender, '')
+
+    def test_registration_rejects_an_invalid_gender_value(self):
+        response = self.register(email='gender_test4@example.com', gender='other')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_existing_user_can_set_gender_later_via_profile(self):
+        user = User.objects.create_user(
+            email='retro_gender@test.com', password='pass12345',
+            first_name='Retro', last_name='User', role='client',
+        )
+        self.assertEqual(user.gender, '')  # never set — matches every pre-existing account
+
+        self.client.force_authenticate(user=user)
+        response = self.client.patch('/api/auth/profile/', {'gender': 'female'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        user.refresh_from_db()
+        self.assertEqual(user.gender, 'female')
+
+    def test_gender_is_visible_on_the_authenticated_users_own_profile(self):
+        user = User.objects.create_user(
+            email='visible_gender@test.com', password='pass12345',
+            first_name='Visible', last_name='User', role='client', gender='male',
+        )
+        self.client.force_authenticate(user=user)
+        response = self.client.get('/api/auth/profile/')
+        self.assertEqual(response.data.get('gender'), 'male')

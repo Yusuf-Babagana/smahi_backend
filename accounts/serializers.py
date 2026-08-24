@@ -43,7 +43,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'email', 'password', 'password_confirm', 'first_name', 'last_name',
-            'role', 'phone_number', 'address', 'country', 'state', 'lga',
+            'role', 'phone_number', 'address', 'gender', 'country', 'state', 'lga',
             'category_id', 'custom_category_name', 'custom_category_icon'
         ]
 
@@ -121,7 +121,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'role', 'phone_number',
-            'address', 'profile_picture', 'country', 'state', 'lga',
+            'address', 'profile_picture', 'gender', 'country', 'state', 'lga',
             'country_details', 'state_details', 'lga_details',
             'latitude', 'longitude', 'preferred_language',
             'is_verified', 'email_verified', 'registration_fee_paid',
@@ -135,7 +135,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'first_name', 'last_name', 'phone_number', 'address',
-            'profile_picture', 'country', 'state', 'lga',
+            'profile_picture', 'gender', 'country', 'state', 'lga',
             'latitude', 'longitude', 'preferred_language',
         ]
         extra_kwargs = {

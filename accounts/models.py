@@ -43,6 +43,10 @@ class User(AbstractUser):
         ('inactive', 'Inactive'),
         ('suspended', 'Suspended')
     ]
+    GENDER_CHOICES = [
+        ('male', 'Male'),
+        ('female', 'Female'),
+    ]
 
     username = None
     account_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
@@ -51,6 +55,11 @@ class User(AbstractUser):
     phone_number = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
+    # Optional — never required, and blank for every account created before
+    # this field existed. Powers a male/female fallback avatar (mobile app)
+    # in place of initials when no profile_picture is set; blank falls back
+    # to initials exactly as before this field existed.
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True)
 
     country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     state = models.ForeignKey(State, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
