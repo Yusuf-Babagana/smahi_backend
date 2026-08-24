@@ -717,10 +717,37 @@ class DisputeReportViewSet(viewsets.ModelViewSet):
 
 
 import json
+import time
 import openai
 from django.conf import settings
 
 from .site_context import get_site_context, get_local_knowledge
+
+# Cached the same way get_site_context() caches the website fetch (module-
+# level dict + TTL) — categories change rarely, no reason to hit the DB on
+# every single AI message.
+_CATEGORY_VOCAB_TTL_SECONDS = 10 * 60
+_category_vocab_cache = {'fetched_at': 0.0, 'text': ''}
+
+
+def _category_vocabulary():
+    """English + Hausa names of every real service category, for the AI's
+    system prompt — this is what lets it do semantic/synonym matching
+    ("lawyer" -> "Legal Services", "mai gyaran mota" -> "Mechanic") instead
+    of relying on the user's exact wording already existing in the
+    database. Automatically covers any category added later; nothing here
+    is hardcoded per-profession."""
+    now = time.time()
+    if now - _category_vocab_cache['fetched_at'] < _CATEGORY_VOCAB_TTL_SECONDS:
+        return _category_vocab_cache['text']
+
+    names = []
+    for name, name_ha in Category.objects.filter(parent__isnull=False).values_list('name', 'name_ha').order_by('name'):
+        names.append(f"{name} ({name_ha})" if name_ha else name)
+
+    _category_vocab_cache['text'] = ", ".join(names)
+    _category_vocab_cache['fetched_at'] = now
+    return _category_vocab_cache['text']
 
 
 class AIChatView(APIView):
@@ -899,6 +926,28 @@ class AIChatView(APIView):
                 + site_context
                 + "\n===== END OF WEBSITE CONTENT ====="
             )
+        vocabulary = _category_vocabulary()
+        if vocabulary:
+            system_content += (
+                "\n\n===== SERVICE CATEGORIES (exact names in the database, "
+                "with Hausa in parentheses) =====\n"
+                + vocabulary +
+                "\n===== END SERVICE CATEGORIES =====\n\n"
+                "SEMANTIC MATCHING RULE: users describe what they need in their "
+                "own words — informal terms, Hausa, English synonyms, or a "
+                "related-but-differently-named profession. Never rely on their "
+                "exact wording already existing in the database. Instead, use "
+                "the list above to identify which EXACT category name best "
+                "matches their intent, and pass THAT exact name (not the "
+                "user's own words) as the query/category argument to "
+                "search_artisans or filter_by_category. Examples: \"lawyer\" or "
+                "\"nemo min lawyer\" means the Legal Services category; "
+                "\"makaniki\" or \"mai gyaran mota\" (Hausa for someone who "
+                "repairs cars) means the Mechanic category; \"IT guy\" means "
+                "Computer & Phone Repair. If more than one category is a "
+                "plausible match, prefer the most specific one and mention the "
+                "others in your reply."
+            )
         return system_content
 
     @staticmethod
@@ -944,12 +993,25 @@ class AIChatView(APIView):
             query = arguments.get("query", "")
             if not query:
                 return None
+            # Match the whole phrase (handles a category the model already
+            # mapped correctly, e.g. "Legal Services") AND each individual
+            # word of 3+ letters (handles a query like "car mechanic near
+            # me" where the exact category "Auto Mechanic" only shares one
+            # word with it) — a safety net alongside the system prompt's
+            # category vocabulary, not a replacement for it.
+            terms = {query, *[w for w in query.split() if len(w) > 2]}
+            term_filter = Q()
+            for term in terms:
+                term_filter |= (
+                    Q(user__first_name__icontains=term)
+                    | Q(user__last_name__icontains=term)
+                    | Q(bio__icontains=term)
+                    | Q(category__name__icontains=term)
+                    | Q(category__name_ha__icontains=term)
+                )
             artisans = ArtisanProfile.objects.select_related("user", "category").filter(
-                Q(user__first_name__icontains=query)
-                | Q(user__last_name__icontains=query)
-                | Q(bio__icontains=query)
-                | Q(category__name__icontains=query)
-            ).filter(is_available=True)[:5]
+                term_filter
+            ).filter(is_available=True).distinct()[:5]
             results = [self._artisan_summary(a, client_lat, client_lon) for a in artisans]
             return {"type": "search_results", "data": {"query": query, "results": results}}
 
@@ -959,7 +1021,9 @@ class AIChatView(APIView):
                 return None
             cat = (
                 Category.objects.filter(name__iexact=category_name).first()
+                or Category.objects.filter(name_ha__iexact=category_name).first()
                 or Category.objects.filter(name__icontains=category_name).first()
+                or Category.objects.filter(name_ha__icontains=category_name).first()
             )
             if not cat:
                 return {

@@ -742,3 +742,70 @@ class AICardCompletenessTests(APITestCase):
         prompt = AIChatView.SYSTEM_PROMPT
         self.assertIn('distance_km', prompt)
         self.assertIn('DISTANCE RULE', prompt)
+
+
+class AISemanticSearchTests(APITestCase):
+    """The AI must never rely on a user's exact wording already existing
+    verbatim in the database — "lawyer" must find "Legal Services",
+    "makaniki"/"mai gyaran mota" (Hausa) must find "Mechanic", etc. Primary
+    mechanism: the AI's system prompt is given the real category vocabulary
+    (English + Hausa) and instructed to map intent to the exact name itself
+    — the model's own semantic understanding does the actual matching, not
+    a hand-maintained synonym list. Backend query matching is broadened as
+    a safety net alongside that, not a replacement for it."""
+
+    def setUp(self):
+        # _category_vocabulary() only advertises SUBcategories (parent__isnull=False)
+        # to the AI — that's what artisans actually get assigned via the
+        # registration picker (categoryAPI.getCategoriesFlat()), never a bare
+        # top-level group. Give these a parent so the test data matches that.
+        parent = Category.objects.create(name='Professional Services')
+        self.legal = Category.objects.create(name='Legal Services', name_ha="Ayyukan Shari'a", parent=parent)
+        self.mechanic = Category.objects.create(name='Auto Mechanic', name_ha='Makaniki', parent=parent)
+        self.lawyer_user = User.objects.create_user(
+            email='lawyer_test@test.com', password='pass12345',
+            first_name='Amina', last_name='Bello', role='artisan',
+        )
+        ArtisanProfile.objects.create(user=self.lawyer_user, category=self.legal)
+        self.mechanic_user = User.objects.create_user(
+            email='mechanic_test@test.com', password='pass12345',
+            first_name='Musa', last_name='Sani', role='artisan',
+        )
+        ArtisanProfile.objects.create(user=self.mechanic_user, category=self.mechanic)
+
+    def test_system_prompt_includes_the_category_vocabulary_and_rule(self):
+        prompt = AIChatView()._build_system_prompt()
+        self.assertIn('Legal Services', prompt)
+        self.assertIn('Auto Mechanic', prompt)
+        self.assertIn('Makaniki', prompt)  # Hausa name included alongside English
+        self.assertIn('SEMANTIC MATCHING RULE', prompt)
+
+    def test_search_matches_a_category_by_its_hausa_name(self):
+        # Covers both: a user typing the Hausa name directly, and the model
+        # having already mapped an informal term to it.
+        result = AIChatView()._execute_tool('search_artisans', {'query': 'Makaniki'})
+        names = [r['name'] for r in result['data']['results']]
+        self.assertIn('Musa Sani', names)
+        self.assertNotIn('Amina Bello', names)
+
+    def test_filter_by_category_matches_via_hausa_name(self):
+        result = AIChatView()._execute_tool('filter_by_category', {'category': 'Makaniki'})
+        self.assertEqual(result['data']['category'], 'Auto Mechanic')
+        names = [r['name'] for r in result['data']['results']]
+        self.assertIn('Musa Sani', names)
+
+    def test_search_matches_individual_words_not_just_the_full_phrase(self):
+        # "Auto Mechanic" doesn't contain "car mechanic near me" verbatim,
+        # but shares the word "mechanic" — the safety-net word-split match.
+        result = AIChatView()._execute_tool('search_artisans', {'query': 'car mechanic near me'})
+        names = [r['name'] for r in result['data']['results']]
+        self.assertIn('Musa Sani', names)
+
+    def test_category_vocabulary_is_cached(self):
+        from core.views import _category_vocabulary, _category_vocab_cache
+        _category_vocab_cache['fetched_at'] = 0.0  # force a fresh fetch
+        first = _category_vocabulary()
+        Category.objects.create(name='Brand New Category', name_ha='Sabon Aiki', parent=self.legal.parent)
+        second = _category_vocabulary()
+        self.assertNotIn('Brand New Category', second)
+        self.assertEqual(first, second)
