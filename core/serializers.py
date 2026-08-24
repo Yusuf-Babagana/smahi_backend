@@ -424,7 +424,7 @@ class AgentOverviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
         fields = [
-            'id', 'first_name', 'last_name', 'email', 'phone_number',
+            'id', 'first_name', 'last_name', 'email', 'phone_number', 'gender',
             'account_status', 'state_details', 'created_at',
             'artisans_registered', 'artisans_verified',
         ]
