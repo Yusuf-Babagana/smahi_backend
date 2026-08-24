@@ -983,6 +983,55 @@ class AIChatView(APIView):
             "distance_km": distance_km,
         }
 
+    def _semantic_category_lookup(self, query):
+        """Deterministic fallback for when literal/substring matching finds
+        nothing — e.g. "lawyer" shares no substring with the real category
+        "Legal Services" (Hausa "Aikin Lauya"), so the term-matching safety
+        net in search_artisans/filter_by_category can't find it even when
+        the main model failed to translate the user's own wording into the
+        exact category name itself (prompt compliance alone isn't reliable
+        enough for this — verified by testing, not assumed). Asks the model
+        directly, constrained to the real vocabulary, and only trusts an
+        answer that's an exact match against it (never lets a hallucinated
+        name through as a filter value)."""
+        vocabulary = _category_vocabulary()
+        if not vocabulary or not query:
+            return None
+        api_key = getattr(settings, "OPENAI_API_KEY", "")
+        if not api_key:
+            return None
+        try:
+            client = openai.OpenAI(api_key=api_key)
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0,
+                max_tokens=20,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Map the user's free-text service request to the single "
+                            "best-matching category from this exact list (ignore the "
+                            "Hausa text in parentheses — it's just context). Reply with "
+                            "ONLY the exact English category name, character-for-character "
+                            "as written below, or NONE if nothing plausibly matches.\n\n"
+                            + vocabulary
+                        ),
+                    },
+                    {"role": "user", "content": query},
+                ],
+            )
+            answer = (resp.choices[0].message.content or "").strip()
+            if not answer or answer.upper() == "NONE":
+                return None
+            for name in (n.split(" (")[0].strip() for n in vocabulary.split(", ")):
+                if name.lower() == answer.lower():
+                    return name
+            return None
+        except Exception:
+            logger.exception("Semantic category lookup failed")
+            return None
+
     def _execute_tool(self, tool_name, arguments, client_lat=None, client_lon=None):
         """Execute an AI tool call by querying the Django ORM.
 
@@ -1012,6 +1061,15 @@ class AIChatView(APIView):
             artisans = ArtisanProfile.objects.select_related("user", "category").filter(
                 term_filter
             ).filter(is_available=True).distinct()[:5]
+            if not artisans:
+                # Substring matching found nothing — e.g. "lawyer" vs.
+                # "Legal Services". Ask the model directly which real
+                # category the query means, and retry against that.
+                mapped = self._semantic_category_lookup(query)
+                if mapped:
+                    artisans = ArtisanProfile.objects.select_related("user", "category").filter(
+                        Q(category__name__iexact=mapped) | Q(category__name_ha__iexact=mapped)
+                    ).filter(is_available=True).distinct()[:5]
             results = [self._artisan_summary(a, client_lat, client_lon) for a in artisans]
             return {"type": "search_results", "data": {"query": query, "results": results}}
 
@@ -1025,6 +1083,10 @@ class AIChatView(APIView):
                 or Category.objects.filter(name__icontains=category_name).first()
                 or Category.objects.filter(name_ha__icontains=category_name).first()
             )
+            if not cat:
+                mapped = self._semantic_category_lookup(category_name)
+                if mapped:
+                    cat = Category.objects.filter(name__iexact=mapped).first()
             if not cat:
                 return {
                     "type": "category_filter",

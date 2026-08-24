@@ -744,6 +744,14 @@ class AICardCompletenessTests(APITestCase):
         self.assertIn('DISTANCE RULE', prompt)
 
 
+def _fake_completion(text):
+    """A minimal stand-in for openai's ChatCompletion response shape, for
+    the single-string-answer style calls (_semantic_category_lookup) rather
+    than the tool-call flow _mock_openai_tool_flow covers above."""
+    from types import SimpleNamespace
+    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+
+
 class AISemanticSearchTests(APITestCase):
     """The AI must never rely on a user's exact wording already existing
     verbatim in the database — "lawyer" must find "Legal Services",
@@ -809,3 +817,51 @@ class AISemanticSearchTests(APITestCase):
         second = _category_vocabulary()
         self.assertNotIn('Brand New Category', second)
         self.assertEqual(first, second)
+
+    # --- Deterministic fallback: the model doesn't always follow the
+    # prompt's mapping instruction (confirmed against production — "find me
+    # a lawyer" was passed through as query="lawyer" verbatim, which shares
+    # no substring with "Legal Services"/"Ayyukan Shari'a"). These cover the
+    # backend-side safety net that catches that case. ---
+
+    def test_search_falls_back_to_semantic_lookup_when_literal_match_fails(self):
+        from unittest.mock import patch
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            fake_client = mock_openai_cls.return_value
+            fake_client.chat.completions.create.return_value = _fake_completion('Legal Services')
+            result = AIChatView()._execute_tool('search_artisans', {'query': 'lawyer'})
+        names = [r['name'] for r in result['data']['results']]
+        self.assertIn('Amina Bello', names)
+
+    def test_filter_by_category_falls_back_to_semantic_lookup(self):
+        from unittest.mock import patch
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            fake_client = mock_openai_cls.return_value
+            fake_client.chat.completions.create.return_value = _fake_completion('Legal Services')
+            result = AIChatView()._execute_tool('filter_by_category', {'category': 'attorney'})
+        self.assertEqual(result['data']['category'], 'Legal Services')
+        names = [r['name'] for r in result['data']['results']]
+        self.assertIn('Amina Bello', names)
+
+    def test_semantic_lookup_ignores_a_hallucinated_category_name(self):
+        """A name the model invents that isn't in the real vocabulary must
+        never be used as a filter — it would silently return nothing (or
+        worse, a wrong match) instead of a visible failure."""
+        from unittest.mock import patch
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            fake_client = mock_openai_cls.return_value
+            fake_client.chat.completions.create.return_value = _fake_completion('Made Up Category')
+            mapped = AIChatView()._semantic_category_lookup('something obscure')
+        self.assertIsNone(mapped)
+
+    def test_semantic_lookup_returns_none_without_raising_when_api_key_missing(self):
+        with self.settings(OPENAI_API_KEY=''):
+            mapped = AIChatView()._semantic_category_lookup('lawyer')
+        self.assertIsNone(mapped)
+
+    def test_semantic_lookup_returns_none_without_raising_on_api_error(self):
+        from unittest.mock import patch
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            mock_openai_cls.return_value.chat.completions.create.side_effect = Exception('boom')
+            mapped = AIChatView()._semantic_category_lookup('lawyer')
+        self.assertIsNone(mapped)
