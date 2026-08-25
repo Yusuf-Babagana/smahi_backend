@@ -330,12 +330,14 @@ class BookingUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Booking
-        fields = ['status', 'cancellation_reason', 'is_late_cancellation']
+        fields = ['status', 'cancellation_reason', 'is_late_cancellation', 'total_cost']
         read_only_fields = ['is_late_cancellation']
+        extra_kwargs = {'total_cost': {'required': False}}
 
     def validate(self, attrs):
         new_status = attrs.get('status')
         booking = self.instance
+        total_cost = attrs.get('total_cost')
         if new_status and new_status != booking.status:
             user = self.context['request'].user
             if user == booking.client:
@@ -370,6 +372,30 @@ class BookingUpdateSerializer(serializers.ModelSerializer):
                                                  f"scheduled time — please give a reason for cancelling."}
                     )
                 attrs['is_late_cancellation'] = is_late
+
+            if new_status == 'completed':
+                # The only transition that can ever carry total_cost (only
+                # the artisan can even reach this transition — see
+                # ALLOWED_TRANSITIONS above) — recording what was actually
+                # agreed off-app is what lets "Total spent"/artisan earnings
+                # be real numbers instead of permanently ₦0.
+                if total_cost is None:
+                    raise serializers.ValidationError(
+                        {'total_cost': "Enter the amount agreed with the client to mark this job done."}
+                    )
+            elif total_cost is not None:
+                # Any OTHER real transition (confirmed/in_progress/cancelled)
+                # — never a bare edit outside completing the job.
+                raise serializers.ValidationError(
+                    {'total_cost': "The final price can only be set when marking the job as completed."}
+                )
+        elif total_cost is not None:
+            # No status change at all (a no-op re-send) — same rule: this
+            # stays a one-time record of what was agreed, not an editable
+            # ledger a repeated PATCH could quietly overwrite.
+            raise serializers.ValidationError(
+                {'total_cost': "The final price can only be set when marking the job as completed."}
+            )
         return attrs
 
 

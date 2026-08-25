@@ -217,12 +217,25 @@ class BookingStatusTransitionTests(BookingTestBase):
         booking = self.make_booking()
         self.patch_status(booking, self.artisan_user, 'confirmed')
         self.patch_status(booking, self.artisan_user, 'in_progress')
-        response = self.patch_status(booking, self.artisan_user, 'completed')
+        response = self.patch_status(booking, self.artisan_user, 'completed', total_cost='15000.00')
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         booking.refresh_from_db()
         self.assertEqual(booking.status, 'completed')
+        self.assertEqual(str(booking.total_cost), '15000.00')
         self.artisan_profile.refresh_from_db()
         self.assertEqual(self.artisan_profile.total_bookings, 1)
+
+    def test_completing_without_a_price_is_rejected(self):
+        booking = self.make_booking(status='in_progress')
+        response = self.patch_status(booking, self.artisan_user, 'completed')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, 'in_progress')
+
+    def test_total_cost_cannot_be_set_outside_completion(self):
+        booking = self.make_booking(status='pending')
+        response = self.patch_status(booking, self.artisan_user, 'confirmed', total_cost='5000.00')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_client_cannot_confirm(self):
         booking = self.make_booking()
@@ -262,8 +275,9 @@ class BookingStatusTransitionTests(BookingTestBase):
 
     def test_completing_twice_counts_once(self):
         booking = self.make_booking(status='in_progress')
-        self.patch_status(booking, self.artisan_user, 'completed')
-        # Re-sending the same status is a no-op, not an error
+        self.patch_status(booking, self.artisan_user, 'completed', total_cost='15000.00')
+        # Re-sending the same status (with no total_cost this time — it's
+        # already recorded) is a no-op, not an error
         response = self.patch_status(booking, self.artisan_user, 'completed')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.artisan_profile.refresh_from_db()
@@ -323,7 +337,7 @@ class BookingLiveLocationTests(BookingTestBase):
         booking = self.make_booking(status='in_progress')
         self.update_location(booking, self.artisan_user, latitude=12.0, longitude=8.5)
         self.client.force_authenticate(self.artisan_user)
-        response = self.client.patch(f'{BOOKINGS_URL}{booking.id}/', {'status': 'completed'})
+        response = self.client.patch(f'{BOOKINGS_URL}{booking.id}/', {'status': 'completed', 'total_cost': '15000.00'})
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         booking.refresh_from_db()
         self.assertIsNone(booking.live_latitude)
@@ -1100,7 +1114,7 @@ class BookingNotificationsTests(BookingTestBase):
     def test_completing_notifies_the_client(self):
         from notifications.models import Notification
         booking = self.make_booking(status='in_progress')
-        self.patch_status(booking, self.artisan_user, 'completed')
+        self.patch_status(booking, self.artisan_user, 'completed', total_cost='15000.00')
         notif = Notification.objects.get(event_type='booking_completed')
         self.assertEqual(notif.recipient, self.client_user)
 
@@ -1123,6 +1137,6 @@ class BookingNotificationsTests(BookingTestBase):
     def test_re_sending_the_same_status_does_not_double_notify(self):
         from notifications.models import Notification
         booking = self.make_booking(status='in_progress')
-        self.patch_status(booking, self.artisan_user, 'completed')
+        self.patch_status(booking, self.artisan_user, 'completed', total_cost='15000.00')
         self.patch_status(booking, self.artisan_user, 'completed')  # no-op re-send
         self.assertEqual(Notification.objects.filter(event_type='booking_completed').count(), 1)
