@@ -627,6 +627,47 @@ class BookingViewSet(viewsets.ModelViewSet):
                 artisan_profile = ArtisanProfile.objects.filter(user=booking.artisan).first()
                 if artisan_profile:
                     artisan_profile.update_response_time()
+            # Live location is only meaningful while a job is actively under
+            # way — clear it the moment status leaves 'in_progress' (job
+            # completed/cancelled, or moved back somehow) so a stale
+            # last-known position never lingers on the client's map.
+            if booking.status != 'in_progress' and booking.live_latitude is not None:
+                booking.live_latitude = None
+                booking.live_longitude = None
+                booking.live_location_updated_at = None
+                booking.save(update_fields=['live_latitude', 'live_longitude', 'live_location_updated_at'])
+
+    @action(detail=True, methods=['post'])
+    def update_location(self, request, pk=None):
+        """Artisan-only, foreground live-location push while this booking is
+        'in_progress' — powers the client's live tracking map on the booking
+        detail screen. Rejected outside that role/status so a stale or
+        spoofed location can never be set on a job that hasn't started yet
+        or has already finished."""
+        booking = self.get_object()
+        if request.user != booking.artisan:
+            return Response(
+                {'error': 'Only the artisan on this booking can update its live location.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if booking.status != 'in_progress':
+            return Response(
+                {'error': 'Live location can only be updated while the job is in progress.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            lat = float(request.data.get('latitude'))
+            lon = float(request.data.get('longitude'))
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'Valid latitude and longitude are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        booking.live_latitude = lat
+        booking.live_longitude = lon
+        booking.live_location_updated_at = timezone.now()
+        booking.save(update_fields=['live_latitude', 'live_longitude', 'live_location_updated_at'])
+        return Response({'ok': True})
 
     @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def add_photo(self, request, pk=None):

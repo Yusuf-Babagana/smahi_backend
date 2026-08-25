@@ -192,9 +192,16 @@ class BookingSerializer(serializers.ModelSerializer):
             'country_details', 'state_details', 'lga_details',
             'scheduled_date', 'date', 'time', 'duration_hours', 'total_cost',
             'status', 'cancellation_reason', 'is_late_cancellation', 'has_review', 'photos',
+            'live_latitude', 'live_longitude', 'live_location_updated_at',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['client', 'status', 'is_late_cancellation']
+        # live_* fields are set only via BookingViewSet.update_location, never
+        # through a plain PATCH — a client couldn't fake its own "live"
+        # position that way even if it tried.
+        read_only_fields = [
+            'client', 'status', 'is_late_cancellation',
+            'live_latitude', 'live_longitude', 'live_location_updated_at',
+        ]
 
     def get_artisan_profile_id(self, obj):
         profile = getattr(obj.artisan, 'artisan_profile', None)

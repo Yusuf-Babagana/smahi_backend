@@ -277,6 +277,70 @@ class BookingStatusTransitionTests(BookingTestBase):
         self.assertEqual(Booking.objects.count(), 1)
 
 
+class BookingLiveLocationTests(BookingTestBase):
+    """Foreground live-location push (map + location markers feature): the
+    artisan's app posts coordinates while a booking is 'in_progress', which
+    the client's booking detail screen polls to show a live marker. Must be
+    artisan-only, in_progress-only, and cleared the moment the job leaves
+    that status — otherwise a stale or spoofed position could linger on or
+    reach a client's map."""
+
+    def update_location(self, booking, user, **payload):
+        self.client.force_authenticate(user)
+        return self.client.post(f'{BOOKINGS_URL}{booking.id}/update_location/', payload)
+
+    def test_artisan_can_update_live_location_while_in_progress(self):
+        booking = self.make_booking(status='in_progress')
+        response = self.update_location(booking, self.artisan_user, latitude=12.0, longitude=8.5)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        booking.refresh_from_db()
+        self.assertEqual(float(booking.live_latitude), 12.0)
+        self.assertEqual(float(booking.live_longitude), 8.5)
+        self.assertIsNotNone(booking.live_location_updated_at)
+
+    def test_client_cannot_update_live_location(self):
+        booking = self.make_booking(status='in_progress')
+        response = self.update_location(booking, self.client_user, latitude=12.0, longitude=8.5)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        booking.refresh_from_db()
+        self.assertIsNone(booking.live_latitude)
+
+    def test_update_rejected_when_not_in_progress(self):
+        for other_status in ('pending', 'confirmed', 'completed', 'cancelled'):
+            booking = self.make_booking(status=other_status)
+            response = self.update_location(booking, self.artisan_user, latitude=12.0, longitude=8.5)
+            self.assertEqual(
+                response.status_code, status.HTTP_400_BAD_REQUEST,
+                f'expected rejection for status={other_status}'
+            )
+
+    def test_invalid_coordinates_rejected(self):
+        booking = self.make_booking(status='in_progress')
+        response = self.update_location(booking, self.artisan_user, latitude='not-a-number', longitude=8.5)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_live_location_cleared_when_job_completes(self):
+        booking = self.make_booking(status='in_progress')
+        self.update_location(booking, self.artisan_user, latitude=12.0, longitude=8.5)
+        self.client.force_authenticate(self.artisan_user)
+        response = self.client.patch(f'{BOOKINGS_URL}{booking.id}/', {'status': 'completed'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        booking.refresh_from_db()
+        self.assertIsNone(booking.live_latitude)
+        self.assertIsNone(booking.live_longitude)
+        self.assertIsNone(booking.live_location_updated_at)
+
+    def test_booking_serializer_exposes_live_location_fields(self):
+        booking = self.make_booking(status='in_progress')
+        self.update_location(booking, self.artisan_user, latitude=12.0, longitude=8.5)
+        self.client.force_authenticate(self.client_user)
+        response = self.client.get(f'{BOOKINGS_URL}{booking.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertAlmostEqual(float(response.data['live_latitude']), 12.0)
+        self.assertAlmostEqual(float(response.data['live_longitude']), 8.5)
+        self.assertIsNotNone(response.data['live_location_updated_at'])
+
+
 class LocationDistanceTests(BookingTestBase):
     """Users save GPS coords via profile PATCH; artisan search returns
     Haversine distance against them (the '2 km away' feature)."""

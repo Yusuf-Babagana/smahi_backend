@@ -243,6 +243,15 @@ class Booking(models.Model):
     # once set, even if the booking is later cancelled.
     responded_at = models.DateTimeField(null=True, blank=True)
 
+    # Foreground-only live location the artisan's app pushes (BookingViewSet.
+    # update_location) while this booking is 'in_progress' — powers the
+    # client's live tracking map. Cleared as soon as the booking leaves that
+    # status (see BookingViewSet.perform_update) so a stale/last-known
+    # position never lingers on the client's map after the job ends.
+    live_latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    live_longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    live_location_updated_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
