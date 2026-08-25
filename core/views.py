@@ -831,6 +831,44 @@ class AIChatView(APIView):
         "5. get_help \u2014 Call this when the user needs help, has a complaint, or wants support.\n"
         'Examples: "I need help" -> get_help()\n'
         '          "I have a complaint" -> get_help()\n\n'
+        "6. book_artisan \u2014 Call this when the user wants to book a specific "
+        "artisan already shown or discussed in THIS conversation (e.g. 'book "
+        "this mechanic', 'book Ahmed for me'). Use the exact 'id' field from "
+        "that artisan's most recent search_artisans/filter_by_category/"
+        "view_artisan result above as artisan_id \u2014 never invent, guess, or "
+        "ask the user for an id. If no artisan has been discussed yet in this "
+        "conversation, ask them which one first instead of calling this tool. "
+        "This only opens the booking screen with that artisan pre-selected \u2014 "
+        "it never creates a real booking by itself, so never tell the user "
+        "their booking is confirmed; say you're taking them to book with that "
+        "artisan and that they'll pick a date/time there.\n"
+        'Example: "book this mechanic for me" (right after Ahmed was shown) '
+        '-> book_artisan(artisan_id=<Ahmed\'s id from that result>)\n\n'
+        "7. cancel_booking \u2014 Call this when the user wants to cancel one of "
+        "their own bookings. Provide artisan_name only if they mentioned one. "
+        "This never cancels immediately \u2014 it finds the matching booking and "
+        "the user still has to tap a confirm button, so tell them you found "
+        "the booking and they need to confirm the cancellation.\n"
+        'Examples: "cancel my booking with Ahmed" -> cancel_booking(artisan_name="Ahmed")\n'
+        '          "cancel my booking" -> cancel_booking()\n\n'
+        "8. track_booking \u2014 Call this when the user wants to know where an "
+        "artisan is right now / track an ongoing job.\n"
+        'Examples: "where is my mechanic?" -> track_booking()\n'
+        '          "track Ahmed" -> track_booking(artisan_name="Ahmed")\n\n'
+        "9. check_booking_status \u2014 Call this when the user asks about the "
+        "status of a booking (pending/accepted/in progress/completed/cancelled).\n"
+        'Example: "what\'s the status of my booking?" -> check_booking_status()\n\n'
+        "10. open_chat_with_artisan \u2014 Call this when the user wants to "
+        "message/chat with a specific artisan already discussed in THIS "
+        "conversation. Resolve artisan_id the exact same way as book_artisan.\n\n"
+        "11. call_artisan \u2014 Call this when the user wants to call/phone a "
+        "specific artisan already discussed in THIS conversation. Resolve "
+        "artisan_id the exact same way as book_artisan.\n\n"
+        "ACCOUNT REQUIRED: book_artisan, cancel_booking, track_booking, and "
+        "check_booking_status all need a real logged-in client account. If a "
+        "tool result contains {\"reason\": \"not_authenticated\"}, tell the user "
+        "they need to log in first. If it contains {\"reason\": \"not_a_client\"}, "
+        "explain that only client accounts can do this.\n\n"
         "IMPORTANT: Always call the appropriate tool when the user's intent matches. "
         "After calling a tool, also provide a friendly text response explaining what "
         "you found or what action you're taking.\n\n"
@@ -948,6 +986,119 @@ class AIChatView(APIView):
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "book_artisan",
+                "description": (
+                    "Start booking a specific artisan already shown or discussed in "
+                    "this conversation. Opens the booking screen pre-selected for that "
+                    "artisan — never creates a real booking by itself."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artisan_id": {
+                            "type": "integer",
+                            "description": (
+                                "The ArtisanProfile id from a previous search_artisans/"
+                                "filter_by_category/view_artisan result in this "
+                                "conversation. Never invent this."
+                            ),
+                        }
+                    },
+                    "required": ["artisan_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "cancel_booking",
+                "description": (
+                    "Find the user's own active booking (optionally by artisan name) "
+                    "so it can be confirmed for cancellation. Never cancels immediately."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artisan_name": {
+                            "type": "string",
+                            "description": "Optional artisan name the user mentioned, e.g. 'Ahmed'.",
+                        }
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "track_booking",
+                "description": "Show live tracking for the user's currently in-progress booking, optionally narrowed by artisan name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artisan_name": {
+                            "type": "string",
+                            "description": "Optional artisan name to narrow down which booking to track.",
+                        }
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "check_booking_status",
+                "description": "Report the current status of the user's booking, optionally narrowed by artisan name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artisan_name": {
+                            "type": "string",
+                            "description": "Optional artisan name to narrow down which booking to check.",
+                        }
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "open_chat_with_artisan",
+                "description": "Open a direct chat conversation with a specific artisan already discussed in this conversation.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artisan_id": {
+                            "type": "integer",
+                            "description": "The ArtisanProfile id from a previous tool result in this conversation. Never invent this.",
+                        }
+                    },
+                    "required": ["artisan_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "call_artisan",
+                "description": "Start a phone call to a specific artisan already discussed in this conversation.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artisan_id": {
+                            "type": "integer",
+                            "description": "The ArtisanProfile id from a previous tool result in this conversation. Never invent this.",
+                        }
+                    },
+                    "required": ["artisan_id"],
+                },
+            },
+        },
     ]
 
     def _build_system_prompt(self):
@@ -1023,6 +1174,39 @@ class AIChatView(APIView):
             "gender": u.gender,
             "distance_km": distance_km,
         }
+
+    @staticmethod
+    def _booking_summary(booking):
+        """Common fields for one booking across the book/cancel/track/status
+        AI tools — artisan identity + the same status/date fields the app's
+        own booking detail screen already shows."""
+        artisan_user = booking.artisan
+        profile = getattr(artisan_user, 'artisan_profile', None)
+        return {
+            "id": booking.id,
+            "artisan_name": f"{artisan_user.first_name} {artisan_user.last_name}".strip(),
+            # ArtisanProfile.id — what the app's own /artisan/[id] and
+            # /booking/detail/[id] routes are keyed on, not User.id.
+            "artisan_profile_id": profile.id if profile else None,
+            "category": profile.category.name if profile and profile.category else "",
+            "status": booking.status,
+            "scheduled_date": booking.scheduled_date.isoformat() if booking.scheduled_date else None,
+        }
+
+    def _find_client_bookings(self, statuses, artisan_name=""):
+        """Shared lookup for cancel_booking/track_booking/check_booking_status
+        — the caller's own bookings only (never another client's), optionally
+        narrowed to a specific artisan by name."""
+        qs = Booking.objects.filter(
+            client=self.request.user, status__in=statuses
+        ).select_related('artisan', 'artisan__artisan_profile', 'artisan__artisan_profile__category')
+        artisan_name = (artisan_name or "").strip()
+        if artisan_name:
+            name_q = Q()
+            for part in artisan_name.split():
+                name_q |= Q(artisan__first_name__icontains=part) | Q(artisan__last_name__icontains=part)
+            qs = qs.filter(name_q)
+        return qs.order_by('-scheduled_date')
 
     def _semantic_category_lookup(self, query):
         """Deterministic fallback for when literal/substring matching finds
@@ -1183,6 +1367,83 @@ class AIChatView(APIView):
                 "data": {"screen": "help", "route": "/help-center"},
             }
 
+        elif tool_name == "book_artisan":
+            artisan_id = arguments.get("artisan_id")
+            if not artisan_id:
+                return None
+            user = self.request.user
+            if not user.is_authenticated:
+                return {"type": "action_error", "data": {"reason": "not_authenticated"}}
+            if user.role != 'client':
+                return {"type": "action_error", "data": {"reason": "not_a_client"}}
+            artisan_profile = ArtisanProfile.objects.select_related("user", "category").filter(id=artisan_id).first()
+            if not artisan_profile:
+                return {"type": "action_error", "data": {"reason": "artisan_not_found"}}
+            return {
+                "type": "start_booking",
+                "data": self._artisan_summary(artisan_profile, client_lat, client_lon),
+            }
+
+        elif tool_name == "cancel_booking":
+            user = self.request.user
+            if not user.is_authenticated:
+                return {"type": "action_error", "data": {"reason": "not_authenticated"}}
+            bookings = list(self._find_client_bookings(
+                ['pending', 'confirmed', 'in_progress'], arguments.get("artisan_name", "")
+            )[:5])
+            if not bookings:
+                return {"type": "action_error", "data": {"reason": "no_active_booking"}}
+            if len(bookings) > 1:
+                # Ambiguous — never guess which one to cancel. The model
+                # sees this reason and asks the user to be more specific
+                # (e.g. by artisan name) rather than the tool picking one.
+                return {"type": "action_error", "data": {"reason": "multiple_matches"}}
+            return {"type": "confirm_cancel", "data": self._booking_summary(bookings[0])}
+
+        elif tool_name == "track_booking":
+            user = self.request.user
+            if not user.is_authenticated:
+                return {"type": "action_error", "data": {"reason": "not_authenticated"}}
+            booking = self._find_client_bookings(['in_progress'], arguments.get("artisan_name", "")).first()
+            if not booking:
+                return {"type": "action_error", "data": {"reason": "no_active_job"}}
+            data = self._booking_summary(booking)
+            data["live_latitude"] = float(booking.live_latitude) if booking.live_latitude is not None else None
+            data["live_longitude"] = float(booking.live_longitude) if booking.live_longitude is not None else None
+            data["live_location_updated_at"] = (
+                booking.live_location_updated_at.isoformat() if booking.live_location_updated_at else None
+            )
+            return {"type": "track_booking", "data": data}
+
+        elif tool_name == "check_booking_status":
+            user = self.request.user
+            if not user.is_authenticated:
+                return {"type": "action_error", "data": {"reason": "not_authenticated"}}
+            booking = self._find_client_bookings(
+                ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'],
+                arguments.get("artisan_name", ""),
+            ).first()
+            if not booking:
+                return {"type": "action_error", "data": {"reason": "no_booking"}}
+            return {"type": "booking_status", "data": self._booking_summary(booking)}
+
+        elif tool_name in ("open_chat_with_artisan", "call_artisan"):
+            artisan_id = arguments.get("artisan_id")
+            if not artisan_id:
+                return None
+            artisan_profile = ArtisanProfile.objects.select_related("user", "category").filter(id=artisan_id).first()
+            if not artisan_profile:
+                return {"type": "action_error", "data": {"reason": "artisan_not_found"}}
+            method = "chat" if tool_name == "open_chat_with_artisan" else "call"
+            return {
+                "type": "contact_artisan",
+                "data": {
+                    "method": method,
+                    "phone_number": artisan_profile.user.phone_number if method == "call" else "",
+                    **self._artisan_summary(artisan_profile, client_lat, client_lon),
+                },
+            }
+
         return None
 
     def post(self, request):
@@ -1330,7 +1591,21 @@ class AIChatView(APIView):
                             if a["type"] in ("search_results", "category_filter", "artisan_profile")
                         ]
                         nav_actions = [a for a in actions if a["type"] == "navigation"]
-                        if search_actions:
+                        # Booking/cancel/track/status/contact (feature 10) take
+                        # priority over a plain search/nav in the rare case the
+                        # model calls more than one tool in a single turn — the
+                        # user's actual requested action outranks incidental
+                        # search results.
+                        booking_actions = [
+                            a for a in actions
+                            if a["type"] in (
+                                "start_booking", "confirm_cancel", "track_booking",
+                                "booking_status", "contact_artisan", "action_error",
+                            )
+                        ]
+                        if booking_actions:
+                            result["action"] = booking_actions[0]
+                        elif search_actions:
                             result["action"] = search_actions[0]
                             if nav_actions:
                                 result["secondary_action"] = nav_actions[0]

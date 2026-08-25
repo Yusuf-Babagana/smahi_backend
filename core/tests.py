@@ -929,3 +929,133 @@ class AISemanticSearchTests(APITestCase):
             mock_openai_cls.return_value.chat.completions.create.side_effect = Exception('boom')
             mapped = AIChatView()._semantic_category_lookup('lawyer')
         self.assertIsNone(mapped)
+
+
+class AIBookingActionsTests(BookingTestBase):
+    """Feature 10 (BOOKING + ACTIONS): book/cancel/track/status/chat/call must
+    be real actions the AI can trigger through the S-MAHI backend — not just
+    a chatbot that talks about them. Covers auth/role gating (these all need
+    a real logged-in client), that cancel never mutates data directly (it
+    only ever returns a confirm_cancel card for the user to actually confirm),
+    and that lookups are always scoped to the requesting client's own
+    bookings, never another client's."""
+
+    def _view_as(self, user):
+        from types import SimpleNamespace
+        view = AIChatView()
+        view.request = SimpleNamespace(user=user)
+        return view
+
+    def test_book_artisan_requires_login(self):
+        from django.contrib.auth.models import AnonymousUser
+        view = self._view_as(AnonymousUser())
+        result = view._execute_tool('book_artisan', {'artisan_id': self.artisan_profile.id})
+        self.assertEqual(result['type'], 'action_error')
+        self.assertEqual(result['data']['reason'], 'not_authenticated')
+
+    def test_book_artisan_requires_client_role(self):
+        view = self._view_as(self.artisan_user)
+        result = view._execute_tool('book_artisan', {'artisan_id': self.artisan_profile.id})
+        self.assertEqual(result['type'], 'action_error')
+        self.assertEqual(result['data']['reason'], 'not_a_client')
+
+    def test_book_artisan_returns_start_booking_for_valid_client(self):
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('book_artisan', {'artisan_id': self.artisan_profile.id})
+        self.assertEqual(result['type'], 'start_booking')
+        self.assertEqual(result['data']['id'], self.artisan_profile.id)
+
+    def test_book_artisan_unknown_id_reports_not_found(self):
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('book_artisan', {'artisan_id': 999999})
+        self.assertEqual(result['type'], 'action_error')
+        self.assertEqual(result['data']['reason'], 'artisan_not_found')
+
+    def test_cancel_booking_returns_confirm_card_without_mutating(self):
+        booking = self.make_booking(status='confirmed')
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('cancel_booking', {})
+        self.assertEqual(result['type'], 'confirm_cancel')
+        self.assertEqual(result['data']['id'], booking.id)
+        # The tool call itself must never change the booking — only the
+        # user's own follow-up confirm tap (a normal PATCH through the
+        # existing, already-permission-checked booking endpoint) does.
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, 'confirmed')
+
+    def test_cancel_booking_no_active_booking(self):
+        self.make_booking(status='completed')  # not active — shouldn't match
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('cancel_booking', {})
+        self.assertEqual(result['type'], 'action_error')
+        self.assertEqual(result['data']['reason'], 'no_active_booking')
+
+    def test_cancel_booking_multiple_matches_never_guesses(self):
+        second_artisan = get_user_model().objects.create_user(
+            email='artisan2@test.com', password='pass12345',
+            first_name='Second', last_name='Artisan', role='artisan',
+        )
+        ArtisanProfile.objects.create(user=second_artisan)
+        self.make_booking(status='pending')
+        self.make_booking(artisan=second_artisan, status='pending', scheduled_date=timezone.now() + timedelta(days=2))
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('cancel_booking', {})
+        self.assertEqual(result['type'], 'action_error')
+        self.assertEqual(result['data']['reason'], 'multiple_matches')
+
+    def test_cancel_booking_scoped_to_requesting_client_only(self):
+        other_client = get_user_model().objects.create_user(
+            email='otherclient@test.com', password='pass12345',
+            first_name='Other', last_name='Client', role='client',
+        )
+        Booking.objects.create(
+            client=other_client, artisan=self.artisan_user,
+            service_description='Someone else\'s job', address='Elsewhere',
+            scheduled_date=timezone.now() + timedelta(days=1), status='confirmed',
+        )
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('cancel_booking', {})
+        self.assertEqual(result['type'], 'action_error')
+        self.assertEqual(result['data']['reason'], 'no_active_booking')
+
+    def test_track_booking_returns_live_location(self):
+        booking = self.make_booking(
+            status='in_progress', live_latitude=12.0, live_longitude=8.5,
+            live_location_updated_at=timezone.now(),
+        )
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('track_booking', {})
+        self.assertEqual(result['type'], 'track_booking')
+        self.assertEqual(result['data']['id'], booking.id)
+        self.assertAlmostEqual(result['data']['live_latitude'], 12.0)
+        self.assertAlmostEqual(result['data']['live_longitude'], 8.5)
+
+    def test_track_booking_no_active_job(self):
+        self.make_booking(status='confirmed')  # accepted but not started yet
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('track_booking', {})
+        self.assertEqual(result['type'], 'action_error')
+        self.assertEqual(result['data']['reason'], 'no_active_job')
+
+    def test_check_booking_status_returns_real_status(self):
+        booking = self.make_booking(status='completed')
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('check_booking_status', {})
+        self.assertEqual(result['type'], 'booking_status')
+        self.assertEqual(result['data']['id'], booking.id)
+        self.assertEqual(result['data']['status'], 'completed')
+
+    def test_open_chat_with_artisan_returns_contact_action(self):
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('open_chat_with_artisan', {'artisan_id': self.artisan_profile.id})
+        self.assertEqual(result['type'], 'contact_artisan')
+        self.assertEqual(result['data']['method'], 'chat')
+
+    def test_call_artisan_includes_phone_number(self):
+        self.artisan_user.phone_number = '08012345678'
+        self.artisan_user.save(update_fields=['phone_number'])
+        view = self._view_as(self.client_user)
+        result = view._execute_tool('call_artisan', {'artisan_id': self.artisan_profile.id})
+        self.assertEqual(result['type'], 'contact_artisan')
+        self.assertEqual(result['data']['method'], 'call')
+        self.assertEqual(result['data']['phone_number'], '08012345678')
