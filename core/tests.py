@@ -821,6 +821,48 @@ class AICardCompletenessTests(APITestCase):
         self.assertIn('distance_km', prompt)
         self.assertIn('DISTANCE RULE', prompt)
 
+    def test_nearest_first_rule_is_present_in_the_system_prompt(self):
+        prompt = AIChatView.SYSTEM_PROMPT
+        self.assertIn('NEAREST-FIRST RULE', prompt)
+
+    def test_total_reviews_and_availability_fields_are_present(self):
+        from unittest.mock import patch
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            results = self._mock_and_call(mock_openai_cls, {'text': 'show me electricians'})
+
+        for r in results:
+            self.assertIn('total_reviews', r)
+            self.assertIn('is_available', r)
+            self.assertTrue(r['is_available'])  # query already filters to available artisans
+
+    def test_results_are_sorted_nearest_first(self):
+        """Feature 2 (GPS Nearest Search): 'A jera su daga mafi kusa zuwa
+        mafi nisa' — results must list nearest to farthest, not DB/insertion
+        order."""
+        from unittest.mock import patch
+
+        # A third artisan much closer to the client than Bala (~5.5km) or
+        # Tanko (no GPS, sorts last) — created after both, so DB/insertion
+        # order alone would put it last if sorting weren't actually applied.
+        closest_user = User.objects.create_user(
+            email='closest_artisan@test.com', password='pass12345',
+            first_name='Aisha', last_name='Bello', role='artisan',
+            is_verified=True, latitude=12.051, longitude=8.521,
+        )
+        ArtisanProfile.objects.create(user=closest_user, category=self.category)
+
+        with patch('core.views.openai.OpenAI') as mock_openai_cls:
+            results = self._mock_and_call(mock_openai_cls, {
+                'text': 'show me electricians',
+                'latitude': 12.05, 'longitude': 8.52,
+            })
+
+        names_in_order = [r['name'] for r in results]
+        # Aisha (nearest) before Bala (~5.5km) before Tanko (no GPS, last).
+        self.assertLess(names_in_order.index('Aisha Bello'), names_in_order.index('Bala Sani'))
+        self.assertLess(names_in_order.index('Bala Sani'), names_in_order.index('Tanko Yusuf'))
+
 
 def _fake_completion(text):
     """A minimal stand-in for openai's ChatCompletion response shape, for

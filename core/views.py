@@ -955,6 +955,11 @@ class AIChatView(APIView):
         "(it's null when the user's location isn't available) — use that "
         "exact figure, never estimate or say someone is \"nearby\"/\"close by\" "
         "without it.\n\n"
+        "NEAREST-FIRST RULE: search_artisans/filter_by_category results are "
+        "already sorted nearest-first when distance is known. When the user "
+        "asked for the nearest/closest professional, present them in that "
+        "same order in your reply — don't reorder or pick a different one as "
+        "\"the nearest\" than the first result with a distance value.\n\n"
         "Be warm, helpful, and concise. Keep responses conversational and friendly."
     )
 
@@ -1221,13 +1226,24 @@ class AIChatView(APIView):
                 artisan_profile.category.material_icon if artisan_profile.category else ""
             ),
             "rating": float(artisan_profile.rating),
+            "total_reviews": artisan_profile.total_reviews,
             "is_verified": u.is_verified,
+            "is_available": artisan_profile.is_available,
             "profile_picture": u.profile_picture.url if u.profile_picture else None,
             # Blank unless the artisan set it — powers a male/female fallback
             # avatar in place of initials; blank falls back to initials.
             "gender": u.gender,
             "distance_km": distance_km,
         }
+
+    @staticmethod
+    def _sort_by_distance(results):
+        """Nearest-first (feature 2: 'A jera su daga mafi kusa zuwa mafi
+        nisa' — list from nearest to farthest) — artisans without a known
+        distance (no GPS on either side) sort to the end rather than
+        first, since we can't claim they're close."""
+        results.sort(key=lambda r: r['distance_km'] if r['distance_km'] is not None else float('inf'))
+        return results
 
     @staticmethod
     def _booking_summary(booking):
@@ -1349,7 +1365,7 @@ class AIChatView(APIView):
                     artisans = ArtisanProfile.objects.select_related("user", "category").filter(
                         Q(category__name__iexact=mapped) | Q(category__name_ha__iexact=mapped)
                     ).filter(is_available=True).distinct()[:5]
-            results = [self._artisan_summary(a, client_lat, client_lon) for a in artisans]
+            results = self._sort_by_distance([self._artisan_summary(a, client_lat, client_lon) for a in artisans])
             return {"type": "search_results", "data": {"query": query, "results": results}}
 
         elif tool_name == "filter_by_category":
@@ -1374,7 +1390,7 @@ class AIChatView(APIView):
             artisans = ArtisanProfile.objects.select_related("user", "category").filter(
                 category=cat, is_available=True
             )[:10]
-            results = [self._artisan_summary(a, client_lat, client_lon) for a in artisans]
+            results = self._sort_by_distance([self._artisan_summary(a, client_lat, client_lon) for a in artisans])
             return {
                 "type": "category_filter",
                 "data": {"category": cat.name, "category_id": cat.id, "results": results},
