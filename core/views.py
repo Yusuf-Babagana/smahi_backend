@@ -601,7 +601,7 @@ class BookingViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         try:
             with transaction.atomic():
-                serializer.save(client=self.request.user)
+                booking = serializer.save(client=self.request.user)
         except IntegrityError:
             # The unique_active_booking_per_artisan_slot constraint caught a
             # race that BookingCreateSerializer.validate()'s pre-transaction
@@ -610,6 +610,18 @@ class BookingViewSet(viewsets.ModelViewSet):
             raise drf_serializers.ValidationError(
                 {'scheduled_date': "This artisan already has a booking at that time. Please choose a different slot."}
             )
+        # After the transaction commits — the notification infrastructure
+        # (Notification.EVENT_CHOICES, emit()'s in-app + push channels) had
+        # existed for a while with nothing actually calling it for any
+        # booking lifecycle event, so an artisan never learned about a new
+        # request except by opening the app and checking Jobs themselves.
+        emit(
+            'booking_created',
+            recipient=booking.artisan,
+            title='New booking request',
+            body=f"{booking.client.first_name} wants to book you: {booking.service_description[:100]}",
+            related_object=booking,
+        )
 
     def perform_update(self, serializer):
         # total_bookings counts finished jobs ("Jobs done" in the app), so it
@@ -636,6 +648,41 @@ class BookingViewSet(viewsets.ModelViewSet):
                 booking.live_longitude = None
                 booking.live_location_updated_at = None
                 booking.save(update_fields=['live_latitude', 'live_longitude', 'live_location_updated_at'])
+
+        # Notifications fire after the transaction commits — a slow/failed
+        # push send should never risk rolling back a real status change.
+        # Same gap as perform_create: these event types already existed on
+        # Notification but nothing emitted them for an actual status change.
+        if booking.status != old_status:
+            if booking.status == 'confirmed':
+                emit(
+                    'booking_confirmed', recipient=booking.client, title='Booking confirmed',
+                    body=f'{booking.artisan.first_name} accepted your booking request.',
+                    related_object=booking,
+                )
+            elif booking.status == 'in_progress':
+                emit(
+                    'booking_started', recipient=booking.client, title='Your artisan is on the way',
+                    body=f'{booking.artisan.first_name} has started heading to your job. Track their live location in the app.',
+                    related_object=booking,
+                )
+            elif booking.status == 'completed':
+                emit(
+                    'booking_completed', recipient=booking.client, title='Job completed',
+                    body=f'{booking.artisan.first_name} marked your job as done. Leave a review!',
+                    related_object=booking,
+                )
+            elif booking.status == 'cancelled':
+                # Notify whichever party did NOT make the cancellation —
+                # the actor already knows, since they just did it.
+                actor = self.request.user
+                recipient = booking.artisan if actor.pk == booking.client_id else booking.client
+                reason_suffix = f' Reason: {booking.cancellation_reason}' if booking.cancellation_reason else ''
+                emit(
+                    'booking_cancelled', recipient=recipient, title='Booking cancelled',
+                    body=f'{actor.first_name} cancelled this booking.{reason_suffix}',
+                    related_object=booking,
+                )
 
     @action(detail=True, methods=['post'])
     def update_location(self, request, pk=None):

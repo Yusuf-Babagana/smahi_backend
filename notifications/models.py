@@ -16,6 +16,7 @@ class Notification(models.Model):
         ('booking_confirmed', 'Booking Confirmed'),
         ('booking_started', 'Booking Started'),
         ('booking_completed', 'Booking Completed'),
+        ('booking_cancelled', 'Booking Cancelled'),
         ('service_fee_requested', 'Service Fee Requested'),
         ('service_fee_paid', 'Service Fee Paid'),
         ('review_submitted', 'Review Submitted'),

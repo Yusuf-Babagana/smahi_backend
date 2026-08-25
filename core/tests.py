@@ -1059,3 +1059,70 @@ class AIBookingActionsTests(BookingTestBase):
         self.assertEqual(result['type'], 'contact_artisan')
         self.assertEqual(result['data']['method'], 'call')
         self.assertEqual(result['data']['phone_number'], '08012345678')
+
+
+class BookingNotificationsTests(BookingTestBase):
+    """Notification.EVENT_CHOICES defined booking_created/confirmed/started/
+    completed from the start, and the emit() dispatcher (in-app + push) was
+    fully built — but nothing actually called it for any booking lifecycle
+    event, so neither party was ever notified of a new request, an accept,
+    a job starting, completion, or a cancellation. Covers that emit() now
+    fires with the right recipient/event_type at each real transition."""
+
+    def patch_status(self, booking, user, new_status, **extra):
+        self.client.force_authenticate(user)
+        return self.client.patch(
+            f'{BOOKINGS_URL}{booking.id}/', {'status': new_status, **extra}
+        )
+
+    def test_creating_a_booking_notifies_the_artisan(self):
+        from notifications.models import Notification
+        self.client.force_authenticate(self.client_user)
+        response = self.client.post(BOOKINGS_URL, self.mobile_payload())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        notif = Notification.objects.get(event_type='booking_created')
+        self.assertEqual(notif.recipient, self.artisan_user)
+
+    def test_accepting_notifies_the_client(self):
+        from notifications.models import Notification
+        booking = self.make_booking()
+        self.patch_status(booking, self.artisan_user, 'confirmed')
+        notif = Notification.objects.get(event_type='booking_confirmed')
+        self.assertEqual(notif.recipient, self.client_user)
+
+    def test_starting_the_job_notifies_the_client(self):
+        from notifications.models import Notification
+        booking = self.make_booking(status='confirmed')
+        self.patch_status(booking, self.artisan_user, 'in_progress')
+        notif = Notification.objects.get(event_type='booking_started')
+        self.assertEqual(notif.recipient, self.client_user)
+
+    def test_completing_notifies_the_client(self):
+        from notifications.models import Notification
+        booking = self.make_booking(status='in_progress')
+        self.patch_status(booking, self.artisan_user, 'completed')
+        notif = Notification.objects.get(event_type='booking_completed')
+        self.assertEqual(notif.recipient, self.client_user)
+
+    def test_client_cancelling_notifies_the_artisan(self):
+        from notifications.models import Notification
+        booking = self.make_booking(status='confirmed', scheduled_date=timezone.now() + timedelta(days=5))
+        self.patch_status(booking, self.client_user, 'cancelled')
+        notif = Notification.objects.get(event_type='booking_cancelled')
+        self.assertEqual(notif.recipient, self.artisan_user)
+        self.assertIn(self.client_user.first_name, notif.body)
+
+    def test_artisan_declining_notifies_the_client(self):
+        from notifications.models import Notification
+        booking = self.make_booking(status='pending')
+        self.patch_status(booking, self.artisan_user, 'cancelled', cancellation_reason='Fully booked')
+        notif = Notification.objects.get(event_type='booking_cancelled')
+        self.assertEqual(notif.recipient, self.client_user)
+        self.assertIn('Fully booked', notif.body)
+
+    def test_re_sending_the_same_status_does_not_double_notify(self):
+        from notifications.models import Notification
+        booking = self.make_booking(status='in_progress')
+        self.patch_status(booking, self.artisan_user, 'completed')
+        self.patch_status(booking, self.artisan_user, 'completed')  # no-op re-send
+        self.assertEqual(Notification.objects.filter(event_type='booking_completed').count(), 1)
