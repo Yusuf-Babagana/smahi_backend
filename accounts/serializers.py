@@ -62,6 +62,27 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'longitude': {'required': False, 'min_value': -180, 'max_value': 180},
         }
 
+    def to_internal_value(self, data):
+        # A raw GPS fix routinely arrives with far more precision than the
+        # 6 decimal places latitude/longitude allow (DecimalField(max_digits=9,
+        # decimal_places=6)) — e.g. a real expo-location reading like
+        # 11.945524382145678 — and DRF's DecimalField rejects that with
+        # "Ensure that there are no more than 6 decimal places" BEFORE any
+        # validate_latitude()-style hook would even run (that check happens
+        # inside to_internal_value itself). Round defensively here rather
+        # than trusting every caller to pre-round client-side the way
+        # saveCoordinates() (the profile-update path) already does —
+        # this is what actually broke registration in production.
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        for field_name in ('latitude', 'longitude'):
+            value = data.get(field_name)
+            if value not in (None, ''):
+                try:
+                    data[field_name] = round(float(value), 6)
+                except (TypeError, ValueError):
+                    pass  # leave as-is — the normal field validation will report a clear error
+        return super().to_internal_value(data)
+
     def validate_custom_category_icon(self, value):
         if value and value not in DEFAULT_OTHER_ICONS:
             raise serializers.ValidationError("Not one of the offered default icons.")
@@ -157,3 +178,19 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             'latitude': {'min_value': -90, 'max_value': 90},
             'longitude': {'min_value': -180, 'max_value': 180},
         }
+
+    def to_internal_value(self, data):
+        # Defense-in-depth alongside UserRegistrationSerializer's own copy of
+        # this fix — saveCoordinates() (the mobile app's caller for this
+        # endpoint) already rounds to 6dp client-side, so this path isn't
+        # known to be broken today, but there's no reason a future caller
+        # couldn't hit the exact same DecimalField precision error.
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        for field_name in ('latitude', 'longitude'):
+            value = data.get(field_name)
+            if value not in (None, ''):
+                try:
+                    data[field_name] = round(float(value), 6)
+                except (TypeError, ValueError):
+                    pass
+        return super().to_internal_value(data)

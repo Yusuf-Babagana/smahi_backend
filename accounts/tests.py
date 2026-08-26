@@ -295,3 +295,40 @@ class RegistrationCapturesGpsLocationTests(APITestCase):
         response = self.register(latitude='999', longitude='8.482703')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(User.objects.filter(email='gpsuser@test.com').exists())
+
+    def test_a_raw_high_precision_gps_reading_is_rounded_not_rejected(self):
+        # Regression test for the actual production bug this was reported
+        # against: a real expo-location fix routinely has far more than 6
+        # decimal places (DecimalField(max_digits=9, decimal_places=6)) —
+        # register.tsx sends the raw reading as-is, unlike saveCoordinates()
+        # (the profile-update path) which already rounds client-side. This
+        # used to fail with {"latitude": ["Ensure that there are no more
+        # than 6 decimal places."]} instead of registering the account at all.
+        response = self.register(latitude='11.945524382145678', longitude='8.482703912345678')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        user = User.objects.get(email='gpsuser@test.com')
+        self.assertAlmostEqual(float(user.latitude), 11.945524, places=5)
+        self.assertAlmostEqual(float(user.longitude), 8.482704, places=5)
+
+class ProfileUpdateRoundsHighPrecisionCoordinatesTests(APITestCase):
+    """Defense-in-depth companion to RegistrationCapturesGpsLocationTests —
+    saveCoordinates() (the mobile app's only caller of this endpoint) already
+    rounds to 6dp client-side, so this path isn't known to be broken today,
+    but UserUpdateSerializer shares the exact same DecimalField precision
+    limit, so it should fail the same way for the same reason if a future
+    caller ever sends an unrounded value."""
+
+    def test_high_precision_coordinates_are_rounded_not_rejected(self):
+        user = User.objects.create_user(
+            email='profilegps@test.com', password='pass12345',
+            first_name='Profile', last_name='Gps', role='client',
+        )
+        self.client.force_authenticate(user)
+        response = self.client.patch('/api/auth/profile/', {
+            'latitude': '11.945524382145678',
+            'longitude': '8.482703912345678',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        user.refresh_from_db()
+        self.assertAlmostEqual(float(user.latitude), 11.945524, places=5)
+        self.assertAlmostEqual(float(user.longitude), 8.482704, places=5)
