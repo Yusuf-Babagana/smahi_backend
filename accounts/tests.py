@@ -251,3 +251,47 @@ class GenderFieldTests(APITestCase):
         self.client.force_authenticate(user=user)
         response = self.client.get('/api/auth/profile/')
         self.assertEqual(response.data.get('gender'), 'male')
+
+
+class RegistrationCapturesGpsLocationTests(APITestCase):
+    """Feature 8 (General Location Selection): an artisan's real GPS
+    coordinate must be saved at registration time so they're immediately
+    findable by every distance-based feature (nearest-search, the map,
+    live tracking) — not only once they first open their dashboard and
+    grant location permission there. Optional: registration must still
+    work fine (and never store garbage coordinates) when a device has no
+    GPS fix yet or the user denied permission."""
+
+    def register(self, **overrides):
+        payload = {
+            'email': 'gpsuser@test.com',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'first_name': 'Gps',
+            'last_name': 'User',
+            'role': 'artisan',
+        }
+        payload.update(overrides)
+        return self.client.post('/api/auth/register/', payload)
+
+    def test_latitude_and_longitude_are_saved_when_provided(self):
+        response = self.register(latitude='11.945524', longitude='8.482703')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        user = User.objects.get(email='gpsuser@test.com')
+        self.assertAlmostEqual(float(user.latitude), 11.945524, places=5)
+        self.assertAlmostEqual(float(user.longitude), 8.482703, places=5)
+
+    def test_registration_still_works_without_a_gps_fix(self):
+        # No location permission granted / no fix yet — must not block
+        # account creation, and must leave the fields genuinely blank
+        # rather than some placeholder like 0,0.
+        response = self.register()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        user = User.objects.get(email='gpsuser@test.com')
+        self.assertIsNone(user.latitude)
+        self.assertIsNone(user.longitude)
+
+    def test_out_of_range_coordinates_are_rejected(self):
+        response = self.register(latitude='999', longitude='8.482703')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='gpsuser@test.com').exists())

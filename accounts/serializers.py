@@ -44,8 +44,23 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         fields = [
             'email', 'password', 'password_confirm', 'first_name', 'last_name',
             'role', 'phone_number', 'address', 'gender', 'country', 'state', 'lga',
+            # Optional (the model already has null=True, blank=True on both) —
+            # the device's GPS at registration time, so an artisan is
+            # immediately findable by every distance-based feature (nearest-
+            # search, the map, live tracking) instead of only becoming
+            # findable whenever they first open their dashboard and grant
+            # location permission there (PATCH auth/profile/ via
+            # UserUpdateSerializer, called from
+            # app/artisan/(tabs)/dashboard.tsx) — that path stays as the
+            # ongoing way these get refreshed; this just closes the gap for
+            # the time between registering and that first dashboard visit.
+            'latitude', 'longitude',
             'category_id', 'custom_category_name', 'custom_category_icon'
         ]
+        extra_kwargs = {
+            'latitude': {'required': False, 'min_value': -90, 'max_value': 90},
+            'longitude': {'required': False, 'min_value': -180, 'max_value': 180},
+        }
 
     def validate_custom_category_icon(self, value):
         if value and value not in DEFAULT_OTHER_ICONS:
