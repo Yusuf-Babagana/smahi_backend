@@ -418,3 +418,133 @@ class FinalSignOffTests(APITestCase):
         ))[0]
         self.assertEqual(after['text'], 'Yaya kake yau?')
         self.assertTrue(after['is_translated'])
+
+
+class ReadUnreadStatusTests(APITestCase):
+    """The actual bug being fixed here: nothing on the frontend ever called
+    mark_as_read, so a message's is_read never left False in the database —
+    the unread badge could never clear, and a "read" message could reappear
+    as unread later because it was never really marked read at all. These
+    tests hit the real endpoints and re-query the DB fresh (never trusting
+    an immediate response alone) to prove the status is actually persisted
+    server-side, not just held in some screen's local state."""
+
+    def setUp(self):
+        # These tests only care about is_read/unread_count, never translated
+        # content — swap in the fake provider (same as every other class in
+        # this file) so message reads don't make a real, slow OpenAI call.
+        self._original_provider = translation_service.provider
+        translation_service.provider = FakeTranslationProvider()
+
+        self.client_user = User.objects.create_user(
+            email='readstatus_client@test.com', password='pass12345',
+            first_name='Read', last_name='Client', role='client',
+        )
+        self.artisan_user = User.objects.create_user(
+            email='readstatus_artisan@test.com', password='pass12345',
+            first_name='Read', last_name='Artisan', role='artisan',
+        )
+        self.conversation = Conversation.objects.create()
+        self.conversation.participants.add(self.client_user, self.artisan_user)
+
+    def tearDown(self):
+        translation_service.provider = self._original_provider
+
+    def send_as(self, user, text):
+        self.client.force_authenticate(user=user)
+        return self.client.post('/api/chat/messages/', {
+            'conversation_id': self.conversation.id,
+            'text': text,
+        })
+
+    def mark_read_as(self, user):
+        self.client.force_authenticate(user=user)
+        return self.client.post('/api/chat/messages/mark_as_read/', {
+            'conversation_id': self.conversation.id,
+        })
+
+    def unread_count_for(self, user):
+        self.client.force_authenticate(user=user)
+        response = self.client.get('/api/chat/conversations/')
+        results = response.data if isinstance(response.data, list) else response.data['results']
+        conv = next(c for c in results if c['id'] == self.conversation.id)
+        return conv['unread_count']
+
+    def test_new_message_defaults_to_unread(self):
+        send = self.send_as(self.client_user, "Hello")
+        message = Message.objects.get(id=send.data['id'])
+        self.assertFalse(message.is_read)
+
+    def test_unread_count_reflects_the_other_partys_unread_messages(self):
+        self.send_as(self.client_user, "Are you available?")
+        self.send_as(self.client_user, "Please respond")
+        self.assertEqual(self.unread_count_for(self.artisan_user), 2)
+        # The sender's own messages never count as their own unread.
+        self.assertEqual(self.unread_count_for(self.client_user), 0)
+
+    def test_mark_as_read_actually_persists_in_the_database(self):
+        send = self.send_as(self.client_user, "Are you available?")
+        message_id = send.data['id']
+
+        response = self.mark_read_as(self.artisan_user)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Re-fetch fresh from the DB — not trusting the response alone —
+        # to prove this is a real, persisted column value.
+        message = Message.objects.get(id=message_id)
+        self.assertTrue(message.is_read)
+
+    def test_mark_as_read_clears_the_badge_and_it_stays_cleared(self):
+        self.send_as(self.client_user, "Are you available?")
+        self.assertEqual(self.unread_count_for(self.artisan_user), 1)
+
+        self.mark_read_as(self.artisan_user)
+        self.assertEqual(self.unread_count_for(self.artisan_user), 0)
+
+        # The critical regression this fixes: leaving and coming back
+        # (a fresh GET, simulating reopening the app) must NOT show the
+        # already-read message as unread again.
+        self.assertEqual(self.unread_count_for(self.artisan_user), 0)
+
+    def test_mark_as_read_never_marks_the_readers_own_sent_messages(self):
+        self.send_as(self.client_user, "Client's message")
+        self.send_as(self.artisan_user, "Artisan's own message")
+
+        self.mark_read_as(self.artisan_user)
+
+        client_msg = Message.objects.get(text="Client's message")
+        artisan_msg = Message.objects.get(text="Artisan's own message")
+        self.assertTrue(client_msg.is_read, "the other party's message must be marked read")
+        self.assertFalse(artisan_msg.is_read, "a user's own sent message is never 'unread' to mark")
+
+    def test_mark_as_read_does_not_leak_into_other_conversations(self):
+        other_artisan = User.objects.create_user(
+            email='readstatus_other_artisan@test.com', password='pass12345',
+            first_name='Other', last_name='Artisan', role='artisan',
+        )
+        other_conversation = Conversation.objects.create()
+        other_conversation.participants.add(self.client_user, other_artisan)
+        self.client.force_authenticate(self.client_user)
+        other_send = self.client.post('/api/chat/messages/', {
+            'conversation_id': other_conversation.id,
+            'text': "Message in a different conversation",
+        })
+
+        self.send_as(self.client_user, "Message in the conversation being marked")
+        self.mark_read_as(self.artisan_user)
+
+        other_message = Message.objects.get(id=other_send.data['id'])
+        self.assertFalse(other_message.is_read, "marking one conversation read must never touch another")
+
+    def test_non_participant_cannot_mark_a_conversation_read(self):
+        outsider = User.objects.create_user(
+            email='readstatus_outsider@test.com', password='pass12345',
+            first_name='Out', last_name='Sider', role='client',
+        )
+        send = self.send_as(self.client_user, "Are you available?")
+        message_id = send.data['id']
+
+        self.mark_read_as(outsider)  # not a participant — must be a no-op
+
+        message = Message.objects.get(id=message_id)
+        self.assertFalse(message.is_read, "a non-participant marking as read must not affect real participants' messages")
