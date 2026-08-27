@@ -25,6 +25,8 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.parsers import MultiPartParser, FormParser
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_control
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from django.db.models import Q, F, Count, Sum, Exists, OuterRef
@@ -72,6 +74,11 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
         return super().list(request, *args, **kwargs)
 
+    # Same reasoning as locations/views.py's cache_control decorators:
+    # the full category list changes rarely (only when a registrant types
+    # a brand-new profession — see UserRegistrationSerializer.create), so
+    # letting clients cache it for a day cuts real repeat-request load.
+    @method_decorator(cache_control(max_age=86400, public=True))
     @action(detail=False, methods=['get'])
     def all(self, request):
         categories = self.get_queryset()

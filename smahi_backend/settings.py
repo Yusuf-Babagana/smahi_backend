@@ -30,6 +30,13 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    # Compresses every response body (JSON API responses especially —
+    # artisan lists, category/location lookups) before it goes out over the
+    # network. Placed this high so it's the last thing to touch the
+    # response (Django processes response-phase middleware bottom-to-top).
+    # On a mobile connection this cuts real transfer time on top of
+    # whatever server-side processing time the request already took.
+    'django.middleware.gzip.GZipMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

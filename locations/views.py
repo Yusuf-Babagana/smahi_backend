@@ -1,15 +1,26 @@
 from rest_framework import generics
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny 
+from rest_framework.permissions import AllowAny
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_control
 from .models import Country, State, LGA
 from .serializers import (
-    CountrySerializer, CountryLiteSerializer, 
-    StateSerializer, StateLiteSerializer, 
+    CountrySerializer, CountryLiteSerializer,
+    StateSerializer, StateLiteSerializer,
     LGASerializer
 )
 
+# This data (every country/state/LGA on Earth) never changes on any
+# timescale a user would notice — letting clients (and any intermediate
+# cache) hold onto it for a week cuts a real chunk of repeat requests
+# against a server that pays a real network+TLS cost per request. The app
+# also caches these locally now (src/api/client.ts's getCached), so this
+# header mainly protects other/future clients and any HTTP-level cache.
+_cache_week = method_decorator(cache_control(max_age=604800, public=True), name='list')
+
 # --- COUNTRIES ---
+@_cache_week
 class CountryListView(generics.ListAPIView):
     queryset = Country.objects.all()
     serializer_class = CountryLiteSerializer # ✅ Use Lite Serializer
@@ -22,20 +33,21 @@ class CountryDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
 # --- STATES ---
+@_cache_week
 class StateListView(generics.ListAPIView):
     serializer_class = StateLiteSerializer # ✅ Use Lite Serializer
     permission_classes = [AllowAny]
     pagination_class = None          # <--- Fix 1: Fetch ALL states (e.g. all 36+1 for Nigeria)
-    
+
     def get_queryset(self):
         queryset = State.objects.all().select_related('country')
-        
+
         # Support both Path Parameter and Query Parameter
         country_id = self.kwargs.get('country_id') or self.request.query_params.get('country_id')
-        
+
         if country_id:
             queryset = queryset.filter(country_id=country_id)
-            
+
         return queryset
 
 class StateDetailView(generics.RetrieveAPIView):
@@ -44,20 +56,21 @@ class StateDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
 # --- LGAs ---
+@_cache_week
 class LGAListView(generics.ListAPIView):
     serializer_class = LGASerializer
     permission_classes = [AllowAny]
     pagination_class = None          # <--- Fix 1: Fetch ALL LGAs (e.g. all 20+ for a state)
-    
+
     def get_queryset(self):
         queryset = LGA.objects.all().select_related('state', 'state__country')
-        
+
         # Support both Path Parameter and Query Parameter
         state_id = self.kwargs.get('state_id') or self.request.query_params.get('state_id')
-        
+
         if state_id:
             queryset = queryset.filter(state_id=state_id)
-            
+
         return queryset
 
 # --- SEARCH ---
