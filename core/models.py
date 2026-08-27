@@ -252,6 +252,20 @@ class Booking(models.Model):
     live_longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     live_location_updated_at = models.DateTimeField(null=True, blank=True)
 
+    # Client-generated idempotency key — same purpose and pattern as
+    # accounts.models.User.client_request_id (see that field's docstring):
+    # offline-first booking (app/booking/[artisanId].tsx) can retry the same
+    # submission after a network drop that actually reached the server, and
+    # this is what lets that retry be recognized as "already done" instead
+    # of creating a second booking for one real request. Deliberately
+    # scoped unique-per-client (see Meta.constraints below), not globally
+    # unique — unlike registration's client_request_id, a Booking already
+    # has a natural owner to scope by, and scoping this way means two
+    # different clients' devices independently generating the same token
+    # (astronomically unlikely, but not worth leaving as a hard crash) can
+    # never collide with each other, only ever replay their own request.
+    client_request_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -269,6 +283,15 @@ class Booking(models.Model):
                 fields=['artisan', 'scheduled_date'],
                 condition=models.Q(status__in=['pending', 'confirmed', 'in_progress']),
                 name='unique_active_booking_per_artisan_slot',
+            ),
+            # Scoped per-client (not global) — see client_request_id's own
+            # docstring above for why. NULL client_request_id rows (every
+            # booking created before this feature existed, and any caller
+            # that doesn't send one) are exempt from this entirely, the same
+            # way SQL never treats NULL as equal to NULL.
+            models.UniqueConstraint(
+                fields=['client', 'client_request_id'],
+                name='unique_client_request_id_per_client',
             ),
         ]
 

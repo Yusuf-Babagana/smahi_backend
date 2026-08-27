@@ -82,6 +82,19 @@ class User(AbstractUser):
     # "unset" (falls back to detecting the sender's language instead of
     # trusting it) rather than as an implicit choice of English.
     preferred_language = models.CharField(max_length=10, choices=SUPPORTED_LANGUAGES, blank=True, default='')
+    # Client-generated idempotency key (a UUID minted once on-device, per
+    # registration attempt) — offline-first registration (register.tsx,
+    # agent/register.tsx) can end up retrying the exact same submission
+    # after a network drop that actually reached the server, or after the
+    # queued draft is synced later. Without this, a retry either fails on
+    # the unique email constraint (confusing the user into thinking
+    # registration failed when it already succeeded) or, worse, could
+    # create a second account for one real registration. Null+unique so
+    # every pre-existing row (and any caller that doesn't send one) is
+    # unaffected, but a real value can only ever be claimed once — see
+    # UserRegistrationSerializer/register_view/AgentRegisterArtisanView for
+    # the actual replay check.
+    client_request_id = models.CharField(max_length=64, unique=True, null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

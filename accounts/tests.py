@@ -72,6 +72,59 @@ class PublicRegistrationRoleTests(APITestCase):
         self.assertEqual(User.objects.get(email='defaultrole@test.com').role, 'client')
 
 
+class PublicRegistrationIdempotencyTests(APITestCase):
+    """Offline-first registration (app/register.tsx) can retry the exact
+    same submission after a network drop that actually reached the server
+    — the device queued it as still-pending (no response ever arrived) and
+    syncs it again later. The retry must be recognized as the same
+    submission and replayed, not rejected on the unique email constraint
+    or (worse) allowed to create a second account."""
+
+    def register(self, **overrides):
+        payload = {
+            'email': 'offline_user@test.com',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'first_name': 'Offline',
+            'last_name': 'User',
+            'role': 'client',
+            'client_request_id': 'device-xyz-0001',
+        }
+        payload.update(overrides)
+        return self.client.post(REGISTER_URL, payload)
+
+    def test_retrying_the_same_client_request_id_replays_success(self):
+        first = self.register()
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertNotIn('already_registered', first.data)
+
+        second = self.register()
+        self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
+        self.assertTrue(second.data.get('already_registered'))
+        self.assertEqual(second.data['user']['id'], first.data['user']['id'])
+        self.assertIn('tokens', second.data, "replay must still hand back usable tokens")
+
+        self.assertEqual(
+            User.objects.filter(email='offline_user@test.com').count(), 1,
+            "retrying the same client_request_id must not create a second account",
+        )
+
+    def test_missing_client_request_id_behaves_exactly_as_before(self):
+        # Every caller before this feature existed sends no such field at
+        # all — must not become required, and must not affect normal
+        # duplicate-email rejection.
+        payload = {
+            'email': 'nokey_user@test.com', 'password': 'password123',
+            'password_confirm': 'password123', 'first_name': 'No', 'last_name': 'Key',
+            'role': 'client',
+        }
+        first = self.client.post(REGISTER_URL, payload)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+
+        second = self.client.post(REGISTER_URL, payload)
+        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
+
+
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class ProfilePictureUploadTests(APITestCase):
     """The mobile app's only path for setting a profile photo is

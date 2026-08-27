@@ -312,10 +312,35 @@ class AgentRegisterArtisanView(APIView):
         if not request.user.state_id:
             return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Offline-first field registration (app/agent/register.tsx) can
+        # retry this exact submission after a network drop that actually
+        # reached the server — the device queues it as still-pending and
+        # syncs again later. Replay the same success instead of failing on
+        # the unique email constraint or creating a second artisan account
+        # for one real registration. Note the generated_password can't be
+        # replayed (it was never stored raw) — the agent either already saw
+        # it on the original attempt, or needs the password-reset flow.
+        client_request_id = (request.data.get('client_request_id') or '').strip() or None
+        if client_request_id:
+            existing = User.objects.filter(client_request_id=client_request_id).first()
+            if existing:
+                return Response({
+                    'user': UserSerializer(existing).data,
+                    'generated_password': None,
+                    'message': (
+                        'This artisan was already registered from an earlier '
+                        'attempt with the same submission — no new account was '
+                        'created. If they never received their one-time '
+                        'password, use the password-reset flow to issue a new one.'
+                    ),
+                    'already_registered': True,
+                }, status=status.HTTP_200_OK)
+
         generated_password = secrets.token_urlsafe(9)
 
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         data['role'] = 'artisan'
+        data['client_request_id'] = client_request_id
         data['password'] = generated_password
         data['password_confirm'] = generated_password
         # Force the new artisan into the AGENT'S OWN location, same as
@@ -604,6 +629,27 @@ class BookingViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return [IsClient()]
         return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        # Offline-first booking (app/booking/[artisanId].tsx) can retry this
+        # exact submission after a network drop that actually reached the
+        # server — the device queued it as still-pending (no response ever
+        # arrived) and syncs it again later. Replay the same booking instead
+        # of creating a second one for one real request.
+        client_request_id = (request.data.get('client_request_id') or '').strip() or None
+        if client_request_id:
+            # Scoped to this requester's own bookings too, not just the id —
+            # client_request_id is an unguessable per-device token so this
+            # is defense-in-depth, not a realistic attack path, but it costs
+            # nothing to make replay strictly "your own retried request",
+            # never someone else's booking.
+            existing = Booking.objects.filter(client_request_id=client_request_id, client=request.user).first()
+            if existing:
+                return Response(
+                    BookingSerializer(existing, context=self.get_serializer_context()).data,
+                    status=status.HTTP_200_OK,
+                )
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         try:

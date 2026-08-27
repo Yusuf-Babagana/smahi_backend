@@ -242,9 +242,21 @@ class BookingCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = [
+            # 'id' was missing here entirely — meaning POST /api/bookings/'s
+            # response never actually included the new booking's id. That
+            # silently broke app/booking/[artisanId].tsx's own photo-upload
+            # step (`if (photos.length > 0 && booking?.id)` was always
+            # false), so any photos attached at booking time never reached
+            # the artisan, with no error shown — `booking?.id` was simply
+            # always undefined. DRF treats a model's pk as read-only
+            # automatically, so this only ever adds to the response.
+            'id',
             'artisan', 'service_description', 'description', 'address', 'location',
             'country', 'state', 'lga',
-            'scheduled_date', 'date', 'time', 'duration_hours', 'total_cost'
+            'scheduled_date', 'date', 'time', 'duration_hours', 'total_cost',
+            # Offline-first booking's idempotency key — see the field's own
+            # docstring on the Booking model for why this exists.
+            'client_request_id',
         ]
         extra_kwargs = {
             'service_description': {'required': False},
@@ -253,7 +265,15 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             'country': {'required': False},
             'state': {'required': False},
             'lga': {'required': False},
+            'client_request_id': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
+
+    def validate_client_request_id(self, value):
+        # Blank/None must stay None, not '' — same reasoning as
+        # UserRegistrationSerializer.validate_client_request_id: the unique
+        # constraint would otherwise reject the second-ever caller that
+        # omits this field.
+        return (value or '').strip() or None
 
     def validate_artisan(self, value):
         if value.role != 'artisan':

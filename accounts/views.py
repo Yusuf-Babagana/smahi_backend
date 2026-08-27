@@ -21,6 +21,30 @@ logger = logging.getLogger(__name__)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_view(request):
+    # Offline-first registration (app/register.tsx) can retry this exact
+    # submission after a network drop that actually reached the server —
+    # e.g. the request succeeded but the response never made it back, so
+    # the device queued it as still-pending and syncs it again later.
+    # Replay the same success instead of failing on the unique email
+    # constraint or creating a second account for one real registration.
+    client_request_id = (request.data.get('client_request_id') or '').strip() or None
+    if client_request_id:
+        existing = User.objects.filter(client_request_id=client_request_id).first()
+        if existing:
+            refresh = RefreshToken.for_user(existing)
+            response_data = {
+                'user': UserSerializer(existing).data,
+                'tokens': {
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                },
+                'already_registered': True,
+            }
+            if existing.role == 'artisan':
+                response_data['requires_payment'] = existing.account_status == 'inactive'
+                response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
+            return Response(response_data, status=status.HTTP_200_OK)
+
     serializer = UserRegistrationSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()

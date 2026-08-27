@@ -147,6 +147,80 @@ class BookingCreateTests(BookingTestBase):
         response = self.client.post(BOOKINGS_URL, payload)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_create_response_includes_the_new_bookings_id(self):
+        # Regression: 'id' was missing from BookingCreateSerializer.Meta.fields
+        # entirely, so the creation response never actually carried the new
+        # booking's id — silently breaking app/booking/[artisanId].tsx's own
+        # `if (photos.length > 0 && booking?.id)` photo-upload step (always
+        # false, so attached photos never uploaded, with no error shown).
+        self.client.force_authenticate(self.client_user)
+        response = self.client.post(BOOKINGS_URL, self.mobile_payload())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertIn('id', response.data)
+        self.assertEqual(response.data['id'], Booking.objects.get().id)
+
+
+class BookingCreateIdempotencyTests(BookingTestBase):
+    """Offline-first service booking (app/booking/[artisanId].tsx) can retry
+    the exact same submission after a network drop that actually reached
+    the server — the device queued it as still-pending (no response ever
+    arrived) and syncs it again later. The retry must be recognized as the
+    same submission and replayed, never create a second booking."""
+
+    def test_retrying_the_same_client_request_id_does_not_create_a_duplicate(self):
+        self.client.force_authenticate(self.client_user)
+        payload = self.mobile_payload(client_request_id='device-xyz-booking-0001')
+
+        first = self.client.post(BOOKINGS_URL, payload)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+
+        second = self.client.post(BOOKINGS_URL, payload)
+        self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
+        self.assertEqual(second.data['id'], first.data['id'])
+
+        self.assertEqual(
+            Booking.objects.count(), 1,
+            "retrying the same client_request_id must not create a second booking",
+        )
+
+    def test_different_client_request_ids_can_both_book(self):
+        self.client.force_authenticate(self.client_user)
+        first = self.client.post(BOOKINGS_URL, self.mobile_payload(
+            client_request_id='device-xyz-booking-0002', time='09:30',
+        ))
+        second = self.client.post(BOOKINGS_URL, self.mobile_payload(
+            client_request_id='device-xyz-booking-0003', time='11:00',
+        ))
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED, second.data)
+        self.assertNotEqual(first.data['id'], second.data['id'])
+
+    def test_replay_is_scoped_to_the_requesting_client(self):
+        """A client_request_id colliding with another client's (astronomically
+        unlikely given it's a random per-device token, but worth locking
+        down) must never leak someone else's booking back as a replay."""
+        other_client = User.objects.create_user(
+            email='other_client@test.com', password='pass12345',
+            first_name='Other', last_name='Client', role='client',
+        )
+        self.client.force_authenticate(self.client_user)
+        self.client.post(BOOKINGS_URL, self.mobile_payload(client_request_id='shared-id-0001'))
+
+        self.client.force_authenticate(other_client)
+        response = self.client.post(BOOKINGS_URL, self.mobile_payload(
+            client_request_id='shared-id-0001', time='11:00',
+        ))
+        # Not a replay of the first client's booking — a real second booking,
+        # since 'shared-id-0001' was never this client's own request before.
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(Booking.objects.count(), 2)
+
+    def test_missing_client_request_id_behaves_exactly_as_before(self):
+        self.client.force_authenticate(self.client_user)
+        payload = self.mobile_payload()
+        response = self.client.post(BOOKINGS_URL, payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
 
 class BookingListTests(BookingTestBase):
 
@@ -608,6 +682,51 @@ class AgentRegisterArtisanStateScopingTests(APITestCase):
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(User.objects.filter(email='orphan_artisan@test.com').exists())
+
+    def test_retrying_the_same_client_request_id_does_not_create_a_duplicate(self):
+        """Offline-first registration: an agent's device can retry a
+        submission that already reached and succeeded on the server (e.g.
+        the response was lost to a network drop, so the device queued it
+        as still-pending and syncs it again later). The retry must be
+        recognized as the same submission, not create a second artisan."""
+        self.client.force_authenticate(user=self.agent)
+        payload = {
+            'email': 'field_artisan@test.com',
+            'first_name': 'Field',
+            'last_name': 'Artisan',
+            'client_request_id': 'agent-device-abc-0001',
+        }
+
+        first = self.client.post(self.register_url(), payload)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertNotIn('already_registered', first.data)
+
+        second = self.client.post(self.register_url(), payload)
+        self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
+        self.assertTrue(second.data.get('already_registered'))
+        self.assertIsNone(second.data.get('generated_password'))
+        self.assertEqual(second.data['user']['id'], first.data['user']['id'])
+
+        self.assertEqual(
+            User.objects.filter(email='field_artisan@test.com').count(), 1,
+            "retrying the same client_request_id must not create a second account",
+        )
+
+    def test_different_client_request_ids_can_both_register(self):
+        """The idempotency key must never block two genuinely different
+        registrations from the same agent."""
+        self.client.force_authenticate(user=self.agent)
+        first = self.client.post(self.register_url(), {
+            'email': 'artisan_one@test.com', 'first_name': 'One', 'last_name': 'Artisan',
+            'client_request_id': 'agent-device-abc-0002',
+        })
+        second = self.client.post(self.register_url(), {
+            'email': 'artisan_two@test.com', 'first_name': 'Two', 'last_name': 'Artisan',
+            'client_request_id': 'agent-device-abc-0003',
+        })
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED, second.data)
+        self.assertNotEqual(first.data['user']['id'], second.data['user']['id'])
 
 
 class AIVerificationStatusTests(APITestCase):

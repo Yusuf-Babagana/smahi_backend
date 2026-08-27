@@ -55,11 +55,15 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             # ongoing way these get refreshed; this just closes the gap for
             # the time between registering and that first dashboard visit.
             'latitude', 'longitude',
-            'category_id', 'custom_category_name', 'custom_category_icon'
+            'category_id', 'custom_category_name', 'custom_category_icon',
+            # Offline-first registration's idempotency key — see the field's
+            # own docstring on the User model for why this exists.
+            'client_request_id',
         ]
         extra_kwargs = {
             'latitude': {'required': False, 'min_value': -90, 'max_value': 90},
             'longitude': {'required': False, 'min_value': -180, 'max_value': 180},
+            'client_request_id': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
 
     def to_internal_value(self, data):
@@ -82,6 +86,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 except (TypeError, ValueError):
                     pass  # leave as-is — the normal field validation will report a clear error
         return super().to_internal_value(data)
+
+    def validate_client_request_id(self, value):
+        # Blank/None must stay None, not '' — the unique constraint would
+        # otherwise reject the second-ever caller that omits this field
+        # (every '' collides with every other ''), while multiple NULLs are
+        # fine (SQL treats NULL as never equal to NULL, including itself).
+        # allow_null=True still routes an explicit None through to here.
+        return (value or '').strip() or None
 
     def validate_custom_category_icon(self, value):
         if value and value not in DEFAULT_OTHER_ICONS:
