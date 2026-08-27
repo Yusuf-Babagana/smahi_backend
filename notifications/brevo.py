@@ -28,7 +28,13 @@ def send_transactional_email(to_email, subject, html_content):
     }
 
     try:
-        response = requests.post(BREVO_EMAIL_URL, json=payload, headers=headers, timeout=10)
+        # Shortened from 10s (Aug 2026): this call runs synchronously inside
+        # registration's request/response cycle (accounts.views.register_view)
+        # — a slow or unreachable Brevo could stall every registration by up
+        # to whatever this timeout allows. 4s still gives a real, slow-but-
+        # working API room to respond, without letting a bad Brevo outage
+        # turn "registration is a bit slow" into "registration takes 10s".
+        response = requests.post(BREVO_EMAIL_URL, json=payload, headers=headers, timeout=4)
         if response.status_code in (200, 201):
             return True
         logger.error(

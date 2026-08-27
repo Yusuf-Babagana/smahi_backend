@@ -60,6 +60,21 @@ def register_view(request):
 
         # Best-effort: email an OTP so the new user can verify their address.
         # Registration must succeed even if the email provider is down.
+        #
+        # This does add Brevo's own API round trip to every registration's
+        # response time (typically several hundred ms to ~1-2s in
+        # practice) — a background thread was tried to remove that
+        # entirely, but was backed out: on a synchronous WSGI worker
+        # there's no guarantee the process isn't reused/torn down before a
+        # fire-and-forget thread finishes, which would silently drop the
+        # verification email for some fraction of registrations — a worse
+        # failure than the latency it was meant to fix, and it also broke
+        # a real test (notifications.tests.test_registration_sends_
+        # verification_otp) that depends on this completing before the
+        # response returns. send_transactional_email's timeout was
+        # shortened instead (10s -> 4s) so a slow/unreachable provider
+        # bounds the worst case without changing this correctness-relied-on
+        # synchronous behavior.
         try:
             send_otp(user, 'email_verify')
         except OTPError:
