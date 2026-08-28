@@ -39,7 +39,7 @@ from .serializers import (
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
-    BookingPhotoSerializer, AgentOverviewSerializer,
+    BookingPhotoSerializer, AgentOverviewSerializer, CoordinatorOverviewSerializer,
 )
 from notifications.events import emit
 from .services import approve_artisan_verification
@@ -722,6 +722,132 @@ class AdminUserListView(generics.ListAPIView):
 
     def get_queryset(self):
         return User.objects.all().select_related('state', 'lga', 'country').order_by('-created_at')
+
+
+class AdminCoordinatorListView(generics.ListAPIView):
+    """All state coordinators, for Admin oversight — one level up the
+    same hierarchy as CoordinatorAgentListView (Admin:Coordinator ::
+    Coordinator:Agent). Unlike that view, not scoped to any one state —
+    Admin oversees every state."""
+    serializer_class = CoordinatorOverviewSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    filterset_fields = ['state', 'account_status']
+    search_fields = ['first_name', 'last_name', 'email', 'phone_number', 'state__name']
+
+    def get_queryset(self):
+        return User.objects.filter(role='state_coordinator').select_related('state').order_by('-created_at')
+
+
+class AdminCreateCoordinatorView(APIView):
+    """Admin-initiated coordinator onboarding — the one deliberate
+    exception to "every privileged write stays in Django Admin"
+    (AdminStatsView's own docstring), made explicitly to keep the
+    Admin:Coordinator:Agent hierarchy consistent: Coordinators already
+    create Agents in-app (CoordinatorCreateAgentView), so Admin creating
+    Coordinators the same way completes the pattern instead of being the
+    one level that still needs server/Django Admin access for routine
+    growth.
+
+    Mirrors CoordinatorCreateAgentView closely, with the one structural
+    difference the hierarchy actually requires: a Coordinator oversees an
+    entire STATE (not one LGA within a state they're already scoped to),
+    and Admin has no "own state" to force — so state is caller-supplied
+    here, validated to be a real State, with country derived from it
+    rather than trusted separately (so the two can never mismatch).
+    """
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        import secrets
+        from accounts.serializers import UserRegistrationSerializer
+        from locations.models import State
+
+        client_request_id = (request.data.get('client_request_id') or '').strip() or None
+        if client_request_id:
+            existing = User.objects.filter(client_request_id=client_request_id).first()
+            if existing:
+                return Response({
+                    'user': UserSerializer(existing).data,
+                    'generated_password': None,
+                    'message': (
+                        'This coordinator was already created from an earlier '
+                        'attempt with the same submission — no new account was '
+                        'created. If they never received their one-time '
+                        'password, use the password-reset flow to issue a new one.'
+                    ),
+                    'already_registered': True,
+                }, status=status.HTTP_200_OK)
+
+        state_id = request.data.get('state')
+        if not state_id:
+            return Response({'error': 'state is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        state = State.objects.filter(id=state_id).first()
+        if not state:
+            return Response({'error': 'That state does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        generated_password = secrets.token_urlsafe(9)
+
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        data['role'] = 'state_coordinator'
+        data['password'] = generated_password
+        data['password_confirm'] = generated_password
+        data['state'] = state.id
+        # Derived from the state itself, never trusted separately from the
+        # caller — the same reasoning AgentRegisterArtisanView documents
+        # for forcing (not trusting) location fields.
+        data['country'] = state.country_id
+        data['client_request_id'] = client_request_id
+
+        serializer = UserRegistrationSerializer(data=data, extra_allowed_roles={'state_coordinator'})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user = serializer.save()
+
+        return Response({
+            'user': UserSerializer(user).data,
+            'generated_password': generated_password,
+            'message': 'Coordinator created. Share this one-time password with them securely — it will not be shown again.',
+        }, status=status.HTTP_201_CREATED)
+
+
+class AdminCoordinatorStatusView(APIView):
+    """Admin suspends/reactivates/dismisses a state coordinator — same
+    three-state lifecycle and same "dismissal is final" rule as
+    CoordinatorAgentStatusView, one level up. Not state-scoped (Admin
+    oversees every state), unlike that view."""
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request, coordinator_id):
+        new_status = request.data.get('status')
+        if new_status not in ('active', 'suspended', 'dismissed'):
+            return Response(
+                {'error': "status must be 'active', 'suspended', or 'dismissed'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            coordinator = User.objects.get(id=coordinator_id, role='state_coordinator')
+        except User.DoesNotExist:
+            return Response({'error': 'Coordinator not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if coordinator.account_status == 'dismissed':
+            return Response(
+                {'error': 'This coordinator has been dismissed and cannot be reactivated here.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        coordinator.is_active = (new_status == 'active')
+        coordinator.account_status = new_status
+        coordinator.save(update_fields=['is_active', 'account_status'])
+
+        return Response({
+            'message': f'Coordinator account set to {new_status}.',
+            'coordinator': {
+                'id': coordinator.id, 'email': coordinator.email,
+                'account_status': coordinator.account_status, 'is_active': coordinator.is_active,
+            },
+        })
 
 
 class VerificationRequestViewSet(viewsets.ModelViewSet):

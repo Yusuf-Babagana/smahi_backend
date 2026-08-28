@@ -530,3 +530,32 @@ class AgentOverviewSerializer(serializers.ModelSerializer):
             'account_status', 'state_details', 'lga_details', 'created_at',
             'artisans_registered', 'artisans_verified',
         ]
+
+
+class CoordinatorOverviewSerializer(serializers.ModelSerializer):
+    """One state coordinator, as seen by Admin — identity plus how many
+    agents they oversee. Same shape/reasoning as AgentOverviewSerializer,
+    one level up the hierarchy (Admin oversees Coordinators the same way
+    Coordinators oversee Agents).
+
+    agents_count is a per-object query (SerializerMethodField), not a
+    queryset annotation — deliberately: there's no direct FK from Agent to
+    Coordinator (both just share state_id), so a real annotation would
+    need a Subquery/OuterRef. Not worth the complexity here: unlike an
+    agent's artisan counts (which list pages with many rows), the number
+    of state coordinators is realistically capped at one per state (~37
+    for Nigeria) — an N+1 query pattern at that scale is a non-issue."""
+    state_details = StateLiteSerializer(source='state', read_only=True)
+    agents_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'id', 'first_name', 'last_name', 'email', 'phone_number', 'gender',
+            'account_status', 'state_details', 'created_at', 'agents_count',
+        ]
+
+    def get_agents_count(self, obj):
+        if not obj.state_id:
+            return 0
+        return get_user_model().objects.filter(role='agent', state_id=obj.state_id).count()

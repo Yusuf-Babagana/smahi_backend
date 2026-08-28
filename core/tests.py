@@ -998,6 +998,149 @@ class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
         )
 
 
+class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
+    """Admin:Coordinator, one level up the same hierarchy as
+    Coordinator:Agent (CoordinatorCreateAgentTests/
+    CoordinatorAgentStatusTests) — the one deliberate exception to
+    "every privileged write stays in Django Admin"."""
+    LIST_URL = '/api/admin/coordinators/'
+    CREATE_URL = '/api/admin/coordinators/create/'
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            email='admin@test.com', password='pass12345',
+            first_name='Site', last_name='Admin', role='admin',
+        )
+
+    def status_url(self, coordinator_id):
+        return f'/api/admin/coordinators/{coordinator_id}/status/'
+
+    # --- List ---
+
+    def test_admin_sees_coordinators_from_every_state(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.LIST_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        emails = [c['email'] for c in response.data['results']]
+        self.assertIn('kano_coord@test.com', emails)
+        self.assertIn('lagos_coord@test.com', emails)
+
+    def test_list_includes_agents_count(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.LIST_URL)
+        kano_row = next(c for c in response.data['results'] if c['email'] == 'kano_coord@test.com')
+        self.assertEqual(kano_row['agents_count'], 1)
+
+    def test_non_admin_cannot_list_coordinators(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.LIST_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    # --- Create ---
+
+    def test_admin_creates_a_coordinator_for_a_given_state(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'new_coord@test.com', 'first_name': 'New', 'last_name': 'Coordinator',
+            'state': self.lagos.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data.get('generated_password'))
+
+        new_coord = User.objects.get(email='new_coord@test.com')
+        self.assertEqual(new_coord.role, 'state_coordinator')
+        self.assertEqual(new_coord.state_id, self.lagos.id)
+        self.assertEqual(new_coord.country_id, self.lagos.country_id, "country must be derived from the state, not trusted separately")
+        self.assertTrue(new_coord.is_active)
+
+    def test_missing_state_rejected(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'no_state_coord@test.com', 'first_name': 'No', 'last_name': 'State',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='no_state_coord@test.com').exists())
+
+    def test_nonexistent_state_rejected(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'bad_state_coord@test.com', 'first_name': 'Bad', 'last_name': 'State',
+            'state': 999999,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_country_is_always_derived_from_state_not_trusted_separately(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'spoofed_country_coord@test.com', 'first_name': 'Spoofed', 'last_name': 'Country',
+            'state': self.kano.id, 'country': 999999,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_coord = User.objects.get(email='spoofed_country_coord@test.com')
+        self.assertEqual(new_coord.country_id, self.kano.country_id)
+
+    def test_non_admin_cannot_create_coordinators(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'blocked_coord@test.com', 'first_name': 'Blocked', 'last_name': 'Coordinator',
+            'state': self.kano.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_retrying_the_same_client_request_id_does_not_duplicate(self):
+        self.client.force_authenticate(user=self.admin)
+        payload = {
+            'email': 'idempotent_coord@test.com', 'first_name': 'Idem', 'last_name': 'Potent',
+            'state': self.kano.id, 'client_request_id': 'admin-device-0001',
+        }
+        first = self.client.post(self.CREATE_URL, payload)
+        second = self.client.post(self.CREATE_URL, payload)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
+        self.assertTrue(second.data.get('already_registered'))
+        self.assertEqual(User.objects.filter(email='idempotent_coord@test.com').count(), 1)
+
+    # --- Status (suspend/reactivate/dismiss) ---
+
+    def test_admin_suspends_and_reactivates_a_coordinator(self):
+        self.client.force_authenticate(user=self.admin)
+
+        suspend = self.client.post(self.status_url(self.kano_coordinator.id), {'status': 'suspended'})
+        self.assertEqual(suspend.status_code, status.HTTP_200_OK, suspend.data)
+        self.kano_coordinator.refresh_from_db()
+        self.assertEqual(self.kano_coordinator.account_status, 'suspended')
+        self.assertFalse(self.kano_coordinator.is_active)
+
+        reactivate = self.client.post(self.status_url(self.kano_coordinator.id), {'status': 'active'})
+        self.assertEqual(reactivate.status_code, status.HTTP_200_OK, reactivate.data)
+        self.kano_coordinator.refresh_from_db()
+        self.assertEqual(self.kano_coordinator.account_status, 'active')
+        self.assertTrue(self.kano_coordinator.is_active)
+
+    def test_dismissed_coordinator_cannot_be_reactivated(self):
+        self.client.force_authenticate(user=self.admin)
+        dismiss = self.client.post(self.status_url(self.kano_coordinator.id), {'status': 'dismissed'})
+        self.assertEqual(dismiss.status_code, status.HTTP_200_OK, dismiss.data)
+
+        retry = self.client.post(self.status_url(self.kano_coordinator.id), {'status': 'active'})
+        self.assertEqual(retry.status_code, status.HTTP_400_BAD_REQUEST)
+        self.kano_coordinator.refresh_from_db()
+        self.assertEqual(self.kano_coordinator.account_status, 'dismissed')
+
+    def test_admin_not_scoped_to_any_single_state(self):
+        """Unlike CoordinatorAgentStatusView, Admin must be able to touch
+        a coordinator in ANY state — there's no "Admin's own state"."""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.status_url(self.lagos_coordinator.id), {'status': 'suspended'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+    def test_non_admin_cannot_change_coordinator_status(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.status_url(self.lagos_coordinator.id), {'status': 'suspended'})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class CategoryTypeSeparationTests(APITestCase):
     """Category.category_type is what keeps the artisan profession list
     and the business type list from mixing — both /categories/ endpoints
