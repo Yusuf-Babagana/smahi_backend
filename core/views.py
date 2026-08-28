@@ -43,7 +43,7 @@ from .serializers import (
 )
 from notifications.events import emit
 from .services import approve_artisan_verification
-from .permissions import IsArtisan, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
+from .permissions import IsArtisan, IsBusiness, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
 from accounts.serializers import UserSerializer
 
 User = get_user_model()
@@ -278,6 +278,27 @@ class ArtisanProfileView(generics.RetrieveUpdateAPIView):
         if self.request.method in ['PUT', 'PATCH']:
             return ArtisanProfileUpdateSerializer
         return ArtisanProfileSerializer
+
+
+class BusinessProfileView(generics.RetrieveUpdateAPIView):
+    """Self-service "my own business profile" — same shape as
+    ArtisanProfileView. Powers app/business/dashboard.tsx (the business
+    owner's own dashboard), which exists specifically so a business
+    account never lands on the client Home screen's artisan category
+    browsing — irrelevant to a business owner."""
+    permission_classes = [IsAuthenticated, IsBusiness]
+    serializer_class = BusinessProfileSerializer
+
+    def get_object(self):
+        profile, created = BusinessProfile.objects.get_or_create(
+            user=self.request.user, defaults={'business_name': self.request.user.first_name or 'My Business'}
+        )
+        return profile
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return BusinessProfileUpdateSerializer
+        return BusinessProfileSerializer
 
 
 class AgentArtisanListView(generics.ListAPIView):

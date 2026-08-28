@@ -1074,6 +1074,52 @@ class BusinessProfileViewSetTests(APITestCase):
         self.assertEqual(self.profile.business_name, 'Zenith Suites')
 
 
+class BusinessProfileSelfServiceViewTests(APITestCase):
+    """BusinessProfileView (/api/business/profile/) — the business
+    owner's own profile, same self-service pattern as ArtisanProfileView.
+    Exists specifically so the mobile app's business dashboard never
+    needs to know the profile's id, just "give me mine"."""
+    PROFILE_URL = '/api/business/profile/'
+
+    def setUp(self):
+        self.business_owner = User.objects.create_user(
+            email='shop_owner@test.com', password='pass12345',
+            first_name='Amina', last_name='Yusuf', role='business',
+        )
+        self.artisan = User.objects.create_user(
+            email='an_artisan@test.com', password='pass12345',
+            first_name='Musa', last_name='Bello', role='artisan',
+        )
+
+    def test_get_or_creates_the_callers_own_profile(self):
+        from core.models import BusinessProfile
+
+        self.client.force_authenticate(user=self.business_owner)
+        response = self.client.get(self.PROFILE_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(
+            BusinessProfile.objects.filter(user=self.business_owner).count(), 1,
+            "get_or_create must not create a duplicate on repeat GETs",
+        )
+
+    def test_owner_can_update_their_own_profile(self):
+        self.client.force_authenticate(user=self.business_owner)
+        response = self.client.patch(self.PROFILE_URL, {'business_name': "Amina's Store"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        get_response = self.client.get(self.PROFILE_URL)
+        self.assertEqual(get_response.data['business_name'], "Amina's Store")
+
+    def test_artisan_cannot_access_the_business_self_service_endpoint(self):
+        self.client.force_authenticate(user=self.artisan)
+        response = self.client.get(self.PROFILE_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_access_it(self):
+        response = self.client.get(self.PROFILE_URL)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
 class AIVerificationStatusTests(APITestCase):
     """The AI assistant must report an artisan's verification status from
     the real database, never invent or guess it (audit request: the AI and

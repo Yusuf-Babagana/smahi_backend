@@ -6,6 +6,11 @@ class IsArtisan(permissions.BasePermission):
         return request.user and request.user.is_authenticated and request.user.role == 'artisan'
 
 
+class IsBusiness(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.role == 'business'
+
+
 class IsClient(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.role == 'client'
