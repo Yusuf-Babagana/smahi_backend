@@ -741,6 +741,10 @@ class CoordinatorDashboardTestBase(APITestCase):
         self.country = Country.objects.create(name='Nigeria')
         self.kano = State.objects.create(name='Kano', country=self.country)
         self.lagos = State.objects.create(name='Lagos', country=self.country)
+        # Deliberately has no coordinator assigned — kano/lagos both get one
+        # below, so any test that needs to create a brand-new coordinator
+        # without tripping the one-coordinator-per-state rule uses this one.
+        self.ogun = State.objects.create(name='Ogun', country=self.country)
         self.kano_lga_a = LGA.objects.create(name='Nassarawa', state=self.kano)
         self.kano_lga_b = LGA.objects.create(name='Fagge', state=self.kano)
         self.lagos_lga = LGA.objects.create(name='Ikeja', state=self.lagos)
@@ -1043,16 +1047,54 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.CREATE_URL, {
             'email': 'new_coord@test.com', 'first_name': 'New', 'last_name': 'Coordinator',
-            'state': self.lagos.id,
+            'state': self.ogun.id,
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertTrue(response.data.get('generated_password'))
 
         new_coord = User.objects.get(email='new_coord@test.com')
         self.assertEqual(new_coord.role, 'state_coordinator')
-        self.assertEqual(new_coord.state_id, self.lagos.id)
-        self.assertEqual(new_coord.country_id, self.lagos.country_id, "country must be derived from the state, not trusted separately")
+        self.assertEqual(new_coord.state_id, self.ogun.id)
+        self.assertEqual(new_coord.country_id, self.ogun.country_id, "country must be derived from the state, not trusted separately")
         self.assertTrue(new_coord.is_active)
+
+    def test_cannot_create_a_second_coordinator_for_a_state_that_already_has_one(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'second_kano_coord@test.com', 'first_name': 'Second', 'last_name': 'Coordinator',
+            'state': self.kano.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Kano', response.data.get('error', ''))
+        self.assertFalse(User.objects.filter(email='second_kano_coord@test.com').exists())
+
+    def test_a_suspended_coordinator_still_blocks_a_new_one(self):
+        """Suspended is temporary, not vacated — only dismissal actually
+        opens the state up for a replacement."""
+        self.kano_coordinator.account_status = 'suspended'
+        self.kano_coordinator.save(update_fields=['account_status'])
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'sneaky_second_coord@test.com', 'first_name': 'Sneaky', 'last_name': 'Coordinator',
+            'state': self.kano.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='sneaky_second_coord@test.com').exists())
+
+    def test_can_create_a_new_coordinator_after_the_old_one_is_dismissed(self):
+        self.kano_coordinator.account_status = 'dismissed'
+        self.kano_coordinator.is_active = False
+        self.kano_coordinator.save(update_fields=['account_status', 'is_active'])
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'replacement_coord@test.com', 'first_name': 'Replacement', 'last_name': 'Coordinator',
+            'state': self.kano.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_coord = User.objects.get(email='replacement_coord@test.com')
+        self.assertEqual(new_coord.state_id, self.kano.id)
 
     def test_missing_state_rejected(self):
         self.client.force_authenticate(user=self.admin)
@@ -1074,11 +1116,11 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.CREATE_URL, {
             'email': 'spoofed_country_coord@test.com', 'first_name': 'Spoofed', 'last_name': 'Country',
-            'state': self.kano.id, 'country': 999999,
+            'state': self.ogun.id, 'country': 999999,
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         new_coord = User.objects.get(email='spoofed_country_coord@test.com')
-        self.assertEqual(new_coord.country_id, self.kano.country_id)
+        self.assertEqual(new_coord.country_id, self.ogun.country_id)
 
     def test_non_admin_cannot_create_coordinators(self):
         self.client.force_authenticate(user=self.kano_coordinator)
@@ -1092,7 +1134,7 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
         self.client.force_authenticate(user=self.admin)
         payload = {
             'email': 'idempotent_coord@test.com', 'first_name': 'Idem', 'last_name': 'Potent',
-            'state': self.kano.id, 'client_request_id': 'admin-device-0001',
+            'state': self.ogun.id, 'client_request_id': 'admin-device-0001',
         }
         first = self.client.post(self.CREATE_URL, payload)
         second = self.client.post(self.CREATE_URL, payload)

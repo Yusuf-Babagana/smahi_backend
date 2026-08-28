@@ -785,6 +785,23 @@ class AdminCreateCoordinatorView(APIView):
         if not state:
             return Response({'error': 'That state does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # One state, one coordinator holding the role at a time — see the
+        # matching UniqueConstraint on the User model (accounts.models)
+        # for the DB-level backstop against a race between two concurrent
+        # requests; this check is what gives a clean, specific error in
+        # the normal (non-race) case instead of a raw IntegrityError.
+        existing_coordinator = User.objects.filter(
+            role='state_coordinator', state_id=state.id
+        ).exclude(account_status='dismissed').first()
+        if existing_coordinator:
+            return Response({
+                'error': (
+                    f"{state.name} already has a coordinator "
+                    f"({existing_coordinator.first_name} {existing_coordinator.last_name}). "
+                    "Dismiss them first before assigning a new one."
+                ),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         generated_password = secrets.token_urlsafe(9)
 
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
@@ -802,7 +819,15 @@ class AdminCreateCoordinatorView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        user = serializer.save()
+        try:
+            user = serializer.save()
+        except IntegrityError:
+            # The pre-check above raced with another request that got
+            # there first — same message either way, from the caller's
+            # perspective this is just a slower version of that check.
+            return Response({
+                'error': f"{state.name} already has a coordinator. Dismiss them first before assigning a new one.",
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({
             'user': UserSerializer(user).data,
