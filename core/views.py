@@ -851,7 +851,14 @@ class AdminCreateCoordinatorView(APIView):
                 ),
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        generated_password = secrets.token_urlsafe(9)
+        # 8-digit numeric PIN rather than AgentRegisterArtisanView/
+        # CoordinatorCreateAgentView's longer token_urlsafe — deliberately
+        # scoped to coordinators only (explicit request): still randomly
+        # generated per account (never fixed/shared — that would be the
+        # exact "Password@123 for everyone" bug this codebase already
+        # fixed once, just for a different role), but far easier for an
+        # Admin to read aloud and a coordinator to type on a phone.
+        generated_password = f"{secrets.randbelow(10**8):08d}"
 
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         data['role'] = 'state_coordinator'

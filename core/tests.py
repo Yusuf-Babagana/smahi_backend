@@ -1146,12 +1146,18 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertTrue(response.data.get('generated_password'))
+        # Explicit request: an 8-digit numeric PIN — still random/unique per
+        # coordinator, just easier to read aloud and type than a longer
+        # mixed-case token.
+        password = response.data['generated_password']
+        self.assertRegex(password, r'^\d{8}$')
 
         new_coord = User.objects.get(email='new_coord@test.com')
         self.assertEqual(new_coord.role, 'state_coordinator')
         self.assertEqual(new_coord.state_id, self.ogun.id)
         self.assertEqual(new_coord.country_id, self.ogun.country_id, "country must be derived from the state, not trusted separately")
         self.assertTrue(new_coord.is_active)
+        self.assertTrue(new_coord.check_password(password), "the returned password must actually be the one that was set")
 
     def test_cannot_create_a_second_coordinator_for_a_state_that_already_has_one(self):
         self.client.force_authenticate(user=self.admin)
