@@ -220,6 +220,46 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'role', 'is_verified', 'email_verified', 'registration_fee_paid', 'created_at', 'updated_at']
 
 
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Full account detail for Admin's User CRUD (core.views.
+    AdminUserDetailView) — includes account_status/is_active, which the
+    regular self-service UserSerializer above deliberately omits (a user
+    editing their own profile has no business seeing/setting those)."""
+    country_details = CountryLiteSerializer(source='country', read_only=True)
+    state_details = StateLiteSerializer(source='state', read_only=True)
+    lga_details = LGASerializer(source='lga', read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'role', 'phone_number',
+            'address', 'profile_picture', 'gender', 'country', 'state', 'lga',
+            'country_details', 'state_details', 'lga_details',
+            'latitude', 'longitude', 'preferred_language',
+            'is_verified', 'email_verified', 'registration_fee_paid',
+            'account_status', 'is_active',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class AdminUserUpdateSerializer(serializers.ModelSerializer):
+    """Deliberately far more permissive than UserUpdateSerializer below —
+    role, state, account_status, and is_active are all editable here,
+    which would be a serious privilege-escalation risk on any endpoint
+    not already gated behind IsAdmin (core.views.AdminUserDetailView,
+    itself the second deliberate exception to "every privileged write
+    stays in Django Admin" — see AdminCreateCoordinatorView for the
+    first)."""
+    class Meta:
+        model = User
+        fields = [
+            'first_name', 'last_name', 'email', 'phone_number', 'address', 'gender',
+            'role', 'country', 'state', 'lga', 'account_status', 'is_active',
+            'preferred_language',
+        ]
+
+
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

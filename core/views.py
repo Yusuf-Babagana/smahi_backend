@@ -44,7 +44,7 @@ from .serializers import (
 from notifications.events import emit
 from .services import approve_artisan_verification
 from .permissions import IsArtisan, IsBusiness, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
-from accounts.serializers import UserSerializer
+from accounts.serializers import UserSerializer, AdminUserSerializer, AdminUserUpdateSerializer
 
 User = get_user_model()
 
@@ -715,13 +715,59 @@ class AdminStatsView(APIView):
 
 class AdminUserListView(generics.ListAPIView):
     """Paginated list of all users for the admin dashboard."""
-    serializer_class = UserSerializer
+    serializer_class = AdminUserSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
-    filterset_fields = ['role']
-    search_fields = ['first_name', 'last_name', 'email']
+    filterset_fields = ['role', 'account_status', 'state']
+    search_fields = ['first_name', 'last_name', 'email', 'phone_number', 'state__name']
 
     def get_queryset(self):
         return User.objects.all().select_related('state', 'lga', 'country').order_by('-created_at')
+
+
+class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Full CRUD on any single user account — the second deliberate
+    exception to "every privileged write stays in Django Admin" (see
+    AdminCreateCoordinatorView for the first). Explicitly requested:
+    Admin needs to view/edit/deactivate any account directly from the
+    mobile app — most immediately, to resolve states that ended up with
+    more than one active coordinator without needing Django Admin access.
+
+    DELETE is always a soft-delete (is_active=False, account_status=
+    'inactive'), never a real row deletion — matches the app's existing
+    self-service account-deletion convention (accounts.views's own
+    delete-account endpoint) and avoids losing booking/review history
+    tied to this user's FK relations. 'inactive' (not 'dismissed') is
+    used deliberately — 'dismissed' is reserved for the specific agent/
+    coordinator lifecycle endpoints (CoordinatorAgentStatusView/
+    AdminCoordinatorStatusView), but both statuses equally free up a
+    state's one-coordinator slot (see the User model's own
+    unique_active_coordinator_per_state constraint)."""
+    permission_classes = [IsAuthenticated, IsAdmin]
+    queryset = User.objects.all().select_related('state', 'lga', 'country')
+
+    def get_serializer_class(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return AdminUserUpdateSerializer
+        return AdminUserSerializer
+
+    def update(self, request, *args, **kwargs):
+        try:
+            return super().update(request, *args, **kwargs)
+        except IntegrityError:
+            return Response(
+                {'error': 'This change conflicts with an existing rule (e.g. that state already has an active coordinator).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        if self.get_object().id == request.user.id:
+            return Response({'error': 'You cannot deactivate your own account.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.account_status = 'inactive'
+        instance.save(update_fields=['is_active', 'account_status'])
 
 
 class AdminCoordinatorListView(generics.ListAPIView):
@@ -785,14 +831,17 @@ class AdminCreateCoordinatorView(APIView):
         if not state:
             return Response({'error': 'That state does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # One state, one coordinator holding the role at a time — see the
-        # matching UniqueConstraint on the User model (accounts.models)
-        # for the DB-level backstop against a race between two concurrent
-        # requests; this check is what gives a clean, specific error in
-        # the normal (non-race) case instead of a raw IntegrityError.
+        # One state, one coordinator holding the role at a time — 'active'
+        # and 'suspended' both still occupy the seat; 'dismissed' and
+        # 'inactive' (AdminUserDetailView's soft-delete) both free it up.
+        # Mirrors the matching UniqueConstraint on the User model exactly
+        # (accounts.models) — that's the DB-level backstop against a race
+        # between two concurrent requests; this check is what gives a
+        # clean, specific error in the normal (non-race) case instead of
+        # a raw IntegrityError.
         existing_coordinator = User.objects.filter(
-            role='state_coordinator', state_id=state.id
-        ).exclude(account_status='dismissed').first()
+            role='state_coordinator', state_id=state.id, account_status__in=['active', 'suspended']
+        ).first()
         if existing_coordinator:
             return Response({
                 'error': (

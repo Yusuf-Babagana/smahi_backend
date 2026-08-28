@@ -5,7 +5,7 @@ from .views import (
     VerificationRequestViewSet, BookingViewSet, ReviewViewSet,
     AIChatView, TranscribeView, AgentArtisanListView, AgentClientListView,
     AgentDashboardStatsView, AgentRegisterArtisanView, AgentVerifyArtisanView,
-    AdminStatsView, AdminUserListView, AdminCoordinatorListView,
+    AdminStatsView, AdminUserListView, AdminUserDetailView, AdminCoordinatorListView,
     AdminCreateCoordinatorView, AdminCoordinatorStatusView,
 )
 
@@ -28,6 +28,7 @@ urlpatterns = [
     path('agent/verify-artisan/<int:user_id>/', AgentVerifyArtisanView.as_view(), name='agent-verify-artisan'),
     path('admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
     path('admin/users/', AdminUserListView.as_view(), name='admin-users'),
+    path('admin/users/<int:pk>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
     path('admin/coordinators/', AdminCoordinatorListView.as_view(), name='admin-coordinators'),
     path('admin/coordinators/create/', AdminCreateCoordinatorView.as_view(), name='admin-coordinator-create'),
     path('admin/coordinators/<int:coordinator_id>/status/', AdminCoordinatorStatusView.as_view(), name='admin-coordinator-status'),

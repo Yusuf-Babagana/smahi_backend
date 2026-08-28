@@ -1002,6 +1002,101 @@ class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
         )
 
 
+class AdminUserCRUDTests(CoordinatorDashboardTestBase):
+    """Admin's full User CRUD (AdminUserDetailView) — the second
+    deliberate exception to "every privileged write stays in Django
+    Admin", built specifically to let Admin resolve data issues (like a
+    state ending up with more than one active coordinator) directly from
+    the app."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            email='admin@test.com', password='pass12345',
+            first_name='Site', last_name='Admin', role='admin',
+        )
+
+    def detail_url(self, user_id):
+        return f'/api/admin/users/{user_id}/'
+
+    def test_admin_can_view_full_account_detail(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.detail_url(self.kano_agent.id))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertIn('account_status', response.data, "Admin's detail view must show what the self-service UserSerializer hides")
+        self.assertIn('is_active', response.data)
+
+    def test_admin_can_edit_any_field_including_role(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(self.detail_url(self.kano_agent.id), {
+            'first_name': 'Renamed', 'phone_number': '08099998888',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.first_name, 'Renamed')
+        self.assertEqual(self.kano_agent.phone_number, '08099998888')
+
+    def test_editing_account_status_that_violates_one_coordinator_per_state_is_rejected_cleanly(self):
+        """Regression guard for exactly the scenario that motivated this
+        endpoint: turning a second user into an active coordinator for a
+        state that already has one must fail with a clean 400, not a raw
+        500 from an uncaught IntegrityError."""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(self.detail_url(self.lagos_agent.id), {
+            'role': 'state_coordinator', 'state': self.kano.id, 'account_status': 'active',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+
+    def test_delete_is_a_soft_delete_not_a_real_deletion(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.delete(self.detail_url(self.kano_agent.id))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.kano_agent.refresh_from_db()  # would raise DoesNotExist if this were a real delete
+        self.assertFalse(self.kano_agent.is_active)
+        self.assertEqual(self.kano_agent.account_status, 'inactive')
+
+    def test_admin_cannot_deactivate_their_own_account(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.delete(self.detail_url(self.admin.id))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+
+    def test_deactivating_a_coordinator_frees_their_state_for_a_replacement(self):
+        """End-to-end proof this actually solves the real production
+        problem (a state stuck with an active coordinator that needs
+        replacing): soft-deleting them through this endpoint, after which
+        a genuinely new coordinator can be created for that state.
+
+        Note: this deliberately doesn't try to construct "two active
+        coordinators for one state" first — the whole point of the new
+        unique_active_coordinator_per_state constraint is that scenario
+        can no longer be created at all going forward; it only ever
+        existed in data older than that constraint."""
+        self.client.force_authenticate(user=self.admin)
+        delete_response = self.client.delete(self.detail_url(self.kano_coordinator.id))
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+        create_response = self.client.post('/api/admin/coordinators/create/', {
+            'email': 'new_kano_coord@test.com', 'first_name': 'Brand', 'last_name': 'New',
+            'state': self.kano.id,
+        })
+        self.assertEqual(
+            create_response.status_code, status.HTTP_201_CREATED, create_response.data,
+        )
+
+    def test_non_admin_forbidden_on_every_action(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        get_resp = self.client.get(self.detail_url(self.kano_agent.id))
+        patch_resp = self.client.patch(self.detail_url(self.kano_agent.id), {'first_name': 'Hacked'})
+        delete_resp = self.client.delete(self.detail_url(self.kano_agent.id))
+        self.assertEqual(get_resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(patch_resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(delete_resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
     """Admin:Coordinator, one level up the same hierarchy as
     Coordinator:Agent (CoordinatorCreateAgentTests/

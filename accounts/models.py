@@ -118,20 +118,21 @@ class User(AbstractUser):
         ordering = ['-created_at']
         constraints = [
             # Each state has at most one coordinator actually holding the
-            # role at a time. 'dismissed' is excluded on purpose — that's
-            # the whole reason dismissal is treated as final elsewhere
-            # (CoordinatorAgentStatusView/AdminCoordinatorStatusView): once
-            # a coordinator is dismissed, their state is open for a
-            # replacement rather than permanently blocked. 'suspended'
-            # still counts (they're still assigned, just temporarily
-            # locked out) — a suspended coordinator must be reactivated or
-            # dismissed before anyone else can be assigned that state.
-            # AdminCreateCoordinatorView's own pre-check gives a clean
-            # error before this constraint would ever need to catch a
-            # race between two concurrent creation attempts.
+            # role at a time. Only 'active' and 'suspended' occupy the
+            # seat — 'suspended' still counts (temporarily locked out, not
+            # vacated; must be reactivated or dismissed before anyone else
+            # can be assigned that state), but both 'dismissed' (explicit,
+            # final end of the role — CoordinatorAgentStatusView/
+            # AdminCoordinatorStatusView) and 'inactive' (Admin's generic
+            # soft-delete, AdminUserDetailView) free the state up for a
+            # replacement — a soft-deleted coordinator obviously shouldn't
+            # keep blocking their state forever. AdminCreateCoordinatorView's
+            # own pre-check gives a clean error before this constraint
+            # would ever need to catch a race between two concurrent
+            # creation attempts.
             models.UniqueConstraint(
                 fields=['state'],
-                condition=models.Q(role='state_coordinator') & ~models.Q(account_status='dismissed'),
+                condition=models.Q(role='state_coordinator', account_status__in=['active', 'suspended']),
                 name='unique_active_coordinator_per_state',
             ),
         ]
