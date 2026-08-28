@@ -41,7 +41,11 @@ class User(AbstractUser):
     STATUS_CHOICES = [
         ('active', 'Active'),
         ('inactive', 'Inactive'),
-        ('suspended', 'Suspended')
+        ('suspended', 'Suspended'),
+        # Distinct from 'suspended' (temporary, reactivatable) — a Coordinator
+        # dismissing an Agent "according to company rules" (CoordinatorAgentStatusView)
+        # is meant to be final, not something the same reactivate button undoes.
+        ('dismissed', 'Dismissed'),
     ]
     GENDER_CHOICES = [
         ('male', 'Male'),

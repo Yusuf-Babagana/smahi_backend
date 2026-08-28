@@ -100,8 +100,19 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Not one of the offered default icons.")
         return value
 
+    def __init__(self, *args, extra_allowed_roles=None, **kwargs):
+        # Only ever passed by a trusted, authenticated, permission-gated
+        # server-side caller — CoordinatorCreateAgentView passes {'agent'}
+        # so a Coordinator can create Agents through this same serializer
+        # (reusing its password hashing / client_request_id dedup / GPS
+        # rounding logic) without weakening PUBLIC_REGISTRATION_ROLES for
+        # the actual public, unauthenticated register_view, which never
+        # passes this and behaves exactly as before.
+        self._extra_allowed_roles = extra_allowed_roles or set()
+        super().__init__(*args, **kwargs)
+
     def validate_role(self, value):
-        if value not in self.PUBLIC_REGISTRATION_ROLES:
+        if value not in (self.PUBLIC_REGISTRATION_ROLES | self._extra_allowed_roles):
             raise serializers.ValidationError(
                 "Only client and artisan accounts can be created through registration."
             )

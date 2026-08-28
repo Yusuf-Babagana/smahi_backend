@@ -729,6 +729,275 @@ class AgentRegisterArtisanStateScopingTests(APITestCase):
         self.assertNotEqual(first.data['user']['id'], second.data['user']['id'])
 
 
+class CoordinatorDashboardTestBase(APITestCase):
+    """Shared fixtures for the whole Coordinator Dashboard feature: two
+    states, each with its own coordinator, agents, and LGAs — every test
+    below depends on proving state A's coordinator can never see or touch
+    state B's data."""
+
+    def setUp(self):
+        from locations.models import Country, State, LGA
+
+        self.country = Country.objects.create(name='Nigeria')
+        self.kano = State.objects.create(name='Kano', country=self.country)
+        self.lagos = State.objects.create(name='Lagos', country=self.country)
+        self.kano_lga_a = LGA.objects.create(name='Nassarawa', state=self.kano)
+        self.kano_lga_b = LGA.objects.create(name='Fagge', state=self.kano)
+        self.lagos_lga = LGA.objects.create(name='Ikeja', state=self.lagos)
+
+        self.kano_coordinator = User.objects.create_user(
+            email='kano_coord@test.com', password='pass12345',
+            first_name='Kano', last_name='Coordinator', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+        self.lagos_coordinator = User.objects.create_user(
+            email='lagos_coord@test.com', password='pass12345',
+            first_name='Lagos', last_name='Coordinator', role='state_coordinator',
+            country=self.country, state=self.lagos,
+        )
+        self.kano_agent = User.objects.create_user(
+            email='kano_agent@test.com', password='pass12345',
+            first_name='Existing', last_name='KanoAgent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            phone_number='08011112222',
+        )
+        self.lagos_agent = User.objects.create_user(
+            email='lagos_agent@test.com', password='pass12345',
+            first_name='Existing', last_name='LagosAgent', role='agent',
+            country=self.country, state=self.lagos, lga=self.lagos_lga,
+        )
+
+
+class CoordinatorAgentListTests(CoordinatorDashboardTestBase):
+    LIST_URL = '/api/v1/coordinator/agents/'
+
+    def test_coordinator_sees_only_their_own_states_agents(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.LIST_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        emails = [a['email'] for a in response.data['results']]
+        self.assertIn('kano_agent@test.com', emails)
+        self.assertNotIn('lagos_agent@test.com', emails)
+
+    def test_agent_list_includes_lga(self):
+        """Regression: AgentOverviewSerializer previously showed the
+        agent's state but not their LGA — a coordinator overseeing an
+        entire state had no way to see which LGA each agent covers."""
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.LIST_URL)
+        agent_row = next(a for a in response.data['results'] if a['email'] == 'kano_agent@test.com')
+        self.assertIsNotNone(agent_row['lga_details'])
+        self.assertEqual(agent_row['lga_details']['name'], 'Nassarawa')
+
+    def test_search_by_phone_number(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.LIST_URL, {'search': '08011112222'})
+        emails = [a['email'] for a in response.data['results']]
+        self.assertEqual(emails, ['kano_agent@test.com'])
+
+    def test_search_by_lga_name(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.LIST_URL, {'search': 'Nassarawa'})
+        emails = [a['email'] for a in response.data['results']]
+        self.assertEqual(emails, ['kano_agent@test.com'])
+
+    def test_agent_role_cannot_access_coordinator_agent_list(self):
+        """IsStateCoordinator must reject a plain agent — distinct from
+        IsStateAgent, which the artisan/client-scoped views intentionally
+        share between both roles."""
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.LIST_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class CoordinatorCreateAgentTests(CoordinatorDashboardTestBase):
+    CREATE_URL = '/api/v1/coordinator/agents/create/'
+
+    def test_coordinator_creates_agent_in_their_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'new_agent@test.com', 'first_name': 'New', 'last_name': 'Agent',
+            'phone_number': '08033334444', 'lga': self.kano_lga_b.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data.get('generated_password'))
+
+        new_agent = User.objects.get(email='new_agent@test.com')
+        self.assertEqual(new_agent.role, 'agent')
+        self.assertEqual(new_agent.state_id, self.kano.id)
+        self.assertEqual(new_agent.lga_id, self.kano_lga_b.id)
+        self.assertTrue(new_agent.is_active)
+
+    def test_cannot_assign_an_lga_from_another_state(self):
+        """The one deliberate difference from AgentRegisterArtisanView:
+        the coordinator picks the LGA, so it must be validated against
+        their own state rather than forced — a modified client trying to
+        place a new agent in a different state's LGA must be rejected."""
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'sneaky_agent@test.com', 'first_name': 'Sneaky', 'last_name': 'Agent',
+            'lga': self.lagos_lga.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='sneaky_agent@test.com').exists())
+
+    def test_missing_lga_rejected(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'no_lga_agent@test.com', 'first_name': 'No', 'last_name': 'Lga',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='no_lga_agent@test.com').exists())
+
+    def test_country_and_state_are_forced_not_trusted(self):
+        """Same reasoning as AgentRegisterArtisanStateScopingTests — a
+        modified client sending a different state must be ignored."""
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'forced_agent@test.com', 'first_name': 'Forced', 'last_name': 'Agent',
+            'lga': self.kano_lga_a.id, 'state': self.lagos.id, 'country': self.country.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_agent = User.objects.get(email='forced_agent@test.com')
+        self.assertEqual(new_agent.state_id, self.kano.id, "server must force the coordinator's own state")
+
+    def test_agent_role_cannot_create_agents(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'blocked_agent@test.com', 'first_name': 'Blocked', 'last_name': 'Agent',
+            'lga': self.kano_lga_b.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_retrying_the_same_client_request_id_does_not_duplicate(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        payload = {
+            'email': 'idempotent_agent@test.com', 'first_name': 'Idem', 'last_name': 'Potent',
+            'lga': self.kano_lga_b.id, 'client_request_id': 'coord-device-0001',
+        }
+        first = self.client.post(self.CREATE_URL, payload)
+        second = self.client.post(self.CREATE_URL, payload)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
+        self.assertTrue(second.data.get('already_registered'))
+        self.assertEqual(
+            User.objects.filter(email='idempotent_agent@test.com').count(), 1,
+        )
+
+
+class CoordinatorAgentStatusTests(CoordinatorDashboardTestBase):
+
+    def status_url(self, agent_id):
+        return f'/api/v1/coordinator/agents/{agent_id}/status/'
+
+    def test_coordinator_suspends_and_reactivates_own_states_agent(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+
+        suspend = self.client.post(self.status_url(self.kano_agent.id), {'status': 'suspended'})
+        self.assertEqual(suspend.status_code, status.HTTP_200_OK, suspend.data)
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.account_status, 'suspended')
+        self.assertFalse(self.kano_agent.is_active, "a suspended agent must not be able to log in")
+
+        reactivate = self.client.post(self.status_url(self.kano_agent.id), {'status': 'active'})
+        self.assertEqual(reactivate.status_code, status.HTTP_200_OK, reactivate.data)
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.account_status, 'active')
+        self.assertTrue(self.kano_agent.is_active)
+
+    def test_dismissed_agent_cannot_be_reactivated_through_this_endpoint(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        dismiss = self.client.post(self.status_url(self.kano_agent.id), {'status': 'dismissed'})
+        self.assertEqual(dismiss.status_code, status.HTTP_200_OK, dismiss.data)
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.account_status, 'dismissed')
+        self.assertFalse(self.kano_agent.is_active)
+
+        retry = self.client.post(self.status_url(self.kano_agent.id), {'status': 'active'})
+        self.assertEqual(retry.status_code, status.HTTP_400_BAD_REQUEST)
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.account_status, 'dismissed', "dismissal must stick")
+
+    def test_coordinator_cannot_touch_another_states_agent(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.status_url(self.lagos_agent.id), {'status': 'suspended'})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.lagos_agent.refresh_from_db()
+        self.assertEqual(self.lagos_agent.account_status, 'active', "must be completely untouched")
+
+    def test_invalid_status_value_rejected(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.status_url(self.kano_agent.id), {'status': 'banned'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class CoordinatorReportsViewTests(CoordinatorDashboardTestBase):
+    REPORTS_URL = '/api/v1/coordinator/reports/'
+
+    def setUp(self):
+        super().setUp()
+        from .models import DisputeReport
+
+        self.kano_client = User.objects.create_user(
+            email='kano_client@test.com', password='pass12345',
+            first_name='Kano', last_name='Client', role='client',
+            country=self.country, state=self.kano,
+        )
+        self.lagos_client = User.objects.create_user(
+            email='lagos_client@test.com', password='pass12345',
+            first_name='Lagos', last_name='Client', role='client',
+            country=self.country, state=self.lagos,
+        )
+        self.kano_dispute = DisputeReport.objects.create(
+            reporter=self.kano_client, category='quality', description='Late arrival.',
+        )
+        self.lagos_dispute = DisputeReport.objects.create(
+            reporter=self.lagos_client, category='payment', description='Overcharged.',
+        )
+
+    def test_coordinator_sees_only_their_states_disputes(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.REPORTS_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        ids = [r['id'] for r in response.data['results']]
+        self.assertIn(self.kano_dispute.id, ids)
+        self.assertNotIn(self.lagos_dispute.id, ids)
+
+    def test_regular_user_dispute_endpoint_unaffected(self):
+        """Sanity check that adding this new state-wide view didn't touch
+        DisputeReportViewSet's own "only your own reports" scoping."""
+        self.client.force_authenticate(user=self.kano_client)
+        response = self.client.get('/api/v1/disputes/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        ids = [r['id'] for r in response.data['results']]
+        self.assertEqual(ids, [self.kano_dispute.id])
+
+    def test_agent_role_cannot_access_coordinator_reports(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.REPORTS_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
+    STATS_URL = '/api/agent/dashboard-stats/'
+
+    def test_coordinator_gets_agent_counts_agent_does_not(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        coord_response = self.client.get(self.STATS_URL)
+        self.assertEqual(coord_response.status_code, status.HTTP_200_OK, coord_response.data)
+        self.assertIn('total_agents', coord_response.data)
+        self.assertEqual(coord_response.data['total_agents'], 1)
+        self.assertEqual(coord_response.data['active_agents'], 1)
+
+        self.client.force_authenticate(user=self.kano_agent)
+        agent_response = self.client.get(self.STATS_URL)
+        self.assertEqual(agent_response.status_code, status.HTTP_200_OK, agent_response.data)
+        self.assertNotIn(
+            'total_agents', agent_response.data,
+            "a plain agent has no agents under them — this field shouldn't appear at all",
+        )
+
+
 class AIVerificationStatusTests(APITestCase):
     """The AI assistant must report an artisan's verification status from
     the real database, never invent or guess it (audit request: the AI and

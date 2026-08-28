@@ -288,12 +288,19 @@ class AgentDashboardStatsView(APIView):
             })
 
         artisans = ArtisanProfile.objects.filter(user__state_id=state_id)
-        return Response({
+        data = {
             'total_artisans': artisans.count(),
             'verified_artisans': artisans.filter(verification_status='approved').count(),
             'pending_verification': artisans.filter(verification_status='pending').count(),
             'total_clients': User.objects.filter(role='client', state_id=state_id).count(),
-        })
+        }
+        # Agent-level counts only make sense for a coordinator overseeing
+        # agents — a plain agent has no one "under" them to count.
+        if request.user.role == 'state_coordinator':
+            agents = User.objects.filter(role='agent', state_id=state_id)
+            data['total_agents'] = agents.count()
+            data['active_agents'] = agents.filter(account_status='active').count()
+        return Response(data)
 
 
 class AgentRegisterArtisanView(APIView):
@@ -377,7 +384,13 @@ class CoordinatorAgentListView(generics.ListAPIView):
     (identical to IsStateAgent's artisan/client scoping) doesn't give."""
     serializer_class = AgentOverviewSerializer
     permission_classes = [IsAuthenticated, IsStateCoordinator]
-    search_fields = ['first_name', 'last_name', 'email']
+    filterset_fields = ['lga', 'account_status']
+    # 'lga__name' — SearchFilter follows the double-underscore lookup the
+    # same way DjangoFilterBackend does, so "search by LGA" doesn't need
+    # its own endpoint/param. Phone number added for the same reason: the
+    # Coordinator Dashboard spec explicitly asks for name/serial/phone/LGA
+    # search, not just name/email.
+    search_fields = ['first_name', 'last_name', 'email', 'phone_number', 'lga__name']
 
     def get_queryset(self):
         state_id = self.request.user.state_id
@@ -386,7 +399,7 @@ class CoordinatorAgentListView(generics.ListAPIView):
         # Alias names can't be 'artisans_registered'/'reviewed_verifications' —
         # those are already the reverse-FK related_names on this model, and
         # Django's ORM rejects an annotation that collides with a real field.
-        return User.objects.filter(role='agent', state_id=state_id).select_related('state').annotate(
+        return User.objects.filter(role='agent', state_id=state_id).select_related('state', 'lga').annotate(
             registered_artisans_count=Count('artisans_registered', distinct=True),
             verified_artisans_count=Count(
                 'reviewed_verifications',
@@ -396,16 +409,96 @@ class CoordinatorAgentListView(generics.ListAPIView):
         ).order_by('-created_at')
 
 
+class CoordinatorCreateAgentView(APIView):
+    """Coordinator-initiated agent onboarding — per the Coordinator
+    Dashboard spec's explicit decision that Coordinators (not Admin, not a
+    self-application flow) are responsible for creating new Agents in
+    their own state. Mirrors AgentRegisterArtisanView's pattern exactly
+    (server-generated password, forced role/location) with one
+    difference: the LGA is NOT forced to the coordinator's own — a
+    coordinator oversees every LGA in their state and assigns each new
+    agent to whichever one they're meant to cover, validated to actually
+    belong to that state so a modified client can't place an agent
+    somewhere the coordinator has no authority over.
+    """
+    permission_classes = [IsAuthenticated, IsStateCoordinator]
+
+    def post(self, request):
+        import secrets
+        from accounts.serializers import UserRegistrationSerializer
+        from locations.models import LGA
+
+        if not request.user.state_id:
+            return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Same idempotent-replay reasoning as AgentRegisterArtisanView —
+        # see that view's own comment for the full explanation.
+        client_request_id = (request.data.get('client_request_id') or '').strip() or None
+        if client_request_id:
+            existing = User.objects.filter(client_request_id=client_request_id).first()
+            if existing:
+                return Response({
+                    'user': UserSerializer(existing).data,
+                    'generated_password': None,
+                    'message': (
+                        'This agent was already created from an earlier attempt with '
+                        'the same submission — no new account was created. If they '
+                        'never received their one-time password, use the '
+                        'password-reset flow to issue a new one.'
+                    ),
+                    'already_registered': True,
+                }, status=status.HTTP_200_OK)
+
+        lga_id = request.data.get('lga')
+        if not lga_id:
+            return Response({'error': 'lga is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not LGA.objects.filter(id=lga_id, state_id=request.user.state_id).exists():
+            return Response(
+                {'error': 'That LGA does not belong to your state.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        generated_password = secrets.token_urlsafe(9)
+
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        data['role'] = 'agent'
+        data['password'] = generated_password
+        data['password_confirm'] = generated_password
+        # Country/state forced to the coordinator's own (same reasoning as
+        # AgentRegisterArtisanView) — only LGA is caller-supplied, validated above.
+        data['country'] = request.user.country_id
+        data['state'] = request.user.state_id
+        data['client_request_id'] = client_request_id
+
+        # extra_allowed_roles is what actually lets 'agent' through
+        # validate_role here — see that method's own comment. The public
+        # register_view never passes this, so it can't create agents.
+        serializer = UserRegistrationSerializer(data=data, extra_allowed_roles={'agent'})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user = serializer.save()
+
+        return Response({
+            'user': UserSerializer(user).data,
+            'generated_password': generated_password,
+            'message': 'Agent created. Share this one-time password with them securely — it will not be shown again.',
+        }, status=status.HTTP_201_CREATED)
+
+
 class CoordinatorAgentStatusView(APIView):
-    """Coordinator suspends/reactivates one of their own state's agents.
-    Scoped to the same state as the coordinator — can't touch an agent
-    in a different state, and can't touch anything but an 'agent'."""
+    """Coordinator suspends/reactivates/dismisses one of their own state's
+    agents. Scoped to the same state as the coordinator — can't touch an
+    agent in a different state, and can't touch anything but an 'agent'."""
     permission_classes = [IsAuthenticated, IsStateCoordinator]
 
     def post(self, request, agent_id):
         new_status = request.data.get('status')
-        if new_status not in ('active', 'suspended'):
-            return Response({'error': "status must be 'active' or 'suspended'."}, status=status.HTTP_400_BAD_REQUEST)
+        if new_status not in ('active', 'suspended', 'dismissed'):
+            return Response(
+                {'error': "status must be 'active', 'suspended', or 'dismissed'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         state_id = request.user.state_id
         if not state_id:
@@ -416,10 +509,20 @@ class CoordinatorAgentStatusView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'Agent not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Dismissal is meant to be final ("according to company rules"),
+        # not something this same endpoint can casually undo the way a
+        # suspension is reactivated — re-hiring a dismissed agent is
+        # deliberately out of this endpoint's scope (Django Admin only).
+        if agent.account_status == 'dismissed':
+            return Response(
+                {'error': 'This agent has been dismissed and cannot be reactivated here.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # is_active is what login_view actually gates on (accounts/views.py) —
         # account_status alone is display-only. Set both together, same as
         # the equivalent Django Admin bulk actions (accounts/admin.py), or a
-        # "suspended" agent could still log in and keep working.
+        # "suspended"/"dismissed" agent could still log in and keep working.
         agent.is_active = (new_status == 'active')
         agent.account_status = new_status
         agent.save(update_fields=['is_active', 'account_status'])
@@ -428,6 +531,27 @@ class CoordinatorAgentStatusView(APIView):
             'message': f'Agent account set to {new_status}.',
             'agent': {'id': agent.id, 'email': agent.email, 'account_status': agent.account_status, 'is_active': agent.is_active},
         })
+
+
+class CoordinatorReportsView(generics.ListAPIView):
+    """Disputes/escalations connected to the coordinator's own state —
+    either filed by someone in that state, or about a booking that
+    happened there. DisputeReportViewSet (core/views.py, the regular
+    per-user endpoint) deliberately only shows a caller their own
+    reports; this is the separate state-wide oversight view the
+    Coordinator Dashboard spec asks for. Read-only — resolution stays in
+    Django Admin, matching DisputeReport's existing design."""
+    serializer_class = DisputeReportSerializer
+    permission_classes = [IsAuthenticated, IsStateCoordinator]
+    filterset_fields = ['status', 'category']
+
+    def get_queryset(self):
+        state_id = self.request.user.state_id
+        if not state_id:
+            return DisputeReport.objects.none()
+        return DisputeReport.objects.filter(
+            Q(reporter__state_id=state_id) | Q(booking__state_id=state_id)
+        ).select_related('reporter', 'booking').distinct()
 
 
 class AgentVerifyArtisanView(APIView):

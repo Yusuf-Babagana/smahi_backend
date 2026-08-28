@@ -453,11 +453,28 @@ class PublicReviewSerializer(serializers.ModelSerializer):
 
 
 class DisputeReportSerializer(serializers.ModelSerializer):
+    # The regular per-user endpoint (DisputeReportViewSet) never needed
+    # this — a caller only ever sees their own reports, so "who filed it"
+    # is implicit. CoordinatorReportsView (state-wide oversight) is a
+    # different story: the reporter's identity is the whole point, so
+    # rather than a second serializer, these are added here as read-only
+    # (SerializerMethodField never affects the existing create/validate
+    # path either serializer's caller uses).
+    reporter_name = serializers.SerializerMethodField()
+    reporter_email = serializers.SerializerMethodField()
+
+    def get_reporter_name(self, obj):
+        return f"{obj.reporter.first_name} {obj.reporter.last_name}".strip()
+
+    def get_reporter_email(self, obj):
+        return obj.reporter.email
+
     class Meta:
         model = DisputeReport
         fields = [
             'id', 'booking', 'category', 'description',
             'status', 'resolution_notes', 'created_at', 'updated_at',
+            'reporter_name', 'reporter_email',
         ]
         # reporter comes from request.user in the view, never client input.
         # status/resolution_notes only ever change via Django Admin.
@@ -468,6 +485,10 @@ class AgentOverviewSerializer(serializers.ModelSerializer):
     """One agent, as seen by their state coordinator — identity plus the
     two counts CoordinatorAgentListView annotates onto the queryset."""
     state_details = StateLiteSerializer(source='state', read_only=True)
+    # Missing until the Coordinator Dashboard audit (Aug 2026) — a
+    # coordinator managing agents across their whole state had no way to
+    # see which LGA each agent actually covers, only the (shared) state.
+    lga_details = LGASerializer(source='lga', read_only=True)
     # source names differ from the annotation aliases in CoordinatorAgentListView
     # only in that those aliases can't reuse 'artisans_registered' itself — that
     # name is already the FK related_name and Django's ORM rejects the collision.
@@ -478,6 +499,6 @@ class AgentOverviewSerializer(serializers.ModelSerializer):
         model = get_user_model()
         fields = [
             'id', 'first_name', 'last_name', 'email', 'phone_number', 'gender',
-            'account_status', 'state_details', 'created_at',
+            'account_status', 'state_details', 'lga_details', 'created_at',
             'artisans_registered', 'artisans_verified',
         ]
