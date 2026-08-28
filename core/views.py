@@ -30,11 +30,12 @@ from django.views.decorators.cache import cache_control
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from django.db.models import Q, F, Count, Sum, Exists, OuterRef
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite
+from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite
 from notifications.models import DeviceToken
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
     ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
+    BusinessProfileSerializer, BusinessProfileUpdateSerializer,
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
@@ -52,10 +53,19 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
     pagination_class = None
 
+    def _category_type(self):
+        # Defaults to 'artisan' — every caller before business registration
+        # existed expects the profession list and never passes this param,
+        # so this keeps that behavior byte-for-byte unchanged.
+        value = self.request.query_params.get('type', 'artisan').strip().lower()
+        return value if value in ('artisan', 'business') else 'artisan'
+
     def get_queryset(self):
         if self.action == 'all':
-            return Category.objects.all()
-        return Category.objects.filter(parent__isnull=True).prefetch_related('subcategories')
+            return Category.objects.filter(category_type=self._category_type())
+        return Category.objects.filter(
+            parent__isnull=True, category_type=self._category_type()
+        ).prefetch_related('subcategories')
 
     def get_serializer_class(self):
         if self.action == 'all':
@@ -67,7 +77,8 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
         if search:
             qs = Category.objects.filter(
-                Q(name__icontains=search) | Q(name_ha__icontains=search)
+                Q(name__icontains=search) | Q(name_ha__icontains=search),
+                category_type=self._category_type(),
             ).select_related('parent')
             serializer = FlatCategorySerializer(qs, many=True)
             return Response(serializer.data)
@@ -84,6 +95,33 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         categories = self.get_queryset()
         serializer = self.get_serializer(categories, many=True)
         return Response(serializer.data)
+
+
+class BusinessProfileViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
+    """Public read + owner-only update for a registered business's
+    profile. Deliberately minimal, matching BusinessProfile's own scope
+    note: no distance/search-ranking/is_online — those are discovery
+    features that don't exist for businesses yet, a separate later
+    decision, not assumed here."""
+    serializer_class = BusinessProfileSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['category', 'verification_status', 'user']
+    search_fields = ['business_name', 'user__first_name', 'user__last_name']
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in ('update', 'partial_update'):
+            return [IsAuthenticated(), IsProfileOwner()]
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return BusinessProfileUpdateSerializer
+        return BusinessProfileSerializer
+
+    def get_queryset(self):
+        return BusinessProfile.objects.select_related('user', 'category')
 
 
 class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):

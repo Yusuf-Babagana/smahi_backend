@@ -246,6 +246,85 @@ class CustomCategoryIconTests(APITestCase):
         self.assertEqual(Category.objects.filter(name__iexact='Drone Photography Service').count(), 1)
 
 
+class BusinessRegistrationTests(APITestCase):
+    """Registering as a Business (hospital, hotel, grocery store, etc.) —
+    deliberately separate from 'artisan', per the explicit product
+    decision that a business isn't an individual tradesperson."""
+
+    def register(self, **overrides):
+        payload = {
+            'email': 'business_test@example.com',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'first_name': 'Amina',
+            'last_name': 'Yusuf',
+            'role': 'business',
+            'business_name': "Amina's Grocery Store",
+            'custom_category_name': 'Grocery / Retail Store',
+        }
+        payload.update(overrides)
+        return self.client.post(REGISTER_URL, payload)
+
+    def test_business_role_is_allowed(self):
+        response = self.register()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        user = User.objects.get(email='business_test@example.com')
+        self.assertEqual(user.role, 'business')
+
+    def test_creates_a_business_profile_with_the_right_name_and_category(self):
+        from core.models import BusinessProfile, Category
+
+        response = self.register()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        profile = BusinessProfile.objects.get(user__email='business_test@example.com')
+        self.assertEqual(profile.business_name, "Amina's Grocery Store")
+        self.assertEqual(profile.category.name, 'Grocery / Retail Store')
+        self.assertEqual(profile.category.category_type, 'business')
+        self.assertEqual(profile.verification_status, 'pending')
+
+    def test_business_name_is_required(self):
+        response = self.register(business_name='')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('business_name', response.data)
+        self.assertFalse(User.objects.filter(email='business_test@example.com').exists())
+
+    def test_client_and_artisan_never_get_a_business_profile(self):
+        """Regression guard: create()'s branch must be role-gated, not
+        just "did the caller send a business_name" — a client/artisan
+        payload that happened to include one must not create a stray
+        BusinessProfile."""
+        from core.models import BusinessProfile
+
+        response = self.register(role='client', email='not_a_business@example.com')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertFalse(BusinessProfile.objects.filter(user__email='not_a_business@example.com').exists())
+
+    def test_custom_business_category_does_not_collide_with_a_same_named_artisan_category(self):
+        """The whole point of Category.category_type: an artisan
+        profession and a business type can share a name (e.g.
+        "Photography") without becoming the same row, which would
+        otherwise let a business's custom category wrongly show up in the
+        artisan profession picker, or vice versa."""
+        from core.models import Category
+
+        # An artisan registers with a custom profession first...
+        self.client.post(REGISTER_URL, {
+            'email': 'photographer@example.com', 'password': 'password123',
+            'password_confirm': 'password123', 'first_name': 'Musa', 'last_name': 'Bello',
+            'role': 'artisan', 'custom_category_name': 'Photography',
+        })
+        # ...then a business registers with the exact same typed name.
+        response = self.register(email='photo_studio@example.com', custom_category_name='Photography')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        categories = Category.objects.filter(name__iexact='Photography')
+        self.assertEqual(categories.count(), 2, "must be two separate rows, one per category_type")
+        self.assertEqual(
+            {c.category_type for c in categories}, {'artisan', 'business'},
+        )
+
+
 class GenderFieldTests(APITestCase):
     """Gender is optional everywhere — registration, and editing an existing
     account — and powers a male/female fallback avatar (mobile app's Avatar

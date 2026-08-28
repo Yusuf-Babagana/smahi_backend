@@ -21,10 +21,25 @@ DEFAULT_OTHER_ICONS = frozenset({
 
 
 class Category(models.Model):
+    CATEGORY_TYPE_CHOICES = [
+        ('artisan', 'Artisan / Trade'),
+        ('business', 'Business'),
+    ]
+
     parent = models.ForeignKey(
         'self', on_delete=models.CASCADE, null=True, blank=True,
         related_name='subcategories'
     )
+    # Distinguishes an individual trade/profession (Plumber, Electrician —
+    # picked at artisan registration, ArtisanProfile.category) from a
+    # registered business's line of business (Hospital, Hotel, Grocery
+    # Store — picked at business registration, BusinessProfile.category).
+    # Same underlying tree/serializers/icon-matching machinery is reused
+    # for both rather than duplicating the whole Category infrastructure;
+    # this field is what keeps the two pickers from mixing (see
+    # CategoryViewSet's `type` query param). Defaults to 'artisan' so
+    # every category created before this field existed is unaffected.
+    category_type = models.CharField(max_length=20, choices=CATEGORY_TYPE_CHOICES, default='artisan')
     name = models.CharField(max_length=100)
     name_ha = models.CharField(max_length=100, blank=True, help_text="Hausa translation")
     description = models.TextField(blank=True)
@@ -131,6 +146,55 @@ class ArtisanProfile(models.Model):
         avg_delta = agg['avg']
         self.avg_response_minutes = int(avg_delta.total_seconds() // 60) if avg_delta else None
         self.save(update_fields=['avg_response_minutes'])
+
+
+class BusinessProfile(models.Model):
+    """A registered business (hospital, hotel, restaurant, grocery/retail
+    store, etc.) — not an individual tradesperson. Deliberately kept
+    separate from ArtisanProfile rather than bolted onto it: a business
+    has a business_name and a business category (Category.category_type
+    ='business'), not a personal profession, hourly_rate, or the
+    individual-service concepts ArtisanProfile is built around.
+
+    Scope note (Aug 2026): this covers registration and a real, retrievable
+    profile — the full booking/discovery/review pipeline ArtisanProfile has
+    (live location, response-time tracking, distance-sorted search, the AI
+    assistant's booking tools) is a deliberately separate, larger decision
+    for a later phase, not assumed here.
+    """
+    VERIFICATION_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='business_profile')
+    business_name = models.CharField(max_length=150)
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='businesses')
+    description = models.TextField(blank=True)
+    # Optional — not every local business (e.g. a grain seller) has one,
+    # but a hospital/hotel/registered company typically does. Never
+    # required, never validated against a real registry (out of scope).
+    registration_number = models.CharField(max_length=100, blank=True)
+
+    # Same oversight pattern as ArtisanProfile.registered_by — blank for a
+    # business that self-registered through the public signup flow.
+    registered_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='businesses_registered'
+    )
+    verification_status = models.CharField(
+        max_length=20, choices=VERIFICATION_STATUS_CHOICES, default='pending'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.business_name
 
 
 class Favorite(models.Model):

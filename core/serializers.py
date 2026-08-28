@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings
+from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings
 from accounts.serializers import UserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
@@ -27,7 +27,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'material_icon', 'subcategories', 'created_at']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'material_icon', 'category_type', 'subcategories', 'created_at']
 
 
 class FlatCategorySerializer(serializers.ModelSerializer):
@@ -37,7 +37,7 @@ class FlatCategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'material_icon', 'parent_id', 'parent_name', 'parent_name_ha']
+        fields = ['id', 'name', 'name_ha', 'description', 'icon', 'material_icon', 'category_type', 'parent_id', 'parent_name', 'parent_name_ha']
 
     def get_parent_name(self, obj):
         return obj.parent.name if obj.parent else None
@@ -135,6 +135,34 @@ class ArtisanProfileUpdateSerializer(serializers.ModelSerializer):
             'service_countries', 'service_states', 'service_lgas',
             'is_available'
         ]
+
+
+class BusinessProfileSerializer(serializers.ModelSerializer):
+    """A registered business's public profile — see BusinessProfile's own
+    docstring for why this is deliberately separate from ArtisanProfile,
+    and for what's intentionally NOT here yet (no distance/is_online/
+    is_favorited — those depend on discovery features not built for
+    businesses yet)."""
+    user_details = UserSerializer(source='user', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True, default='')
+    category_name_ha = serializers.CharField(source='category.name_ha', read_only=True, default='')
+    category_material_icon = serializers.CharField(source='category.material_icon', read_only=True, default='')
+
+    class Meta:
+        model = BusinessProfile
+        fields = [
+            'id', 'user', 'user_details', 'business_name',
+            'category', 'category_name', 'category_name_ha', 'category_material_icon',
+            'description', 'registration_number', 'verification_status',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['user', 'verification_status']
+
+
+class BusinessProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessProfile
+        fields = ['business_name', 'category', 'description', 'registration_number']
 
 
 class VerificationRequestSerializer(serializers.ModelSerializer):

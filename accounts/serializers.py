@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
 # 👇 Import ArtisanProfile at the top
-from core.models import ArtisanProfile, Category, DEFAULT_OTHER_ICONS
+from core.models import ArtisanProfile, BusinessProfile, Category, DEFAULT_OTHER_ICONS
 
 User = get_user_model()
 
@@ -16,7 +16,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=True, allow_blank=False)
     last_name = serializers.CharField(required=True, allow_blank=False)
 
-    # 👇 Category: either an existing ID or a custom name to auto-create
+    # 👇 Category: either an existing ID or a custom name to auto-create.
+    # Shared between artisan (a profession) and business (a business type)
+    # registration — which Category.category_type a custom name gets
+    # created under is decided by role in create() below, never by the
+    # caller, so a business registrant can't accidentally pollute the
+    # artisan profession list (or vice versa).
     category_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     custom_category_name = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=100)
     # Only used alongside custom_category_name — an explicit icon choice for
@@ -25,6 +30,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     # named category already exists (its icon, guessed or previously
     # chosen, isn't overridden by a later registrant's preference).
     custom_category_icon = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=50)
+
+    # Business-only — validated as required in validate() when role='business'.
+    business_name = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=150)
 
     # Self-service registration (accounts.views.register_view, AllowAny —
     # no authentication) must never be able to mint a privileged account.
@@ -36,8 +44,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     # are provisioned through authenticated, permission-checked paths only
     # (AgentRegisterArtisanView forces role='artisan' before ever reaching
     # this serializer; coordinator/admin accounts are created in Django
-    # Admin) — never through this serializer's public entry point.
-    PUBLIC_REGISTRATION_ROLES = {'client', 'artisan'}
+    # Admin) — never through this serializer's public entry point. Business
+    # is public/self-service, same as client/artisan — a hospital/hotel/shop
+    # owner registering their own business poses no privilege-escalation risk.
+    PUBLIC_REGISTRATION_ROLES = {'client', 'artisan', 'business'}
 
     class Meta:
         model = User
@@ -55,7 +65,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             # ongoing way these get refreshed; this just closes the gap for
             # the time between registering and that first dashboard visit.
             'latitude', 'longitude',
-            'category_id', 'custom_category_name', 'custom_category_icon',
+            'category_id', 'custom_category_name', 'custom_category_icon', 'business_name',
             # Offline-first registration's idempotency key — see the field's
             # own docstring on the User model for why this exists.
             'client_request_id',
@@ -126,13 +136,38 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if attrs.get('first_name') == 'User' and attrs.get('last_name') == 'User':
             raise serializers.ValidationError({"first_name": "Please enter your actual name instead of 'User'."})
 
+        if attrs.get('role') == 'business' and not attrs.get('business_name', '').strip():
+            raise serializers.ValidationError({"business_name": "A business name is required."})
+
         return attrs
 
+    def _resolve_category_id(self, category_id, custom_category_name, custom_category_icon, category_type):
+        """Shared by both the artisan and business branches of create()
+        below — the only difference between them is which category_type
+        a brand-new custom entry gets filed under, which is what actually
+        keeps "Photography" (an artisan profession) and, say, a business
+        calling itself "Photography Studio" from ever colliding as the
+        same Category row."""
+        if category_id:
+            return category_id
+        if custom_category_name:
+            # The icon choice only applies to a genuinely NEW category —
+            # get_or_create's `defaults` are ignored when a row already
+            # matches, so an earlier registrant's (or a guessed) icon for
+            # an existing category is never overwritten by this one.
+            category_obj, _ = Category.objects.get_or_create(
+                name__iexact=custom_category_name, category_type=category_type,
+                defaults={'name': custom_category_name, 'material_icon': custom_category_icon, 'category_type': category_type},
+            )
+            return category_obj.id
+        return None
+
     def create(self, validated_data):
-        # 1. Pull category data out before creating the user
+        # 1. Pull category/business data out before creating the user
         category_id = validated_data.pop('category_id', None)
         custom_category_name = validated_data.pop('custom_category_name', '').strip()
         custom_category_icon = validated_data.pop('custom_category_icon', '').strip()
+        business_name = validated_data.pop('business_name', '').strip()
 
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
@@ -140,27 +175,23 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # 2. Create the User account
         user = User.objects.create_user(password=password, **validated_data)
 
-        # 3. Create the ArtisanProfile with the correct category
+        # 3. Create the ArtisanProfile/BusinessProfile with the correct category
         if user.role == 'artisan':
-            resolved_category_id = None
-
-            if category_id:
-                # User picked an existing category from the list
-                resolved_category_id = category_id
-            elif custom_category_name:
-                # User typed a custom profession — find or create the Category.
-                # The icon choice only applies to a genuinely NEW category —
-                # get_or_create's `defaults` are ignored when a row already
-                # matches, so an earlier registrant's (or a guessed) icon for
-                # an existing category is never overwritten by this one.
-                category_obj, _ = Category.objects.get_or_create(
-                    name__iexact=custom_category_name,
-                    defaults={'name': custom_category_name, 'material_icon': custom_category_icon},
-                )
-                resolved_category_id = category_obj.id
-
+            resolved_category_id = self._resolve_category_id(
+                category_id, custom_category_name, custom_category_icon, 'artisan'
+            )
             ArtisanProfile.objects.create(
                 user=user,
+                category_id=resolved_category_id,
+                verification_status='pending'
+            )
+        elif user.role == 'business':
+            resolved_category_id = self._resolve_category_id(
+                category_id, custom_category_name, custom_category_icon, 'business'
+            )
+            BusinessProfile.objects.create(
+                user=user,
+                business_name=business_name,
                 category_id=resolved_category_id,
                 verification_status='pending'
             )

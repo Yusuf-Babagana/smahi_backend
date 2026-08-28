@@ -998,6 +998,82 @@ class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
         )
 
 
+class CategoryTypeSeparationTests(APITestCase):
+    """Category.category_type is what keeps the artisan profession list
+    and the business type list from mixing — both /categories/ endpoints
+    default to 'artisan' so every caller that existed before Business
+    registration was added (the artisan picker, artisan search filters)
+    behaves exactly as before, with zero code changes on their end."""
+
+    def setUp(self):
+        from .models import Category
+
+        self.plumbing = Category.objects.create(name='Plumbing', category_type='artisan')
+        self.hotel = Category.objects.create(name='Hotel', category_type='business')
+
+    def test_all_action_defaults_to_artisan(self):
+        response = self.client.get('/api/categories/all/')
+        names = [c['name'] for c in response.data]
+        self.assertIn('Plumbing', names)
+        self.assertNotIn('Hotel', names)
+
+    def test_all_action_with_business_type_param(self):
+        response = self.client.get('/api/categories/all/', {'type': 'business'})
+        names = [c['name'] for c in response.data]
+        self.assertIn('Hotel', names)
+        self.assertNotIn('Plumbing', names)
+
+    def test_search_respects_type_too(self):
+        # Both categories match "o" — the type filter must still apply.
+        response = self.client.get('/api/categories/', {'search': 'o', 'type': 'business'})
+        names = [c['name'] for c in response.data]
+        self.assertIn('Hotel', names)
+        self.assertNotIn('Plumbing', names)
+
+
+class BusinessProfileViewSetTests(APITestCase):
+    BUSINESSES_URL = '/api/businesses/'
+
+    def setUp(self):
+        from .models import BusinessProfile, Category
+
+        self.category = Category.objects.create(name='Hotel', category_type='business')
+        self.owner = User.objects.create_user(
+            email='hotel_owner@test.com', password='pass12345',
+            first_name='Hotel', last_name='Owner', role='business',
+        )
+        self.profile = BusinessProfile.objects.create(
+            user=self.owner, business_name='Zenith Suites', category=self.category,
+        )
+        self.other_user = User.objects.create_user(
+            email='someone_else@test.com', password='pass12345',
+            first_name='Someone', last_name='Else', role='client',
+        )
+
+    def test_anyone_can_read_a_business_profile(self):
+        response = self.client.get(f'{self.BUSINESSES_URL}{self.profile.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['business_name'], 'Zenith Suites')
+
+    def test_owner_can_update_their_own_profile(self):
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.patch(f'{self.BUSINESSES_URL}{self.profile.id}/', {
+            'business_name': 'Zenith Suites & Spa',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.business_name, 'Zenith Suites & Spa')
+
+    def test_non_owner_cannot_update_the_profile(self):
+        self.client.force_authenticate(user=self.other_user)
+        response = self.client.patch(f'{self.BUSINESSES_URL}{self.profile.id}/', {
+            'business_name': 'Hijacked Name',
+        })
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.business_name, 'Zenith Suites')
+
+
 class AIVerificationStatusTests(APITestCase):
     """The AI assistant must report an artisan's verification status from
     the real database, never invent or guess it (audit request: the AI and

@@ -34,6 +34,13 @@ class User(AbstractUser):
     ROLE_CHOICES = [
         ('client', 'Client'),
         ('artisan', 'Artisan'),
+        # A registered business (hospital, hotel, restaurant, grocery/retail
+        # store, etc.) — deliberately separate from 'artisan': a business
+        # isn't an individual tradesperson offering a personal service, it's
+        # an establishment with a business_name and its own category tree
+        # (core.models.BusinessProfile / Category.category_type). See
+        # UserRegistrationSerializer for how registration branches on this.
+        ('business', 'Business'),
         ('agent', 'Agent'),
         ('state_coordinator', 'State Coordinator'),
         ('admin', 'Admin'),
