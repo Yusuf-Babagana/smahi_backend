@@ -604,6 +604,11 @@ class ActivityLog(models.Model):
         ('coordinator_suspended', 'Suspended coordinator'),
         ('coordinator_reactivated', 'Reactivated coordinator'),
         ('coordinator_dismissed', 'Dismissed coordinator'),
+        # Business verification — Artisan/Business -> Coordinator Dashboard
+        # Connection (item 9), mirrors artisan_verified/
+        # artisan_verification_rejected exactly.
+        ('business_verified', 'Completed business verification'),
+        ('business_verification_rejected', 'Rejected business verification'),
     ]
 
     actor = models.ForeignKey(

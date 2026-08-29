@@ -257,6 +257,37 @@ class BookingSerializer(serializers.ModelSerializer):
         return value
 
 
+class AgentServiceRequestSerializer(serializers.ModelSerializer):
+    """A Booking as seen by the Agent/Coordinator responsible for that
+    territory — Client/User -> Agent Dashboard Connection (item 8).
+    Deliberately NOT BookingSerializer, which nests the client's full
+    UserSerializer (email, account_status, every location field, etc.) —
+    an agent only needs enough to recognize and act on the request:
+    who's asking (name + phone, for coordination), who's doing the job,
+    what/where/when, and its status. Never the client's email, role,
+    account status, or anything financial beyond the already-agreed
+    total_cost (visible to both client and artisan anyway)."""
+    client_name = serializers.SerializerMethodField()
+    client_phone = serializers.CharField(source='client.phone_number', read_only=True, default='')
+    artisan_name = serializers.SerializerMethodField()
+    category = serializers.CharField(source='artisan.artisan_profile.category.name', read_only=True, default='')
+    lga_details = LGASerializer(source='lga', read_only=True)
+
+    def get_client_name(self, obj):
+        return f'{obj.client.first_name} {obj.client.last_name}'.strip() or obj.client.email
+
+    def get_artisan_name(self, obj):
+        return f'{obj.artisan.first_name} {obj.artisan.last_name}'.strip() or obj.artisan.email
+
+    class Meta:
+        model = Booking
+        fields = [
+            'id', 'client_name', 'client_phone', 'artisan_name', 'category',
+            'service_description', 'address', 'lga_details',
+            'scheduled_date', 'total_cost', 'status', 'created_at',
+        ]
+
+
 class BookingCreateSerializer(serializers.ModelSerializer):
     # The mobile booking wizard sends {artisan, date, time, description, location}.
     # 'description'/'location' write to the canonical model fields via source;

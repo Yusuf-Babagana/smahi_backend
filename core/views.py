@@ -40,10 +40,14 @@ from .serializers import (
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
     BookingPhotoSerializer, AgentOverviewSerializer, CoordinatorOverviewSerializer,
-    ActivityLogSerializer,
+    ActivityLogSerializer, AgentServiceRequestSerializer,
 )
 from notifications.events import emit
-from .services import approve_artisan_verification, reject_artisan_verification, log_activity
+from .services import (
+    approve_artisan_verification, reject_artisan_verification,
+    approve_business_verification, reject_business_verification,
+    log_activity, search_agents,
+)
 from .permissions import IsArtisan, IsBusiness, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
 from accounts.serializers import UserSerializer, AdminUserSerializer, AdminUserUpdateSerializer
 
@@ -350,6 +354,61 @@ class AgentClientListView(generics.ListAPIView):
         return base.filter(state_id=user.state_id)
 
 
+class AgentBusinessListView(generics.ListAPIView):
+    """Businesses a caller can oversee — Artisan/Business -> Coordinator
+    Dashboard Connection (item 9): a business's registration and
+    verification status become visible here automatically, the same way
+    AgentArtisanListView already does for artisans, without anyone having
+    to open Django Admin or a separate system. Scoped identically: whole
+    state for a state_coordinator, own LGA only for a plain agent."""
+    serializer_class = BusinessProfileSerializer
+    permission_classes = [IsAuthenticated, IsStateAgent]
+    filterset_fields = ['category', 'verification_status']
+    search_fields = ['business_name', 'user__first_name', 'user__last_name']
+
+    def get_queryset(self):
+        user = self.request.user
+        base = BusinessProfile.objects.select_related('user', 'category')
+        if user.role == 'agent':
+            if not user.lga_id:
+                return BusinessProfile.objects.none()
+            return base.filter(user__lga_id=user.lga_id).distinct()
+        if not user.state_id:
+            return BusinessProfile.objects.none()
+        return base.filter(user__state_id=user.state_id).distinct()
+
+
+class AgentServiceRequestsView(generics.ListAPIView):
+    """Client/User -> Agent Dashboard Connection (item 8): when a client
+    books an artisan, that request shows up here automatically for
+    whoever is responsible for that territory — an agent never has to
+    leave the dashboard, search elsewhere, or be told about it some other
+    way. Scoped exactly like AgentArtisanListView/AgentClientListView: a
+    state_coordinator sees every request in their state, a plain agent
+    only their own LGA. Booking.lga is derived from the ARTISAN being
+    booked (see BookingViewSet.perform_create), not the client — this is
+    "whose territory is this job in," not "where does the client live."
+
+    AgentServiceRequestSerializer is deliberately not BookingSerializer —
+    an agent only sees the client info necessary for this one task (name,
+    phone), never their full profile/account/email."""
+    serializer_class = AgentServiceRequestSerializer
+    permission_classes = [IsAuthenticated, IsStateAgent]
+    filterset_fields = ['status']
+    search_fields = ['client__first_name', 'client__last_name', 'artisan__first_name', 'artisan__last_name']
+
+    def get_queryset(self):
+        user = self.request.user
+        base = Booking.objects.select_related('client', 'artisan', 'artisan__artisan_profile__category', 'lga')
+        if user.role == 'agent':
+            if not user.lga_id:
+                return Booking.objects.none()
+            return base.filter(lga_id=user.lga_id).order_by('-created_at')
+        if not user.state_id:
+            return Booking.objects.none()
+        return base.filter(state_id=user.state_id).order_by('-created_at')
+
+
 class AgentDashboardStatsView(APIView):
     """Summary counts for the agent/state-coordinator dashboard. A
     state_coordinator's counts are state-wide; a plain agent's are scoped
@@ -366,29 +425,57 @@ class AgentDashboardStatsView(APIView):
                 'verified_artisans': 0,
                 'pending_verification': 0,
                 'total_clients': 0,
+                'pending_service_requests': 0,
             })
 
         if request.user.role == 'agent':
             lga_id = request.user.lga_id
             artisans = ArtisanProfile.objects.filter(user__lga_id=lga_id) if lga_id else ArtisanProfile.objects.none()
             clients = User.objects.filter(role='client', lga_id=lga_id) if lga_id else User.objects.none()
+            requests_qs = Booking.objects.filter(lga_id=lga_id) if lga_id else Booking.objects.none()
         else:
             artisans = ArtisanProfile.objects.filter(user__state_id=state_id)
             clients = User.objects.filter(role='client', state_id=state_id)
+            requests_qs = Booking.objects.filter(state_id=state_id)
 
         data = {
             'total_artisans': artisans.count(),
             'verified_artisans': artisans.filter(verification_status='approved').count(),
             'pending_verification': artisans.filter(verification_status='pending').count(),
             'total_clients': clients.count(),
+            # Client/User -> Agent Dashboard Connection (item 8) — a quick
+            # at-a-glance count; the full list is AgentServiceRequestsView.
+            'pending_service_requests': requests_qs.filter(status='pending').count(),
         }
-        # Agent-level counts only make sense for a coordinator overseeing
-        # agents — a plain agent has no one "under" them to count.
+        # Agent-level counts, business oversight, and the attention-needed
+        # summary only make sense for a coordinator overseeing a whole
+        # state — a plain agent has no one "under" them to count, and
+        # business oversight (item 9) is framed as a Coordinator Dashboard
+        # concern, not an agent one (agents don't register businesses the
+        # way they register artisans).
         if request.user.role == 'state_coordinator':
             agents = User.objects.filter(role='agent', state_id=state_id)
             data['total_agents'] = agents.count()
             data['active_agents'] = agents.filter(account_status='active').count()
             data['pending_agents'] = agents.filter(account_status='pending_approval').count()
+
+            businesses = BusinessProfile.objects.filter(user__state_id=state_id)
+            data['total_businesses'] = businesses.count()
+            data['verified_businesses'] = businesses.filter(verification_status='approved').count()
+            data['pending_business_verification'] = businesses.filter(verification_status='pending').count()
+
+            # "Activities requiring Coordinator attention" (item 9) — one
+            # glanceable summary of counts already computed above, plus
+            # open reports (CoordinatorReportsView has the full list).
+            open_reports = DisputeReport.objects.filter(
+                Q(reporter__state_id=state_id) | Q(booking__state_id=state_id), status='open'
+            ).count()
+            data['attention_required'] = {
+                'pending_artisan_verification': data['pending_verification'],
+                'pending_business_verification': data['pending_business_verification'],
+                'pending_agent_approvals': data['pending_agents'],
+                'open_reports': open_reports,
+            }
         return Response(data)
 
 
@@ -794,6 +881,34 @@ class CoordinatorLGAOverviewView(APIView):
         })
 
 
+class CoordinatorAgentSearchView(APIView):
+    """The standalone "Agent Search API" the AI-access spec (item 7)
+    calls for: AI -> Permission Check -> Agent Search API -> Authorized
+    Agent Data -> AI Response. A real, independently permission-checked
+    REST endpoint — not just inline logic buried inside the AI chat
+    handler — so a Coordinator (or any future non-AI caller) can hit it
+    directly, and so it's directly testable without mocking OpenAI.
+
+    AIChatView's search_agents tool calls the exact same
+    core.services.search_agents() function from its own tool executor,
+    so this endpoint and the AI path can never authorize differently —
+    there is only one implementation of "what's approved for release."
+    """
+    permission_classes = [IsAuthenticated, IsStateCoordinator]
+
+    def get(self, request):
+        result = search_agents(
+            request.user,
+            query=request.query_params.get('q'),
+            lga=request.query_params.get('lga'),
+            phone_number=request.query_params.get('phone'),
+            serial_number=request.query_params.get('serial'),
+        )
+        if 'error' in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
 class AgentVerifyArtisanView(APIView):
     """Approve an artisan's verification — thin equivalent of
     VerificationRequestViewSet.process operating directly on the artisan's
@@ -827,6 +942,52 @@ class AgentVerifyArtisanView(APIView):
         return Response({
             'message': 'Artisan verified successfully.',
             'artisan': ArtisanProfileSerializer(artisan_profile).data,
+        })
+
+
+class AgentVerifyBusinessView(APIView):
+    """Approve or reject a business's verification — Artisan/Business ->
+    Coordinator Dashboard Connection (item 9), same LGA/state scoping as
+    AgentVerifyArtisanView. Unlike that legacy view (approve-only, kept
+    that way for backward compatibility with the app already installed),
+    this one accepts an explicit status so both directions are covered
+    from one endpoint, matching CoordinatorAgentStatusView's convention."""
+    permission_classes = [IsAuthenticated, IsStateAgent]
+
+    def post(self, request, user_id):
+        new_status = request.data.get('status', 'approved')
+        if new_status not in ('approved', 'rejected'):
+            return Response(
+                {'error': "status must be 'approved' or 'rejected'."}, status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if request.user.role == 'agent':
+            lga_id = request.user.lga_id
+            if not lga_id:
+                return Response({'error': 'Your account has no LGA assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+            lookup = {'lga_id': lga_id}
+            not_found_message = 'Business not found in your LGA.'
+        else:
+            state_id = request.user.state_id
+            if not state_id:
+                return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+            lookup = {'state_id': state_id}
+            not_found_message = 'Business not found in your state.'
+
+        try:
+            business_user = User.objects.get(id=user_id, role='business', **lookup)
+        except User.DoesNotExist:
+            return Response({'error': not_found_message}, status=status.HTTP_404_NOT_FOUND)
+
+        if new_status == 'approved':
+            business_profile = approve_business_verification(business_user, reviewed_by=request.user)
+        else:
+            reason = request.data.get('rejection_reason', '')
+            business_profile = reject_business_verification(business_user, reviewed_by=request.user, reason=reason)
+
+        return Response({
+            'message': f'Business verification set to {new_status}.',
+            'business': BusinessProfileSerializer(business_profile).data,
         })
 
 
@@ -1246,9 +1407,24 @@ class BookingViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
+        # country/state/lga are writable on BookingCreateSerializer but the
+        # app never actually sends them (app/booking/[artisanId].tsx's
+        # payload has no location fields at all) — every booking's
+        # location was silently null until now. Forced from the ARTISAN
+        # being booked, not trusted from the client — territory is about
+        # who's doing the job, not who's asking (same "force, don't trust"
+        # reasoning as AgentRegisterArtisanView). This is what makes the
+        # Client -> Agent Dashboard connection (item 8) possible at all:
+        # AgentServiceRequestsView scopes by exactly this lga/state.
+        artisan = serializer.validated_data.get('artisan')
         try:
             with transaction.atomic():
-                booking = serializer.save(client=self.request.user)
+                booking = serializer.save(
+                    client=self.request.user,
+                    country=artisan.country if artisan else None,
+                    state=artisan.state if artisan else None,
+                    lga=artisan.lga if artisan else None,
+                )
         except IntegrityError:
             # The unique_active_booking_per_artisan_slot constraint caught a
             # race that BookingCreateSerializer.validate()'s pre-transaction
@@ -1819,7 +1995,49 @@ class AIChatView(APIView):
         },
     ]
 
-    def _build_system_prompt(self):
+    # A separate list, not part of AI_TOOLS above — this tool must never
+    # be offered to the model at all unless the caller is authenticated
+    # as a state_coordinator (see _tools_for_request). AI-access spec
+    # (item 7): the AI must never have unrestricted DB/dashboard access,
+    # only this one controlled Agent Search API
+    # (core.services.search_agents / CoordinatorAgentSearchView).
+    AGENT_SEARCH_TOOLS = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_agents",
+                "description": (
+                    "Search Agent records — State Coordinators only, always "
+                    "scoped to the Coordinator's own state. Look up an Agent "
+                    "by LGA, phone number, name, or Agent ID/serial number. "
+                    "Returns only approved fields (name, Agent ID, phone "
+                    "number, state, LGA, status) — never financial, "
+                    "administrative, or other-role data."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "lga": {"type": "string", "description": "LGA name to search within, e.g. 'Waje'."},
+                        "phone_number": {"type": "string", "description": "A phone number (full or partial) to search for."},
+                        "serial_number": {"type": "string", "description": "An Agent ID/serial number (full or partial), e.g. 'AGT-KN-00123'."},
+                        "query": {"type": "string", "description": "A general search term (e.g. the agent's name) when none of the above apply."},
+                    },
+                },
+            },
+        },
+    ]
+
+    def _tools_for_request(self, request):
+        """Tool AVAILABILITY is role-gated, not just execution — a client/
+        artisan/anonymous caller never even sees search_agents offered to
+        the model, on top of search_agents()'s own independent
+        authorization check (belt and suspenders, same reasoning as every
+        role check elsewhere in this file)."""
+        if request.user.is_authenticated and request.user.role == 'state_coordinator':
+            return self.AI_TOOLS + self.AGENT_SEARCH_TOOLS
+        return self.AI_TOOLS
+
+    def _build_system_prompt(self, is_coordinator=False):
         """Base rules plus curated facts and the live website content."""
         system_content = self.SYSTEM_PROMPT
         knowledge = get_local_knowledge()
@@ -1857,6 +2075,24 @@ class AIChatView(APIView):
                 "Computer & Phone Repair. If more than one category is a "
                 "plausible match, prefer the most specific one and mention the "
                 "others in your reply."
+            )
+        if is_coordinator:
+            system_content += (
+                "\n\n===== AGENT SEARCH (State Coordinators only) =====\n"
+                "12. search_agents — Call this when the Coordinator asks you "
+                "to find an Agent, e.g. by LGA, phone number, name, or Agent "
+                "ID/serial number. Pass whichever of lga/phone_number/"
+                "serial_number/query the request implies.\n"
+                'Examples: "find the agent for Waje LGA" -> search_agents(lga="Waje")\n'
+                '          "find the agent with this phone number 08012345678" '
+                '-> search_agents(phone_number="08012345678")\n'
+                "This is automatically scoped to your own state and can only "
+                "return each matching Agent's name, Agent ID, phone number, "
+                "state, LGA, and status — never financial, administrative, "
+                "or any other confidential data. If the tool result contains "
+                "an \"error\" key, tell the Coordinator you can't look that "
+                "up for them right now rather than guessing an answer.\n"
+                "===== END AGENT SEARCH =====\n"
             )
         return system_content
 
@@ -2173,6 +2409,24 @@ class AIChatView(APIView):
                 },
             }
 
+        elif tool_name == "search_agents":
+            # core.services.search_agents is the ONLY thing this branch is
+            # allowed to call — it does the actual permission check/state
+            # scoping/field allowlisting (AI-access spec item 7). This tool
+            # is also never even offered to the model unless the caller is
+            # a state_coordinator (see _tools_for_request), but the
+            # authorization check inside search_agents() itself is what
+            # actually matters — never trust that a tool being "offered"
+            # is the same thing as it being safe to execute.
+            result = search_agents(
+                self.request.user,
+                query=arguments.get("query"),
+                lga=arguments.get("lga"),
+                phone_number=arguments.get("phone_number"),
+                serial_number=arguments.get("serial_number"),
+            )
+            return {"type": "agent_search_results", "data": result}
+
         return None
 
     def post(self, request):
@@ -2193,6 +2447,11 @@ class AIChatView(APIView):
         except (TypeError, ValueError):
             client_lat = client_lon = None
 
+        # Gates both the system prompt's Agent Search instructions and
+        # whether search_agents is even offered to the model at all (see
+        # _tools_for_request) — computed once so the two can never disagree.
+        is_coordinator = request.user.is_authenticated and request.user.role == 'state_coordinator'
+
         if messages and isinstance(messages, list):
             recent = [
                 m for m in messages[-20:]
@@ -2201,12 +2460,12 @@ class AIChatView(APIView):
                 and m.get("content")
             ]
             api_messages = [
-                {"role": "system", "content": self._build_system_prompt()},
+                {"role": "system", "content": self._build_system_prompt(is_coordinator)},
                 *[{"role": m["role"], "content": m["content"]} for m in recent],
             ]
         elif user_text:
             api_messages = [
-                {"role": "system", "content": self._build_system_prompt()},
+                {"role": "system", "content": self._build_system_prompt(is_coordinator)},
                 {"role": "user", "content": user_text},
             ]
         else:
@@ -2228,7 +2487,7 @@ class AIChatView(APIView):
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=api_messages,
-                tools=self.AI_TOOLS,
+                tools=self._tools_for_request(request),
                 max_tokens=500,
                 temperature=0.7,
             )

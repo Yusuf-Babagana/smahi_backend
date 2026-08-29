@@ -1498,6 +1498,243 @@ class AgentLGAScopingTests(CoordinatorDashboardTestBase):
         self.assertIn(self.lga_b_artisan.id, artisan_ids)
 
 
+class BookingLocationDerivationTests(CoordinatorDashboardTestBase):
+    """BookingViewSet.perform_create must derive Booking.country/state/lga
+    from the ARTISAN being booked, never trusting/expecting the client to
+    send them — confirmed the mobile app's actual booking payload
+    (app/booking/[artisanId].tsx) never includes location fields at all,
+    so without this fix every booking's territory silently stayed null
+    forever. This is what makes AgentServiceRequestsView (item 8) able to
+    scope a request to the right Agent's LGA in the first place."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import ArtisanProfile
+
+        self.booking_client = User.objects.create_user(
+            email='booking_client@test.com', password='pass12345',
+            first_name='Booking', last_name='Client', role='client',
+        )
+        self.location_artisan = User.objects.create_user(
+            email='location_artisan@test.com', password='pass12345',
+            first_name='Location', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=self.location_artisan)
+
+    def test_booking_location_derived_from_the_artisan_not_the_client(self):
+        self.client.force_authenticate(user=self.booking_client)
+        response = self.client.post('/api/bookings/', {
+            'artisan': self.location_artisan.id,
+            'date': (timezone.now() + timedelta(days=1)).date().isoformat(),
+            'time': '10:00',
+            'description': 'Fix generator',
+            'location': 'Somewhere in Kano',
+            # Deliberately no country/state/lga — matches the real app payload.
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        booking = Booking.objects.get(id=response.data['id'])
+        self.assertEqual(booking.country_id, self.country.id)
+        self.assertEqual(booking.state_id, self.kano.id)
+        self.assertEqual(booking.lga_id, self.kano_lga_a.id)
+
+
+class AgentServiceRequestsTests(CoordinatorDashboardTestBase):
+    """Client/User -> Agent Dashboard Connection (item 8): a client's
+    booking automatically becomes visible to whoever is responsible for
+    that territory — an agent for their own LGA, a coordinator state-wide
+    — carrying only the client info actually needed for the task."""
+    REQUESTS_URL = '/api/agent/service-requests/'
+
+    def setUp(self):
+        super().setUp()
+        from .models import ArtisanProfile
+
+        self.request_client = User.objects.create_user(
+            email='request_client@test.com', password='pass12345',
+            first_name='Request', last_name='Client', role='client',
+            phone_number='08055556666',
+        )
+        self.lga_a_artisan = User.objects.create_user(
+            email='requests_lga_a_artisan@test.com', password='pass12345',
+            first_name='LgaA', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=self.lga_a_artisan)
+        self.lga_b_artisan = User.objects.create_user(
+            email='requests_lga_b_artisan@test.com', password='pass12345',
+            first_name='LgaB', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        ArtisanProfile.objects.create(user=self.lga_b_artisan)
+
+        self.lga_a_booking = Booking.objects.create(
+            client=self.request_client, artisan=self.lga_a_artisan,
+            service_description='Fix tap', address='Nassarawa area',
+            state=self.kano, lga=self.kano_lga_a,
+            scheduled_date=timezone.now() + timedelta(days=1), status='pending',
+        )
+        self.lga_b_booking = Booking.objects.create(
+            client=self.request_client, artisan=self.lga_b_artisan,
+            service_description='Fix wire', address='Fagge area',
+            state=self.kano, lga=self.kano_lga_b,
+            scheduled_date=timezone.now() + timedelta(days=1), status='pending',
+        )
+
+    def test_agent_sees_only_requests_in_their_own_lga(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.REQUESTS_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        ids = [r['id'] for r in response.data['results']]
+        self.assertIn(self.lga_a_booking.id, ids)
+        self.assertNotIn(self.lga_b_booking.id, ids)
+
+    def test_coordinator_sees_every_request_in_their_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.REQUESTS_URL)
+        ids = [r['id'] for r in response.data['results']]
+        self.assertIn(self.lga_a_booking.id, ids)
+        self.assertIn(self.lga_b_booking.id, ids)
+
+    def test_response_carries_only_the_approved_client_fields(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.REQUESTS_URL)
+        row = next(r for r in response.data['results'] if r['id'] == self.lga_a_booking.id)
+        self.assertEqual(row['client_name'], 'Request Client')
+        self.assertEqual(row['client_phone'], '08055556666')
+        self.assertNotIn('client_email', row)
+        self.assertNotIn('client', row)
+
+    def test_filter_by_status(self):
+        Booking.objects.filter(id=self.lga_a_booking.id).update(status='completed')
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.REQUESTS_URL, {'status': 'pending'})
+        ids = [r['id'] for r in response.data['results']]
+        self.assertNotIn(self.lga_a_booking.id, ids)
+
+    def test_agent_with_no_lga_sees_nothing(self):
+        self.kano_agent.lga = None
+        self.kano_agent.save(update_fields=['lga'])
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.REQUESTS_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['results'], [])
+
+    def test_plain_client_cannot_access(self):
+        self.client.force_authenticate(user=self.request_client)
+        response = self.client.get(self.REQUESTS_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_dashboard_stats_include_pending_service_requests(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['pending_service_requests'], 1)
+
+
+class AgentBusinessOversightTests(CoordinatorDashboardTestBase):
+    """Artisan/Business -> Coordinator Dashboard Connection (item 9): a
+    business's registration and verification status become visible (and
+    actionable) the same way an artisan's already is — same LGA/state
+    scoping, same shared services.py verification functions."""
+    BUSINESSES_URL = '/api/agent/businesses/'
+
+    def verify_url(self, user_id):
+        return f'/api/agent/verify-business/{user_id}/'
+
+    def setUp(self):
+        super().setUp()
+        from .models import BusinessProfile
+
+        self.lga_a_business = User.objects.create_user(
+            email='lga_a_business@test.com', password='pass12345',
+            first_name='LgaA', last_name='Business', role='business',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        BusinessProfile.objects.create(user=self.lga_a_business, business_name='LgaA Store')
+        self.lga_b_business = User.objects.create_user(
+            email='lga_b_business@test.com', password='pass12345',
+            first_name='LgaB', last_name='Business', role='business',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        BusinessProfile.objects.create(user=self.lga_b_business, business_name='LgaB Store')
+
+    def test_agent_sees_only_businesses_in_their_own_lga(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.BUSINESSES_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        names = [b['business_name'] for b in response.data['results']]
+        self.assertIn('LgaA Store', names)
+        self.assertNotIn('LgaB Store', names)
+
+    def test_coordinator_sees_every_business_in_their_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.BUSINESSES_URL)
+        names = [b['business_name'] for b in response.data['results']]
+        self.assertIn('LgaA Store', names)
+        self.assertIn('LgaB Store', names)
+
+    def test_agent_can_approve_a_business_in_their_own_lga(self):
+        from .models import ActivityLog
+        from notifications.models import Notification
+
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(self.verify_url(self.lga_a_business.id), {'status': 'approved'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.lga_a_business.refresh_from_db()
+        self.assertTrue(self.lga_a_business.is_verified)
+        self.lga_a_business.business_profile.refresh_from_db()
+        self.assertEqual(self.lga_a_business.business_profile.verification_status, 'approved')
+
+        self.assertTrue(
+            ActivityLog.objects.filter(action='business_verified', target_user=self.lga_a_business).exists()
+        )
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.lga_a_business, event_type='verification_approved').exists()
+        )
+
+    def test_agent_cannot_verify_a_business_outside_their_lga(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(self.verify_url(self.lga_b_business.id), {'status': 'approved'})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_reject_records_reason_and_logs_activity(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(
+            self.verify_url(self.lga_b_business.id), {'status': 'rejected', 'rejection_reason': 'Incomplete documents.'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.lga_b_business.business_profile.refresh_from_db()
+        self.assertEqual(self.lga_b_business.business_profile.verification_status, 'rejected')
+        self.assertFalse(self.lga_b_business.is_verified)
+        entry = ActivityLog.objects.get(action='business_verification_rejected', target_user=self.lga_b_business)
+        self.assertEqual(entry.status, 'rejected')
+
+    def test_invalid_status_rejected(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.verify_url(self.lga_a_business.id), {'status': 'banned'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_dashboard_stats_include_business_counts_for_coordinator_only(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['total_businesses'], 2)
+        self.assertEqual(response.data['pending_business_verification'], 2)
+        self.assertIn('attention_required', response.data)
+        self.assertEqual(response.data['attention_required']['pending_business_verification'], 2)
+
+        self.client.force_authenticate(user=self.kano_agent)
+        agent_response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertNotIn(
+            'total_businesses', agent_response.data,
+            "business oversight is a Coordinator Dashboard concern, not a plain agent's",
+        )
+        self.assertNotIn('attention_required', agent_response.data)
+
+
 class CoordinatorReportsViewTests(CoordinatorDashboardTestBase):
     REPORTS_URL = '/api/v1/coordinator/reports/'
 
@@ -2621,6 +2858,174 @@ class AIBookingActionsTests(BookingTestBase):
         self.assertEqual(result['type'], 'contact_artisan')
         self.assertEqual(result['data']['method'], 'call')
         self.assertEqual(result['data']['phone_number'], '08012345678')
+
+
+class AIAgentSearchTests(CoordinatorDashboardTestBase):
+    """AI access strictly limited to Agent information (audit-trail spec
+    item 7). Three layers, each tested independently:
+      - core.services.search_agents(): the actual Agent Search API —
+        permission check, state scoping, field allowlist.
+      - CoordinatorAgentSearchView: the standalone REST endpoint.
+      - AIChatView.search_agents tool (+ _tools_for_request): the AI
+        entry point, proven to call the exact same service function and
+        to never even offer the tool to a non-coordinator.
+    """
+    SEARCH_URL = '/api/v1/coordinator/agents/search/'
+
+    def setUp(self):
+        super().setUp()
+        # A second Kano agent, in the other LGA, with distinct
+        # phone/serial — lets every filter test prove it actually
+        # narrows results rather than just returning everything.
+        self.kano_lga_b_agent = User.objects.create_user(
+            email='search_lga_b_agent@test.com', password='pass12345',
+            first_name='Musa', last_name='Ibrahim', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+            phone_number='08099998888', serial_number=f'AGT-{self.kano.state_code}-77777',
+        )
+        self.kano_agent.serial_number = f'AGT-{self.kano.state_code}-11111'
+        self.kano_agent.phone_number = '08011112222'
+        self.kano_agent.save(update_fields=['serial_number', 'phone_number'])
+
+    # --- core.services.search_agents() ---
+
+    def test_unauthenticated_caller_rejected(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        from .services import search_agents
+        result = search_agents(AnonymousUser())
+        self.assertEqual(result.get('error'), 'not_authenticated')
+
+    def test_non_coordinator_roles_rejected(self):
+        from .services import search_agents
+
+        admin = User.objects.create_user(
+            email='search_admin@test.com', password='pass12345', role='admin',
+        )
+        for user in (self.kano_agent, admin):
+            result = search_agents(user)
+            self.assertEqual(result.get('error'), 'not_authorized', f'role={user.role} should be rejected')
+
+    def test_coordinator_with_no_state_rejected(self):
+        from .services import search_agents
+        self.kano_coordinator.state = None
+        self.kano_coordinator.save(update_fields=['state'])
+        result = search_agents(self.kano_coordinator)
+        self.assertEqual(result.get('error'), 'no_state_assigned')
+
+    def test_coordinator_sees_only_their_own_states_agents(self):
+        from .services import search_agents
+        result = search_agents(self.kano_coordinator)
+        names = [a['name'] for a in result['agents']]
+        self.assertIn('Existing KanoAgent', names)
+        self.assertIn('Musa Ibrahim', names)
+        self.assertNotIn('Existing LagosAgent', names)
+
+    def test_filter_by_lga_name(self):
+        from .services import search_agents
+        result = search_agents(self.kano_coordinator, lga='Fagge')  # kano_lga_b
+        names = [a['name'] for a in result['agents']]
+        self.assertEqual(names, ['Musa Ibrahim'])
+
+    def test_filter_by_phone_number_is_digit_loose(self):
+        from .services import search_agents
+        # Caller includes formatting the stored number doesn't.
+        result = search_agents(self.kano_coordinator, phone_number='0801-111-2222')
+        names = [a['name'] for a in result['agents']]
+        self.assertEqual(names, ['Existing KanoAgent'])
+
+    def test_filter_by_serial_number(self):
+        from .services import search_agents
+        result = search_agents(self.kano_coordinator, serial_number='77777')
+        names = [a['name'] for a in result['agents']]
+        self.assertEqual(names, ['Musa Ibrahim'])
+
+    def test_returned_fields_are_the_approved_allowlist_only(self):
+        from .services import search_agents
+        result = search_agents(self.kano_coordinator, serial_number='11111')
+        agent = result['agents'][0]
+        self.assertEqual(
+            set(agent.keys()), {'name', 'serial_number', 'phone_number', 'state', 'lga', 'status'},
+        )
+        # Never leaks email, pk, gender, address, timestamps, etc.
+        self.assertNotIn('email', agent)
+        self.assertNotIn('id', agent)
+
+    # --- CoordinatorAgentSearchView (the standalone REST endpoint) ---
+
+    def test_endpoint_returns_scoped_results_for_a_coordinator(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.SEARCH_URL, {'lga': 'Fagge'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        names = [a['name'] for a in response.data['agents']]
+        self.assertEqual(names, ['Musa Ibrahim'])
+
+    def test_endpoint_forbidden_for_a_plain_agent(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.SEARCH_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_endpoint_requires_authentication(self):
+        response = self.client.get(self.SEARCH_URL)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # --- AIChatView's search_agents tool ---
+
+    def _view_as(self, user):
+        from types import SimpleNamespace
+        view = AIChatView()
+        view.request = SimpleNamespace(user=user)
+        return view
+
+    def test_ai_tool_returns_real_results_for_a_coordinator(self):
+        view = self._view_as(self.kano_coordinator)
+        result = view._execute_tool('search_agents', {'lga': 'Fagge'})
+        self.assertEqual(result['type'], 'agent_search_results')
+        names = [a['name'] for a in result['data']['agents']]
+        self.assertEqual(names, ['Musa Ibrahim'])
+
+    def test_ai_tool_still_rejects_a_client_even_if_somehow_invoked(self):
+        """Defense in depth: even if the tool were ever called for a
+        non-coordinator (e.g. a bug in _tools_for_request, or a future
+        code path), search_agents() itself still refuses — the same
+        'never trust that a tool being offered is safe to execute'
+        reasoning as book_artisan's own role check."""
+        client_user = User.objects.create_user(
+            email='ai_search_client@test.com', password='pass12345', role='client',
+        )
+        view = self._view_as(client_user)
+        result = view._execute_tool('search_agents', {'lga': 'Fagge'})
+        self.assertEqual(result['data']['error'], 'not_authorized')
+
+    def test_ai_tool_rejects_anonymous(self):
+        from django.contrib.auth.models import AnonymousUser
+        view = self._view_as(AnonymousUser())
+        result = view._execute_tool('search_agents', {})
+        self.assertEqual(result['data']['error'], 'not_authenticated')
+
+    # --- Tool availability (_tools_for_request) ---
+
+    def test_tool_offered_to_a_coordinator(self):
+        from types import SimpleNamespace
+        view = AIChatView()
+        request = SimpleNamespace(user=self.kano_coordinator)
+        tool_names = [t['function']['name'] for t in view._tools_for_request(request)]
+        self.assertIn('search_agents', tool_names)
+
+    def test_tool_not_offered_to_a_plain_agent(self):
+        from types import SimpleNamespace
+        view = AIChatView()
+        request = SimpleNamespace(user=self.kano_agent)
+        tool_names = [t['function']['name'] for t in view._tools_for_request(request)]
+        self.assertNotIn('search_agents', tool_names)
+
+    def test_tool_not_offered_to_anonymous(self):
+        from types import SimpleNamespace
+        from django.contrib.auth.models import AnonymousUser
+        view = AIChatView()
+        request = SimpleNamespace(user=AnonymousUser())
+        tool_names = [t['function']['name'] for t in view._tools_for_request(request)]
+        self.assertNotIn('search_agents', tool_names)
 
 
 class BookingNotificationsTests(BookingTestBase):

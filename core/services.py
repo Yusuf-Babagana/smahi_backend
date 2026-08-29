@@ -5,13 +5,17 @@ agent-facing endpoint and the privileged Django Admin action must always
 agree on what "approved" means.
 """
 import logging
+import re
 
+from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.utils import timezone
 
-from .models import ArtisanProfile, VerificationRequest, ActivityLog
+from .models import ArtisanProfile, BusinessProfile, VerificationRequest, ActivityLog
 from notifications.events import emit
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
 def log_activity(actor, action, target_user=None, lga=None, state=None,
@@ -98,3 +102,129 @@ def reject_artisan_verification(artisan_user, reviewed_by, reason=''):
     )
     log_activity(reviewed_by, 'artisan_verification_rejected', target_user=artisan_user, activity_status='rejected')
     return artisan_profile
+
+
+def approve_business_verification(business_user, reviewed_by):
+    """Approve a business's verification. Mirrors
+    approve_artisan_verification exactly — BusinessProfile has the same
+    verification_status field/choices as ArtisanProfile. reviewed_by is
+    whoever took the action (agent/coordinator via AgentVerifyBusinessView,
+    or admin via Django Admin). Reuses the generic 'verification_approved'
+    notification event (same one artisans get) rather than adding a
+    business-specific one — the title/body text is what actually
+    distinguishes context for the recipient."""
+    business_profile, _ = BusinessProfile.objects.get_or_create(user=business_user)
+    business_profile.verification_status = 'approved'
+    business_profile.save(update_fields=['verification_status'])
+
+    business_user.is_verified = True
+    business_user.save(update_fields=['is_verified'])
+
+    emit(
+        'verification_approved',
+        recipient=business_user,
+        title='Your business is verified!',
+        body='Your business profile has been verified. Clients can now see your verified badge.',
+        related_object=business_profile,
+    )
+    log_activity(reviewed_by, 'business_verified', target_user=business_user, activity_status='approved')
+    return business_profile
+
+
+def reject_business_verification(business_user, reviewed_by, reason=''):
+    """Reject a business's verification. Does not touch is_verified if it
+    was never True — this only ever moves pending -> rejected."""
+    business_profile, _ = BusinessProfile.objects.get_or_create(user=business_user)
+    business_profile.verification_status = 'rejected'
+    business_profile.save(update_fields=['verification_status'])
+
+    emit(
+        'verification_rejected',
+        recipient=business_user,
+        title='Business verification not approved',
+        body=reason or 'Your business verification request was not approved. Please contact support for details.',
+        related_object=business_profile,
+    )
+    log_activity(reviewed_by, 'business_verification_rejected', target_user=business_user, activity_status='rejected')
+    return business_profile
+
+
+# --- Agent Search API (audit-trail spec item 7: "AI access strictly
+# limited to Agent information") ---
+#
+# This is THE only sanctioned way anything — the AI assistant included —
+# is allowed to look up Agent records. Both CoordinatorAgentSearchView
+# (core/views.py, a real standalone REST endpoint any authorized caller
+# can hit directly) and AIChatView's search_agents tool call this exact
+# same function, so the two entry points can never authorize differently
+# or drift on what's approved for release. Never returns a raw User row
+# or queryset — only the fixed allowlist in _agent_search_summary().
+
+AGENT_SEARCH_ALLOWED_FIELDS = ('name', 'serial_number', 'phone_number', 'state', 'lga', 'status')
+
+
+def _agent_search_summary(agent):
+    """The complete, fixed allowlist of Agent fields approved for AI/
+    Agent-Search access. Deliberately excludes email, id/pk, address,
+    gender, is_verified, timestamps, and everything else on User —
+    widen this list only by explicit approval, never implicitly by
+    swapping in a serializer's full output."""
+    return {
+        'name': f'{agent.first_name} {agent.last_name}'.strip(),
+        'serial_number': agent.serial_number or '',
+        'phone_number': agent.phone_number or '',
+        'state': agent.state.name if agent.state else '',
+        'lga': agent.lga.name if agent.lga else '',
+        'status': agent.account_status,
+    }
+
+
+def search_agents(requesting_user, query=None, lga=None, phone_number=None, serial_number=None, limit=10):
+    """The Agent Search API itself. Before returning anything, verifies
+    exactly what the spec asks for, in order:
+      1. Who is requesting?     -> requesting_user
+      2. What is their role?    -> must be 'state_coordinator' (agents
+         don't search other agents — each is scoped to their own LGA
+         already; clients/artisans/admin are out of scope for this
+         spec's examples)
+      3. Which state/LGA?       -> requesting_user's own state_id, never
+         taken from the caller-supplied query
+      4. What fields permitted? -> _agent_search_summary()'s fixed keys
+
+    Returns {'error': '<reason>', ...} on any authorization failure —
+    every caller must check for that key before treating the response as
+    real data (same convention as AIChatView's other tool results, e.g.
+    {"reason": "not_a_client"})."""
+    if not requesting_user or not requesting_user.is_authenticated:
+        return {'error': 'not_authenticated'}
+    if requesting_user.role != 'state_coordinator':
+        return {'error': 'not_authorized', 'message': 'Only a State Coordinator can search Agent records.'}
+    if not requesting_user.state_id:
+        return {'error': 'no_state_assigned', 'message': 'Your account has no state assigned.'}
+
+    qs = User.objects.filter(
+        role='agent', state_id=requesting_user.state_id
+    ).select_related('state', 'lga')
+
+    if lga:
+        qs = qs.filter(lga__name__icontains=lga)
+    if phone_number:
+        # Loose match — a caller may include spaces/dashes/a leading 0
+        # that the stored number doesn't, or vice versa.
+        digits = re.sub(r'\D', '', phone_number)
+        if digits:
+            qs = qs.filter(phone_number__icontains=digits)
+    if serial_number:
+        qs = qs.filter(serial_number__icontains=serial_number)
+    if query:
+        qs = qs.filter(
+            Q(first_name__icontains=query) | Q(last_name__icontains=query)
+            | Q(serial_number__icontains=query) | Q(phone_number__icontains=query)
+            | Q(lga__name__icontains=query)
+        )
+
+    agents = list(qs.order_by('-created_at')[:limit])
+    return {
+        'count': len(agents),
+        'agents': [_agent_search_summary(a) for a in agents],
+    }
