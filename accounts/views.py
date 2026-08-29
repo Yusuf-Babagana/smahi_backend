@@ -164,6 +164,16 @@ def login_view(request):
             user.save(update_fields=['account_status'])
             response_data['user'] = UserSerializer(user).data
 
+    # Agents Coordinator-created but not yet approved (Coordinator Dashboard
+    # spec) can still log in — is_active stays True at creation specifically
+    # so this flag can reach them — but must land on a "pending" screen
+    # instead of the real agent dashboard. IsAgent/IsStateAgent separately
+    # enforce that they can't actually perform agent actions either way,
+    # so this flag is purely about where the app routes them, not a
+    # security boundary itself.
+    if user.role == 'agent' and user.account_status == 'pending_approval':
+        response_data['requires_approval'] = True
+
     return Response(response_data)
 
 

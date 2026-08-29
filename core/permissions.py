@@ -18,18 +18,30 @@ class IsClient(permissions.BasePermission):
 
 class IsAgent(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role == 'agent'
+        # account_status gate is the actual enforcement of "must not perform
+        # official Agent activities" while Pending Approval/rejected/
+        # dismissed/suspended (Coordinator Dashboard spec) — role alone
+        # isn't enough, since a newly Coordinator-created agent already has
+        # role='agent' from the moment they're created, well before a
+        # Coordinator approves them (CoordinatorCreateAgentView).
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role == 'agent' and request.user.account_status == 'active'
+        )
 
 
 class IsStateAgent(permissions.BasePermission):
-    """Agents and state coordinators overseeing artisans/clients within their own state."""
+    """Agents and state coordinators overseeing artisans/clients within their
+    own state. The account_status gate only applies to the 'agent' half —
+    a state_coordinator's own status is a separate concern (see
+    AdminCoordinatorStatusView), not something this permission checks."""
 
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and request.user.role in ('agent', 'state_coordinator')
-        )
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if request.user.role == 'agent':
+            return request.user.account_status == 'active'
+        return request.user.role == 'state_coordinator'
 
 
 class IsProfileOwner(permissions.BasePermission):

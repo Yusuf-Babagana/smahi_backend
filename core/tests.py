@@ -739,11 +739,13 @@ class CoordinatorDashboardTestBase(APITestCase):
         from locations.models import Country, State, LGA
 
         self.country = Country.objects.create(name='Nigeria')
-        self.kano = State.objects.create(name='Kano', country=self.country)
-        self.lagos = State.objects.create(name='Lagos', country=self.country)
+        self.kano = State.objects.create(name='Kano', country=self.country, state_code='KN')
+        self.lagos = State.objects.create(name='Lagos', country=self.country, state_code='LA')
         # Deliberately has no coordinator assigned — kano/lagos both get one
         # below, so any test that needs to create a brand-new coordinator
         # without tripping the one-coordinator-per-state rule uses this one.
+        # No state_code either — covers CoordinatorCreateAgentView's
+        # fallback-to-state-name path for serial number generation.
         self.ogun = State.objects.create(name='Ogun', country=self.country)
         self.kano_lga_a = LGA.objects.create(name='Nassarawa', state=self.kano)
         self.kano_lga_b = LGA.objects.create(name='Fagge', state=self.kano)
@@ -830,7 +832,27 @@ class CoordinatorCreateAgentTests(CoordinatorDashboardTestBase):
         self.assertEqual(new_agent.role, 'agent')
         self.assertEqual(new_agent.state_id, self.kano.id)
         self.assertEqual(new_agent.lga_id, self.kano_lga_b.id)
+        # is_active stays True at creation (deliberately, so login still
+        # works and can carry the requires_approval flag) — it's
+        # account_status, not is_active, that gates a Coordinator-created
+        # agent from real access until approved (Coordinator Dashboard spec).
         self.assertTrue(new_agent.is_active)
+        self.assertEqual(new_agent.account_status, 'pending_approval')
+        self.assertEqual(new_agent.serial_number, f'AGT-{self.kano.state_code}-{new_agent.id:05d}')
+
+    def test_creating_an_agent_notifies_the_coordinator(self):
+        from notifications.models import Notification
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.CREATE_URL, {
+            'email': 'notify_test_agent@test.com', 'first_name': 'Notify', 'last_name': 'Test',
+            'lga': self.kano_lga_b.id,
+        })
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.kano_coordinator, event_type='agent_pending_approval',
+            ).exists()
+        )
 
     def test_cannot_assign_an_lga_from_another_state(self):
         """The one deliberate difference from AgentRegisterArtisanView:
@@ -887,6 +909,129 @@ class CoordinatorCreateAgentTests(CoordinatorDashboardTestBase):
         self.assertEqual(
             User.objects.filter(email='idempotent_agent@test.com').count(), 1,
         )
+
+    def test_serial_number_falls_back_to_state_name_when_no_state_code(self):
+        from locations.models import LGA
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        # Reassign the coordinator to the code-less state for this one test.
+        self.kano_coordinator.state = self.ogun
+        self.kano_coordinator.save(update_fields=['state'])
+        ogun_lga = LGA.objects.create(name='Abeokuta North', state=self.ogun)
+
+        response = self.client.post(self.CREATE_URL, {
+            'email': 'ogun_agent@test.com', 'first_name': 'Ogun', 'last_name': 'Agent',
+            'lga': ogun_lga.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_agent = User.objects.get(email='ogun_agent@test.com')
+        self.assertEqual(new_agent.serial_number, f'AGT-OGU-{new_agent.id:05d}')
+
+
+class AgentPendingApprovalTests(CoordinatorDashboardTestBase):
+    """The actual gate: a Coordinator-created agent is not immediately
+    active (Coordinator Dashboard spec) — must still be able to log in
+    (so they can see why), must be blocked from every real agent action
+    until approved, and 'active' reachable through the existing
+    CoordinatorAgentStatusView (no separate approve endpoint needed)."""
+    CREATE_URL = '/api/v1/coordinator/agents/create/'
+    LOGIN_URL = '/api/auth/login/'
+
+    def setUp(self):
+        super().setUp()
+        # Created directly rather than through CREATE_URL — force_authenticate
+        # is per-test-method, not something worth wiring up just for setUp.
+        self.pending_agent = User.objects.create_user(
+            email='pending_agent@test.com', password='pass12345',
+            first_name='Pending', last_name='Agent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+            account_status='pending_approval', serial_number=f'AGT-{self.kano.state_code}-90001',
+        )
+
+    def status_url(self, agent_id):
+        return f'/api/v1/coordinator/agents/{agent_id}/status/'
+
+    def test_pending_agent_can_still_log_in(self):
+        response = self.client.post(self.LOGIN_URL, {
+            'email': 'pending_agent@test.com', 'password': 'pass12345',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertTrue(response.data.get('requires_approval'))
+        self.assertIn('tokens', response.data, "login must still succeed so the app can show why")
+
+    def test_active_agent_login_has_no_requires_approval_flag(self):
+        response = self.client.post(self.LOGIN_URL, {
+            'email': self.kano_agent.email, 'password': 'pass12345',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertNotIn('requires_approval', response.data)
+
+    def test_pending_agent_blocked_from_agent_only_endpoints(self):
+        """IsStateAgent is the actual enforcement — logging in is not
+        enough to do real agent work."""
+        self.client.force_authenticate(user=self.pending_agent)
+        response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_active_agent_not_affected_by_the_new_gate(self):
+        """Regression guard: self.kano_agent (account_status='active' by
+        model default) must be completely unaffected by the IsAgent/
+        IsStateAgent changes."""
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+    def test_coordinator_approves_a_pending_agent_via_the_existing_status_endpoint(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.status_url(self.pending_agent.id), {'status': 'active'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.pending_agent.refresh_from_db()
+        self.assertEqual(self.pending_agent.account_status, 'active')
+        self.assertTrue(self.pending_agent.is_active)
+
+        # Now a genuinely active agent — must pass the same gate a
+        # normal agent does.
+        self.client.force_authenticate(user=self.pending_agent)
+        response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+    def test_coordinator_rejects_a_pending_agent(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.status_url(self.pending_agent.id), {'status': 'rejected'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.pending_agent.refresh_from_db()
+        self.assertEqual(self.pending_agent.account_status, 'rejected')
+        self.assertFalse(self.pending_agent.is_active, "a rejected agent must not be able to log in at all")
+
+    def test_rejected_agent_cannot_be_reactivated_through_this_endpoint(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.status_url(self.pending_agent.id), {'status': 'rejected'})
+
+        retry = self.client.post(self.status_url(self.pending_agent.id), {'status': 'active'})
+        self.assertEqual(retry.status_code, status.HTTP_400_BAD_REQUEST)
+        self.pending_agent.refresh_from_db()
+        self.assertEqual(self.pending_agent.account_status, 'rejected')
+
+    def test_pending_approval_list_filter(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get('/api/v1/coordinator/agents/', {'account_status': 'pending_approval'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        emails = [a['email'] for a in response.data['results']]
+        self.assertIn('pending_agent@test.com', emails)
+        self.assertNotIn(self.kano_agent.email, emails, "an already-active agent must not show up as pending")
+
+    def test_user_serializer_exposes_serial_number_and_status(self):
+        """Regression guard for the actual bug found alongside this
+        feature: UserSerializer never exposed serial_number/account_status
+        at all, so the mobile agent dashboard's `user.serial_number` was
+        always undefined regardless of what the backend had stored."""
+        self.client.force_authenticate(user=self.pending_agent)
+        response = self.client.get('/api/auth/profile/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data.get('serial_number'), self.pending_agent.serial_number)
+        self.assertEqual(response.data.get('account_status'), 'pending_approval')
 
 
 class CoordinatorAgentStatusTests(CoordinatorDashboardTestBase):
@@ -992,6 +1137,7 @@ class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
         self.assertIn('total_agents', coord_response.data)
         self.assertEqual(coord_response.data['total_agents'], 1)
         self.assertEqual(coord_response.data['active_agents'], 1)
+        self.assertEqual(coord_response.data['pending_agents'], 0)
 
         self.client.force_authenticate(user=self.kano_agent)
         agent_response = self.client.get(self.STATS_URL)
@@ -1000,6 +1146,20 @@ class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
             'total_agents', agent_response.data,
             "a plain agent has no agents under them — this field shouldn't appear at all",
         )
+
+    def test_pending_agents_counted_separately_from_active(self):
+        User.objects.create_user(
+            email='pending_agent@test.com', password='pass12345',
+            first_name='Pending', last_name='Agent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            phone_number='08033334444', account_status='pending_approval',
+        )
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.STATS_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['total_agents'], 2)
+        self.assertEqual(response.data['active_agents'], 1)
+        self.assertEqual(response.data['pending_agents'], 1)
 
 
 class AdminUserCRUDTests(CoordinatorDashboardTestBase):

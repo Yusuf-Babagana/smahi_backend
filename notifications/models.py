@@ -27,6 +27,7 @@ class Notification(models.Model):
         ('withdrawal_rejected', 'Withdrawal Rejected'),
         ('dispute_created', 'Dispute Created'),
         ('dispute_resolved', 'Dispute Resolved'),
+        ('agent_pending_approval', 'Agent Pending Approval'),
     ]
 
     recipient = models.ForeignKey(

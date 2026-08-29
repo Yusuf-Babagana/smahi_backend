@@ -53,6 +53,18 @@ class User(AbstractUser):
         # dismissing an Agent "according to company rules" (CoordinatorAgentStatusView)
         # is meant to be final, not something the same reactivate button undoes.
         ('dismissed', 'Dismissed'),
+        # A newly-created Agent's starting status (CoordinatorCreateAgentView)
+        # — not yet 'active' even though a Coordinator already created them;
+        # a deliberate second checkpoint (IsAgent/IsStateAgent enforce this
+        # server-side, not just a UI gate) before real dashboard access and
+        # credentials are live, matching the explicit spec: Agent
+        # Registration -> Pending Approval -> Coordinator Approves -> Active.
+        ('pending_approval', 'Pending Approval'),
+        # Terminal, like 'dismissed', but for a pending agent that was never
+        # approved in the first place — kept distinct from 'dismissed' so
+        # "was fired after working" and "was never approved" don't look the
+        # same in oversight/audit views.
+        ('rejected', 'Rejected'),
     ]
     GENDER_CHOICES = [
         ('male', 'Male'),
@@ -63,6 +75,13 @@ class User(AbstractUser):
     account_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='client')
+    # Unique Agent ID (e.g. "AGT-KN-00123") — required by the Coordinator
+    # Dashboard spec for "identification and tracking". Only ever set for
+    # agents today (CoordinatorCreateAgentView), but lives on User rather
+    # than a role-specific profile since the mobile app's agent dashboard
+    # already reads `user.serial_number` directly. Null/blank for every
+    # other role and every account created before this field existed.
+    serial_number = models.CharField(max_length=30, unique=True, null=True, blank=True)
     phone_number = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)

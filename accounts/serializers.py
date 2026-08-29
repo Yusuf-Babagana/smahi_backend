@@ -215,9 +215,21 @@ class UserSerializer(serializers.ModelSerializer):
             'country_details', 'state_details', 'lga_details',
             'latitude', 'longitude', 'preferred_language',
             'is_verified', 'email_verified', 'registration_fee_paid',
+            # serial_number/account_status were missing entirely — the
+            # mobile agent dashboard has always read `user.serial_number`
+            # (falling back to a hardcoded "PENDING" placeholder), but
+            # this serializer never actually sent it, so every agent saw
+            # that placeholder regardless of whether they had a real
+            # serial number. Both are read-only: an agent's own status
+            # only ever changes via CoordinatorAgentStatusView, and the
+            # serial number is assigned once at creation.
+            'serial_number', 'account_status',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'role', 'is_verified', 'email_verified', 'registration_fee_paid', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'role', 'is_verified', 'email_verified', 'registration_fee_paid',
+            'serial_number', 'account_status', 'created_at', 'updated_at',
+        ]
 
 
 class AdminUserSerializer(serializers.ModelSerializer):

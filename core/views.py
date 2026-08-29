@@ -359,6 +359,7 @@ class AgentDashboardStatsView(APIView):
             agents = User.objects.filter(role='agent', state_id=state_id)
             data['total_agents'] = agents.count()
             data['active_agents'] = agents.filter(account_status='active').count()
+            data['pending_agents'] = agents.filter(account_status='pending_approval').count()
         return Response(data)
 
 
@@ -538,24 +539,58 @@ class CoordinatorCreateAgentView(APIView):
 
         user = serializer.save()
 
+        # Not active yet, even though a Coordinator just created them — a
+        # deliberate second checkpoint before real access/credentials go
+        # live (Coordinator Dashboard spec's explicit workflow). Serial
+        # number needs user.id, so it's generated after save() rather than
+        # handed to the serializer. state_code is nullable/blank on State
+        # (some states, especially outside Nigeria, may never have one set)
+        # — falls back to the state's own name rather than ever putting the
+        # literal string "None" in a real Agent ID.
+        state_code = request.user.state.state_code or request.user.state.name[:3].upper()
+        user.account_status = 'pending_approval'
+        user.serial_number = f"AGT-{state_code}-{user.id:05d}"
+        user.save(update_fields=['account_status', 'serial_number'])
+
+        # Best-effort — a failed notification must never fail the actual
+        # agent creation, which already succeeded and is the real outcome.
+        try:
+            emit(
+                'agent_pending_approval',
+                recipient=request.user,
+                title='New agent awaiting your approval',
+                body=f"{user.first_name} {user.last_name} ({user.serial_number}) is pending your approval.",
+                related_object=user,
+            )
+        except Exception:
+            logger.exception('Failed to emit agent_pending_approval notification')
+
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
-            'message': 'Agent created. Share this one-time password with them securely — it will not be shown again.',
+            'message': (
+                'Agent created and is Pending Approval — share this one-time password with '
+                'them securely (it will not be shown again), then approve them from the agents '
+                'list once you\'re ready for their account to become active.'
+            ),
         }, status=status.HTTP_201_CREATED)
 
 
 class CoordinatorAgentStatusView(APIView):
-    """Coordinator suspends/reactivates/dismisses one of their own state's
-    agents. Scoped to the same state as the coordinator — can't touch an
-    agent in a different state, and can't touch anything but an 'agent'."""
+    """Coordinator approves/suspends/reactivates/dismisses/rejects one of
+    their own state's agents. Scoped to the same state as the coordinator
+    — can't touch an agent in a different state, and can't touch anything
+    but an 'agent'. This is also how a 'pending_approval' agent
+    (CoordinatorCreateAgentView) actually gets approved — setting
+    status='active' from there works exactly the same as reactivating a
+    suspended one, no separate endpoint needed."""
     permission_classes = [IsAuthenticated, IsStateCoordinator]
 
     def post(self, request, agent_id):
         new_status = request.data.get('status')
-        if new_status not in ('active', 'suspended', 'dismissed'):
+        if new_status not in ('active', 'suspended', 'dismissed', 'rejected'):
             return Response(
-                {'error': "status must be 'active', 'suspended', or 'dismissed'."},
+                {'error': "status must be 'active', 'suspended', 'dismissed', or 'rejected'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -568,13 +603,14 @@ class CoordinatorAgentStatusView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'Agent not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Dismissal is meant to be final ("according to company rules"),
+        # Both are meant to be final ("according to company rules" for
+        # dismissal; "never approved in the first place" for rejection) —
         # not something this same endpoint can casually undo the way a
-        # suspension is reactivated — re-hiring a dismissed agent is
-        # deliberately out of this endpoint's scope (Django Admin only).
-        if agent.account_status == 'dismissed':
+        # suspension is reactivated. Re-hiring/re-applying is deliberately
+        # out of this endpoint's scope (Django Admin only).
+        if agent.account_status in ('dismissed', 'rejected'):
             return Response(
-                {'error': 'This agent has been dismissed and cannot be reactivated here.'},
+                {'error': f'This agent has been {agent.account_status} and cannot be reactivated here.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
