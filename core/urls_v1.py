@@ -9,6 +9,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     DisputeReportViewSet, CoordinatorAgentListView, CoordinatorAgentStatusView,
     CoordinatorCreateAgentView, CoordinatorReportsView, CoordinatorActivityLogView,
+    CoordinatorLGAOverviewView,
     FavoriteListView, FavoriteToggleView, PresenceHeartbeatView,
     DeviceTokenRegisterView, DeviceTokenUnregisterView,
 )
@@ -23,6 +24,7 @@ urlpatterns = [
     path('coordinator/agents/<int:agent_id>/status/', CoordinatorAgentStatusView.as_view(), name='coordinator-agent-status'),
     path('coordinator/reports/', CoordinatorReportsView.as_view(), name='coordinator-reports'),
     path('coordinator/activity-log/', CoordinatorActivityLogView.as_view(), name='coordinator-activity-log'),
+    path('coordinator/lgas/<int:lga_id>/overview/', CoordinatorLGAOverviewView.as_view(), name='coordinator-lga-overview'),
     path('favorites/', FavoriteListView.as_view(), name='favorites-list'),
     path('favorites/toggle/', FavoriteToggleView.as_view(), name='favorites-toggle'),
     path('presence/heartbeat/', PresenceHeartbeatView.as_view(), name='presence-heartbeat'),

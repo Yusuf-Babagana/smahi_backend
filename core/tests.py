@@ -1257,6 +1257,128 @@ class ActivityLogTests(CoordinatorDashboardTestBase):
         self.assertTrue(all(row['action'] == 'agent_created' for row in response.data['results']))
 
 
+class CoordinatorLGAOverviewTests(CoordinatorDashboardTestBase):
+    """LGA-Level Management (item 4): State -> LGA -> Agents -> Activities,
+    all in one response, strictly scoped to the requested LGA — proven by
+    creating a matching fixture in kano_lga_b for every category and
+    asserting it never leaks into a kano_lga_a request."""
+
+    def overview_url(self, lga_id):
+        return f'/api/v1/coordinator/lgas/{lga_id}/overview/'
+
+    def setUp(self):
+        super().setUp()
+        from .models import ArtisanProfile, DisputeReport, ActivityLog
+
+        # kano_agent (base fixture) is already in kano_lga_a. A second
+        # agent in kano_lga_b proves LGA scoping actually excludes it.
+        self.kano_lga_b_agent = User.objects.create_user(
+            email='kano_lga_b_agent@test.com', password='pass12345',
+            first_name='Other', last_name='LgaAgent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+
+        self.lga_a_artisan = User.objects.create_user(
+            email='lga_a_artisan@test.com', password='pass12345',
+            first_name='LgaA', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=self.lga_a_artisan, verification_status='approved')
+        self.lga_b_artisan = User.objects.create_user(
+            email='lga_b_artisan@test.com', password='pass12345',
+            first_name='LgaB', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        ArtisanProfile.objects.create(user=self.lga_b_artisan, verification_status='pending')
+
+        self.lga_a_client = User.objects.create_user(
+            email='lga_a_client@test.com', password='pass12345',
+            first_name='LgaA', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        self.lga_a_dispute = DisputeReport.objects.create(
+            reporter=self.lga_a_client, category='quality', description='Late arrival.',
+        )
+        self.lga_b_client = User.objects.create_user(
+            email='lga_b_client@test.com', password='pass12345',
+            first_name='LgaB', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        DisputeReport.objects.create(
+            reporter=self.lga_b_client, category='payment', description='Overcharged.',
+        )
+
+        self.lga_a_booking = Booking.objects.create(
+            client=self.lga_a_client, artisan=self.lga_a_artisan,
+            service_description='Fix tap', address='Somewhere in Nassarawa',
+            state=self.kano, lga=self.kano_lga_a,
+            scheduled_date=timezone.now() + timedelta(days=1), status='completed',
+        )
+        Booking.objects.create(
+            client=self.lga_b_client, artisan=self.lga_b_artisan,
+            service_description='Fix wire', address='Somewhere in Fagge',
+            state=self.kano, lga=self.kano_lga_b,
+            scheduled_date=timezone.now() + timedelta(days=1), status='cancelled',
+        )
+
+        ActivityLog.objects.create(
+            actor=self.kano_coordinator, actor_role='state_coordinator', action='artisan_verified',
+            target_user=self.lga_a_artisan, target_repr='LgaA Artisan', target_role='artisan',
+            state=self.kano, lga=self.kano_lga_a, status='approved',
+        )
+        ActivityLog.objects.create(
+            actor=self.kano_coordinator, actor_role='state_coordinator', action='artisan_verified',
+            target_user=self.lga_b_artisan, target_repr='LgaB Artisan', target_role='artisan',
+            state=self.kano, lga=self.kano_lga_b, status='approved',
+        )
+
+    def test_agents_scoped_to_the_requested_lga_only(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.overview_url(self.kano_lga_a.id))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        emails = [a['email'] for a in response.data['agents']]
+        self.assertIn('kano_agent@test.com', emails)
+        self.assertNotIn('kano_lga_b_agent@test.com', emails)
+
+    def test_verification_stats_scoped_to_the_requested_lga(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.overview_url(self.kano_lga_a.id))
+        self.assertEqual(response.data['verification']['total_artisans'], 1)
+        self.assertEqual(response.data['verification']['verified_artisans'], 1)
+        self.assertEqual(response.data['verification']['pending_verification'], 0)
+
+    def test_reports_scoped_to_the_requested_lga(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.overview_url(self.kano_lga_a.id))
+        report_ids = [r['id'] for r in response.data['reports']]
+        self.assertEqual(report_ids, [self.lga_a_dispute.id])
+        self.assertEqual(response.data['reports_by_status'], {'open': 1})
+
+    def test_performance_scoped_to_the_requested_lga(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.overview_url(self.kano_lga_a.id))
+        self.assertEqual(response.data['performance']['total_bookings'], 1)
+        self.assertEqual(response.data['performance']['completed_bookings'], 1)
+        self.assertEqual(response.data['performance']['cancelled_bookings'], 0)
+
+    def test_recent_activity_scoped_to_the_requested_lga(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.overview_url(self.kano_lga_a.id))
+        target_emails = [row['target_repr'] for row in response.data['recent_activity']]
+        self.assertEqual(len(response.data['recent_activity']), 1)
+        self.assertIn('LgaA', target_emails[0])
+
+    def test_lga_from_another_state_returns_404(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.overview_url(self.lagos_lga.id))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_agent_role_cannot_access_lga_overview(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.overview_url(self.kano_lga_a.id))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class CoordinatorReportsViewTests(CoordinatorDashboardTestBase):
     REPORTS_URL = '/api/v1/coordinator/reports/'
 

@@ -440,6 +440,23 @@ class AgentRegisterArtisanView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+def _agents_with_registration_counts(queryset):
+    """Shared by CoordinatorAgentListView (state-wide) and
+    CoordinatorLGAOverviewView (one LGA) so the two never disagree on what
+    "artisans registered/verified" means for an agent. Alias names can't
+    be 'artisans_registered'/'reviewed_verifications' — those are already
+    the reverse-FK related_names on this model, and Django's ORM rejects
+    an annotation that collides with a real field."""
+    return queryset.select_related('state', 'lga').annotate(
+        registered_artisans_count=Count('artisans_registered', distinct=True),
+        verified_artisans_count=Count(
+            'reviewed_verifications',
+            filter=Q(reviewed_verifications__status='approved'),
+            distinct=True,
+        ),
+    )
+
+
 class CoordinatorAgentListView(generics.ListAPIView):
     """All agents in the requesting state coordinator's own state, each
     annotated with how many artisans they've registered and verified —
@@ -459,16 +476,8 @@ class CoordinatorAgentListView(generics.ListAPIView):
         state_id = self.request.user.state_id
         if not state_id:
             return User.objects.none()
-        # Alias names can't be 'artisans_registered'/'reviewed_verifications' —
-        # those are already the reverse-FK related_names on this model, and
-        # Django's ORM rejects an annotation that collides with a real field.
-        return User.objects.filter(role='agent', state_id=state_id).select_related('state', 'lga').annotate(
-            registered_artisans_count=Count('artisans_registered', distinct=True),
-            verified_artisans_count=Count(
-                'reviewed_verifications',
-                filter=Q(reviewed_verifications__status='approved'),
-                distinct=True,
-            ),
+        return _agents_with_registration_counts(
+            User.objects.filter(role='agent', state_id=state_id)
         ).order_by('-created_at')
 
 
@@ -677,6 +686,84 @@ class CoordinatorActivityLogView(generics.ListAPIView):
         if not state_id:
             return ActivityLog.objects.none()
         return ActivityLog.objects.filter(state_id=state_id).select_related('actor', 'lga')
+
+
+class CoordinatorLGAOverviewView(APIView):
+    """LGA-Level Management (Coordinator Dashboard spec item 4) —
+    State -> LGA -> Agents -> Activities, all in a single response so a
+    coordinator never has to leave the dashboard or stitch together
+    several separate list screens to understand one LGA. Reuses the same
+    serializers as the state-wide views (AgentOverviewSerializer,
+    DisputeReportSerializer, ActivityLogSerializer) so an LGA row looks
+    exactly like its state-wide counterpart, just filtered down.
+
+    Read-only, and deliberately not paginated — an LGA-sized slice of
+    agents/reports/activity is small (a handful of agents, a handful of
+    open reports) compared to the state-wide lists, which is exactly what
+    makes a single combined payload workable here."""
+    permission_classes = [IsAuthenticated, IsStateCoordinator]
+    RECENT_ACTIVITY_LIMIT = 10
+    RECENT_REPORTS_LIMIT = 10
+
+    def get(self, request, lga_id):
+        from locations.models import LGA
+
+        state_id = request.user.state_id
+        if not state_id:
+            return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            lga = LGA.objects.get(id=lga_id, state_id=state_id)
+        except LGA.DoesNotExist:
+            return Response({'error': 'LGA not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
+
+        agents = _agents_with_registration_counts(
+            User.objects.filter(role='agent', lga_id=lga.id)
+        ).order_by('-created_at')
+
+        # Verification activities — an artisan's home LGA is their own
+        # user.lga (ArtisanProfile has no lga field of its own; see
+        # AgentRegisterArtisanView, which forces a new artisan into the
+        # registering agent's own lga).
+        artisans = ArtisanProfile.objects.filter(user__lga_id=lga.id)
+        verification = {
+            'total_artisans': artisans.count(),
+            'verified_artisans': artisans.filter(verification_status='approved').count(),
+            'pending_verification': artisans.filter(verification_status='pending').count(),
+        }
+
+        # Reports/escalations — DisputeReport has no lga field of its own
+        # either, same reasoning as CoordinatorReportsView's state-wide
+        # Q(...) but narrowed to this one LGA instead.
+        reports_qs = DisputeReport.objects.filter(
+            Q(reporter__lga_id=lga.id) | Q(booking__lga_id=lga.id)
+        ).select_related('reporter', 'booking').distinct()
+        reports_by_status = {row['status']: row['count'] for row in reports_qs.values('status').annotate(count=Count('id'))}
+
+        # Performance — Booking.lga is a direct field (unlike the artisan/
+        # dispute cases above), so no join is needed here.
+        bookings = Booking.objects.filter(lga_id=lga.id)
+        performance = {
+            'total_bookings': bookings.count(),
+            'completed_bookings': bookings.filter(status='completed').count(),
+            'cancelled_bookings': bookings.filter(status='cancelled').count(),
+        }
+
+        recent_activity = ActivityLog.objects.filter(
+            state_id=state_id, lga_id=lga.id
+        ).select_related('actor', 'lga')[:self.RECENT_ACTIVITY_LIMIT]
+
+        return Response({
+            'lga': {'id': lga.id, 'name': lga.name},
+            'agents': AgentOverviewSerializer(agents, many=True).data,
+            'verification': verification,
+            'reports_by_status': reports_by_status,
+            'reports': DisputeReportSerializer(
+                reports_qs.order_by('-created_at')[:self.RECENT_REPORTS_LIMIT], many=True
+            ).data,
+            'performance': performance,
+            'recent_activity': ActivityLogSerializer(recent_activity, many=True).data,
+        })
 
 
 class AgentVerifyArtisanView(APIView):
