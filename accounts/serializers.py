@@ -232,6 +232,33 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
 
+class PublicUserSerializer(serializers.ModelSerializer):
+    """RBAC (item 11): what a caller with no administrative/oversight
+    relationship to this account is allowed to see about it — used to
+    nest a directory listing's owner (a public artisan/business search
+    result, or a chat partner) instead of the full UserSerializer, which
+    was leaking email, exact GPS, account_status, registration_fee_paid,
+    email_verified, and serial_number to anyone who could hit a public
+    endpoint or exchange one chat message. State/LGA are kept (a rough
+    location is the whole point of a marketplace listing); exact
+    latitude/longitude is not.
+
+    Contexts that genuinely need more than this (Admin's own User CRUD,
+    Coordinator/Agent oversight lists, or a user viewing their own
+    profile) use UserSerializer/AdminUserSerializer instead — this is
+    deliberately not a universal replacement for those."""
+    state_details = StateLiteSerializer(source='state', read_only=True)
+    lga_details = LGASerializer(source='lga', read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'first_name', 'last_name', 'phone_number',
+            'profile_picture', 'gender', 'state_details', 'lga_details',
+        ]
+        read_only_fields = fields
+
+
 class AdminUserSerializer(serializers.ModelSerializer):
     """Full account detail for Admin's User CRUD (core.views.
     AdminUserDetailView) — includes account_status/is_active, which the

@@ -2307,6 +2307,94 @@ class BusinessProfileViewSetTests(APITestCase):
         self.assertEqual(self.profile.business_name, 'Zenith Suites')
 
 
+class PublicDirectoryPIITests(CoordinatorDashboardTestBase):
+    """RBAC (item 11): the public artisan/business directories (AllowAny)
+    and a chat conversation's participant list must never leak more than
+    a public-facing allowlist — name, phone, avatar, gender, rough
+    location. Regression guard: the SAME artisan/business must still show
+    the fuller detail on the agent/coordinator oversight views, which are
+    a different, authenticated, scoped relationship."""
+
+    PUBLIC_LEAK_FIELDS = ['email', 'latitude', 'longitude', 'account_status', 'registration_fee_paid', 'email_verified', 'serial_number']
+
+    def setUp(self):
+        super().setUp()
+        from .models import ArtisanProfile, BusinessProfile, Category
+
+        self.pii_artisan = User.objects.create_user(
+            email='pii_artisan@test.com', password='pass12345',
+            first_name='Pii', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            phone_number='08011112222', latitude='12.000000', longitude='8.500000',
+        )
+        self.artisan_profile = ArtisanProfile.objects.create(user=self.pii_artisan)
+
+        category = Category.objects.create(name='Hotel', category_type='business')
+        self.pii_business_owner = User.objects.create_user(
+            email='pii_business@test.com', password='pass12345',
+            first_name='Pii', last_name='Business', role='business',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            phone_number='08033334444',
+        )
+        self.business_profile = BusinessProfile.objects.create(
+            user=self.pii_business_owner, business_name='Pii Hotel', category=category,
+        )
+
+    def test_public_artisan_detail_never_leaks_pii(self):
+        response = self.client.get(f'/api/artisans/{self.artisan_profile.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        user_details = response.data['user_details']
+        for field in self.PUBLIC_LEAK_FIELDS:
+            self.assertNotIn(field, user_details, f'{field} must not appear in the public artisan directory')
+        self.assertEqual(user_details['first_name'], 'Pii')
+        self.assertEqual(user_details['phone_number'], '08011112222')
+        self.assertEqual(user_details['lga_details']['name'], 'Nassarawa')
+
+    def test_public_business_detail_never_leaks_pii(self):
+        response = self.client.get(f'/api/businesses/{self.business_profile.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        user_details = response.data['user_details']
+        for field in self.PUBLIC_LEAK_FIELDS:
+            self.assertNotIn(field, user_details, f'{field} must not appear in the public business directory')
+        self.assertEqual(user_details['first_name'], 'Pii')
+        self.assertEqual(user_details['phone_number'], '08033334444')
+
+    def test_agent_oversight_view_still_sees_the_fuller_artisan_detail(self):
+        """Regression guard — AgentArtisanListView is a different,
+        authenticated, LGA-scoped relationship and must be unaffected."""
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/artisans/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        row = next(a for a in response.data['results'] if a['id'] == self.artisan_profile.id)
+        self.assertEqual(row['user_details']['email'], 'pii_artisan@test.com')
+
+    def test_agent_oversight_view_still_sees_the_fuller_business_detail(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/businesses/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        row = next(b for b in response.data['results'] if b['id'] == self.business_profile.id)
+        self.assertEqual(row['user_details']['email'], 'pii_business@test.com')
+
+    def test_chat_conversation_participants_never_leak_pii(self):
+        from chat.models import Conversation
+
+        client_user = User.objects.create_user(
+            email='pii_chat_client@test.com', password='pass12345',
+            first_name='Chat', last_name='Client', role='client',
+        )
+        conversation = Conversation.objects.create()
+        conversation.participants.set([client_user, self.pii_artisan])
+
+        self.client.force_authenticate(user=client_user)
+        response = self.client.get('/api/chat/conversations/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        row = next(c for c in response.data['results'] if c['id'] == conversation.id)
+        artisan_participant = next(p for p in row['participants_details'] if p['id'] == self.pii_artisan.id)
+        for field in self.PUBLIC_LEAK_FIELDS:
+            self.assertNotIn(field, artisan_participant, f'{field} must not appear in a chat partner\'s details')
+        self.assertEqual(artisan_participant['first_name'], 'Pii')
+
+
 class BusinessProfileSelfServiceViewTests(APITestCase):
     """BusinessProfileView (/api/business/profile/) — the business
     owner's own profile, same self-service pattern as ArtisanProfileView.

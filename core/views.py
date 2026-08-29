@@ -34,8 +34,8 @@ from .models import Category, ArtisanProfile, BusinessProfile, VerificationReque
 from notifications.models import DeviceToken
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
-    ArtisanProfileSerializer, ArtisanProfileUpdateSerializer,
-    BusinessProfileSerializer, BusinessProfileUpdateSerializer,
+    ArtisanProfileSerializer, ArtisanProfileUpdateSerializer, PublicArtisanProfileSerializer,
+    BusinessProfileSerializer, BusinessProfileUpdateSerializer, PublicBusinessProfileSerializer,
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
@@ -123,7 +123,9 @@ class BusinessProfileViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelView
     def get_serializer_class(self):
         if self.action in ('update', 'partial_update'):
             return BusinessProfileUpdateSerializer
-        return BusinessProfileSerializer
+        # RBAC (item 11): public directory (AllowAny) — same reasoning as
+        # ArtisanViewSet.get_serializer_class() above.
+        return PublicBusinessProfileSerializer
 
     def get_queryset(self):
         return BusinessProfile.objects.select_related('user', 'category')
@@ -147,7 +149,15 @@ class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
     def get_serializer_class(self):
         if self.action in ('update', 'partial_update'):
             return ArtisanProfileUpdateSerializer
-        return ArtisanProfileSerializer
+        # RBAC (item 11): this endpoint is a public directory (AllowAny) —
+        # PublicArtisanProfileSerializer nests only PublicUserSerializer,
+        # never the full one, regardless of who (if anyone) is asking.
+        # Confirmed no frontend screen — including the artisan's own
+        # dashboard, which also reads through this endpoint via ?user= —
+        # actually consumes email/exact GPS/account_status/
+        # registration_fee_paid/email_verified/serial_number from
+        # user_details, so nothing legitimate breaks.
+        return PublicArtisanProfileSerializer
 
     def get_queryset(self):
         queryset = ArtisanProfile.objects.select_related('user', 'category')

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Conversation, Message
-from accounts.serializers import UserSerializer
+from accounts.serializers import PublicUserSerializer
 from core.languages import DEFAULT_LANGUAGE
 from core.translation import translation_service
 
@@ -43,7 +43,14 @@ class MessageSerializer(serializers.ModelSerializer):
         return data
 
 class ConversationSerializer(serializers.ModelSerializer):
-    participants_details = UserSerializer(source='participants', many=True, read_only=True)
+    # RBAC (item 11): a chat partner only needs enough to render the
+    # conversation list (name, avatar) — the full UserSerializer was
+    # exposing a partner's email, exact GPS, account_status,
+    # registration_fee_paid, email_verified, and serial_number to anyone
+    # they'd exchanged even one message with. Not an IDOR (correctly
+    # scoped to actual participants via ConversationViewSet.get_queryset),
+    # just broader than a chat UI needs.
+    participants_details = PublicUserSerializer(source='participants', many=True, read_only=True)
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
 

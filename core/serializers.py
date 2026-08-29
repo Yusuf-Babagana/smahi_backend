@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings, ActivityLog
-from accounts.serializers import UserSerializer
+from accounts.serializers import UserSerializer, PublicUserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
 User = get_user_model()
@@ -137,6 +137,19 @@ class ArtisanProfileUpdateSerializer(serializers.ModelSerializer):
         ]
 
 
+class PublicArtisanProfileSerializer(ArtisanProfileSerializer):
+    """RBAC (item 11): what ArtisanViewSet (public search/browse,
+    AllowAny) actually returns — identical to ArtisanProfileSerializer
+    except user_details uses PublicUserSerializer instead of the full
+    UserSerializer, which was leaking every artisan's email, exact GPS,
+    account_status, registration_fee_paid, email_verified, and
+    serial_number to anyone (including anonymous callers) who hit this
+    endpoint. AgentArtisanListView (agent/coordinator oversight) keeps
+    using the full ArtisanProfileSerializer — that's a legitimate,
+    authenticated, scoped relationship, not a public directory."""
+    user_details = PublicUserSerializer(source='user', read_only=True)
+
+
 class BusinessProfileSerializer(serializers.ModelSerializer):
     """A registered business's public profile — see BusinessProfile's own
     docstring for why this is deliberately separate from ArtisanProfile,
@@ -163,6 +176,14 @@ class BusinessProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessProfile
         fields = ['business_name', 'category', 'description', 'registration_number']
+
+
+class PublicBusinessProfileSerializer(BusinessProfileSerializer):
+    """RBAC (item 11): what BusinessProfileViewSet (public search/browse,
+    AllowAny) actually returns — same reasoning as
+    PublicArtisanProfileSerializer above. AgentBusinessListView (agent/
+    coordinator oversight) keeps the full BusinessProfileSerializer."""
+    user_details = PublicUserSerializer(source='user', read_only=True)
 
 
 class VerificationRequestSerializer(serializers.ModelSerializer):
