@@ -247,3 +247,83 @@ class SendFailureTests(APITestCase):
         self.assertTrue(
             OTPCode.objects.filter(email='newuser2@test.com', purpose='email_verify').exists()
         )
+
+
+class NotificationInboxTests(APITestCase):
+    """Every Dashboard Must Be Connected (item 10) — a Notification has
+    existed and been written to (emit()) since long before this, but
+    there was no way to read it back from inside the app at all, only
+    via Django Admin. These are the endpoints every dashboard's bell
+    icon now calls."""
+    LIST_URL = '/api/notifications/'
+    UNREAD_COUNT_URL = '/api/notifications/unread-count/'
+    MARK_ALL_READ_URL = '/api/notifications/mark-all-read/'
+
+    def mark_read_url(self, notification_id):
+        return f'/api/notifications/{notification_id}/read/'
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='inbox_client@test.com', password='pass12345',
+            first_name='Inbox', last_name='Client', role='client',
+        )
+        self.other_user = User.objects.create_user(
+            email='inbox_other@test.com', password='pass12345',
+            first_name='Other', last_name='Person', role='client',
+        )
+
+        from .models import Notification
+        self.own_notification = Notification.objects.create(
+            recipient=self.user, event_type='verification_approved',
+            title='You are verified!', body='Congrats.',
+        )
+        self.other_notification = Notification.objects.create(
+            recipient=self.other_user, event_type='verification_approved',
+            title='You are verified!', body='Congrats.',
+        )
+
+    def test_list_scoped_to_the_requesting_user_only(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.LIST_URL)
+        self.assertEqual(response.status_code, 200, response.data)
+        ids = [n['id'] for n in response.data['results']]
+        self.assertIn(self.own_notification.id, ids)
+        self.assertNotIn(self.other_notification.id, ids)
+
+    def test_list_requires_authentication(self):
+        response = self.client.get(self.LIST_URL)
+        self.assertEqual(response.status_code, 401)
+
+    def test_unread_count(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.UNREAD_COUNT_URL)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['unread_count'], 1)
+
+    def test_mark_one_read(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self.mark_read_url(self.own_notification.id))
+        self.assertEqual(response.status_code, 200, response.data)
+        self.own_notification.refresh_from_db()
+        self.assertTrue(self.own_notification.is_read)
+
+    def test_cannot_mark_someone_elses_notification_read(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self.mark_read_url(self.other_notification.id))
+        self.assertEqual(response.status_code, 404)
+        self.other_notification.refresh_from_db()
+        self.assertFalse(self.other_notification.is_read)
+
+    def test_mark_all_read(self):
+        from .models import Notification
+        Notification.objects.create(
+            recipient=self.user, event_type='dispute_resolved', title='Reviewed', body='',
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self.MARK_ALL_READ_URL)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['marked_read'], 2)
+        self.assertEqual(Notification.objects.filter(recipient=self.user, is_read=False).count(), 0)
+        # Someone else's unread notifications must be completely untouched.
+        self.other_notification.refresh_from_db()
+        self.assertFalse(self.other_notification.is_read)

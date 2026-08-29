@@ -10,6 +10,7 @@ urlpatterns = [
     path('api/', include('core.urls')),
     path('api/v1/', include('core.urls_v1')),
     path('api/chat/', include('chat.urls')),
+    path('api/notifications/', include('notifications.urls')),
 ]
 
 if settings.DEBUG:
