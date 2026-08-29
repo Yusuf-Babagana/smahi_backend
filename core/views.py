@@ -303,38 +303,59 @@ class BusinessProfileView(generics.RetrieveUpdateAPIView):
 
 
 class AgentArtisanListView(generics.ListAPIView):
-    """All artisans in the requesting agent/state coordinator's own state,
-    regardless of availability or verification status — unlike the public
-    ArtisanViewSet list, which hides offline/unavailable artisans."""
+    """Artisans a caller can oversee, regardless of availability or
+    verification status — unlike the public ArtisanViewSet list, which
+    hides offline/unavailable artisans.
+
+    Scope differs by role: a state_coordinator oversees every artisan in
+    the whole state, but a plain agent is entitled to only their own LGA
+    (each agent covers exactly one LGA — see User.lga — and an LGA
+    normally has several agents, not the other way round) and must not
+    see artisans registered/living outside it."""
     serializer_class = ArtisanProfileSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     filterset_fields = ['category', 'verification_status']
     search_fields = ['user__first_name', 'user__last_name', 'bio']
 
     def get_queryset(self):
-        state_id = self.request.user.state_id
-        if not state_id:
+        user = self.request.user
+        base = ArtisanProfile.objects.select_related('user', 'category')
+        if user.role == 'agent':
+            if not user.lga_id:
+                return ArtisanProfile.objects.none()
+            return base.filter(user__lga_id=user.lga_id).distinct()
+        if not user.state_id:
             return ArtisanProfile.objects.none()
-        return ArtisanProfile.objects.select_related('user', 'category').filter(
-            user__state_id=state_id
-        ).distinct()
+        return base.filter(user__state_id=user.state_id).distinct()
 
 
 class AgentClientListView(generics.ListAPIView):
-    """All clients registered in the requesting agent/state coordinator's own state."""
+    """Clients a caller can see — a state_coordinator sees the whole
+    state, a plain agent only their own LGA (clients pick an LGA at
+    registration too — app/register.tsx step 4, every role — so this
+    scopes the same way as AgentArtisanListView)."""
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     search_fields = ['first_name', 'last_name', 'email', 'phone_number']
 
     def get_queryset(self):
-        state_id = self.request.user.state_id
-        if not state_id:
+        user = self.request.user
+        base = User.objects.filter(role='client').select_related('state', 'lga', 'country')
+        if user.role == 'agent':
+            if not user.lga_id:
+                return User.objects.none()
+            return base.filter(lga_id=user.lga_id)
+        if not user.state_id:
             return User.objects.none()
-        return User.objects.filter(role='client', state_id=state_id).select_related('state', 'lga', 'country')
+        return base.filter(state_id=user.state_id)
 
 
 class AgentDashboardStatsView(APIView):
-    """Summary counts for the agent/state-coordinator dashboard, scoped to their own state."""
+    """Summary counts for the agent/state-coordinator dashboard. A
+    state_coordinator's counts are state-wide; a plain agent's are scoped
+    to their own LGA only, for every count here — an agent is entitled to
+    work in only their one LGA, never the whole state (see
+    AgentArtisanListView/AgentClientListView, which this mirrors)."""
     permission_classes = [IsAuthenticated, IsStateAgent]
 
     def get(self, request):
@@ -347,12 +368,19 @@ class AgentDashboardStatsView(APIView):
                 'total_clients': 0,
             })
 
-        artisans = ArtisanProfile.objects.filter(user__state_id=state_id)
+        if request.user.role == 'agent':
+            lga_id = request.user.lga_id
+            artisans = ArtisanProfile.objects.filter(user__lga_id=lga_id) if lga_id else ArtisanProfile.objects.none()
+            clients = User.objects.filter(role='client', lga_id=lga_id) if lga_id else User.objects.none()
+        else:
+            artisans = ArtisanProfile.objects.filter(user__state_id=state_id)
+            clients = User.objects.filter(role='client', state_id=state_id)
+
         data = {
             'total_artisans': artisans.count(),
             'verified_artisans': artisans.filter(verification_status='approved').count(),
             'pending_verification': artisans.filter(verification_status='pending').count(),
-            'total_clients': User.objects.filter(role='client', state_id=state_id).count(),
+            'total_clients': clients.count(),
         }
         # Agent-level counts only make sense for a coordinator overseeing
         # agents — a plain agent has no one "under" them to count.
@@ -767,20 +795,32 @@ class CoordinatorLGAOverviewView(APIView):
 
 
 class AgentVerifyArtisanView(APIView):
-    """Agent/state-coordinator approves an artisan's verification, scoped to
-    their own state — thin equivalent of VerificationRequestViewSet.process
-    operating directly on the artisan's user id."""
+    """Approve an artisan's verification — thin equivalent of
+    VerificationRequestViewSet.process operating directly on the artisan's
+    user id. A coordinator can verify anyone in their state; a plain agent
+    is entitled to only their own LGA, same reasoning as
+    AgentArtisanListView, so they can't reach an artisan outside it even
+    by guessing a user id."""
     permission_classes = [IsAuthenticated, IsStateAgent]
 
     def post(self, request, user_id):
-        state_id = request.user.state_id
-        if not state_id:
-            return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+        if request.user.role == 'agent':
+            lga_id = request.user.lga_id
+            if not lga_id:
+                return Response({'error': 'Your account has no LGA assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+            lookup = {'lga_id': lga_id}
+            not_found_message = 'Artisan not found in your LGA.'
+        else:
+            state_id = request.user.state_id
+            if not state_id:
+                return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+            lookup = {'state_id': state_id}
+            not_found_message = 'Artisan not found in your state.'
 
         try:
-            artisan_user = User.objects.get(id=user_id, role='artisan', state_id=state_id)
+            artisan_user = User.objects.get(id=user_id, role='artisan', **lookup)
         except User.DoesNotExist:
-            return Response({'error': 'Artisan not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': not_found_message}, status=status.HTTP_404_NOT_FOUND)
 
         artisan_profile = approve_artisan_verification(artisan_user, reviewed_by=request.user)
 
@@ -1038,6 +1078,8 @@ class AdminCreateCoordinatorView(APIView):
                 'error': f"{state.name} already has a coordinator. Dismiss them first before assigning a new one.",
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        log_activity(request.user, 'coordinator_created', target_user=user, activity_status='active')
+
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
@@ -1075,6 +1117,12 @@ class AdminCoordinatorStatusView(APIView):
         coordinator.account_status = new_status
         coordinator.save(update_fields=['is_active', 'account_status'])
 
+        # No 'coordinator_approved' — unlike an agent, a coordinator has no
+        # pending_approval step, so 'active' from this endpoint only ever
+        # means reactivating a previously-suspended one.
+        action = {'active': 'coordinator_reactivated', 'suspended': 'coordinator_suspended', 'dismissed': 'coordinator_dismissed'}[new_status]
+        log_activity(request.user, action, target_user=coordinator, activity_status=new_status)
+
         return Response({
             'message': f'Coordinator account set to {new_status}.',
             'coordinator': {
@@ -1092,7 +1140,15 @@ class VerificationRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role == 'artisan':
             return VerificationRequest.objects.filter(artisan=user)
-        elif user.role in ('agent', 'state_coordinator'):
+        elif user.role == 'agent':
+            # An agent is entitled to only their own LGA — same reasoning
+            # as AgentArtisanListView/AgentVerifyArtisanView.
+            if not user.lga_id:
+                return VerificationRequest.objects.none()
+            return VerificationRequest.objects.filter(
+                status='pending', artisan__lga_id=user.lga_id
+            )
+        elif user.role == 'state_coordinator':
             # Scoped to the caller's own state, consistent with the
             # IsStateAgent pattern used for artisans/clients/dashboard-stats.
             if not user.state_id:
@@ -1392,7 +1448,19 @@ class DisputeReportViewSet(viewsets.ModelViewSet):
             raise drf_serializers.ValidationError(
                 {'booking': "You can only report a problem on your own booking."}
             )
-        serializer.save(reporter=self.request.user)
+        dispute = serializer.save(reporter=self.request.user)
+
+        # DisputeReport has no target_user of its own (it isn't a User) —
+        # location comes from the booking if there is one (more specific:
+        # where the job actually happened), else the reporter's own.
+        log_activity(
+            self.request.user, 'report_filed',
+            target_repr=f'Report #{dispute.id} ({dispute.get_category_display()})',
+            target_role='dispute',
+            state=(booking.state if booking else None) or self.request.user.state,
+            lga=(booking.lga if booking else None) or self.request.user.lga,
+            activity_status=dispute.status,
+        )
 
 
 import json

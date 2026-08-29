@@ -14,7 +14,8 @@ from notifications.events import emit
 logger = logging.getLogger(__name__)
 
 
-def log_activity(actor, action, target_user=None, lga=None, activity_status=''):
+def log_activity(actor, action, target_user=None, lga=None, state=None,
+                  target_repr=None, target_role=None, activity_status=''):
     """Append-only entry for the State Coordinator's Activity Log
     (ActivityLog, core/models.py). Actor-centric — records who did what —
     unlike notifications.emit(), which is recipient-centric. Best-effort:
@@ -23,21 +24,27 @@ def log_activity(actor, action, target_user=None, lga=None, activity_status=''):
 
     state/lga default to the TARGET's own (not the actor's), so an
     Admin-driven action — an admin has no state of their own — still
-    lands in the correct state's Coordinator log. Pass `lga` explicitly
-    only when it differs from the target's (there is no such case today).
+    lands in the correct state's Coordinator log. Pass `lga`/`state`
+    explicitly when they differ from the target's — e.g. a report has no
+    natural `target_user` at all (DisputeReport isn't a User), so its
+    location has to come from the reporter/booking instead and gets
+    passed in directly, along with `target_repr`/`target_role` describing
+    the report itself rather than a person.
     """
     try:
+        resolved_target_repr = target_repr if target_repr is not None else (
+            (f'{target_user.first_name} {target_user.last_name}'.strip() or target_user.email)
+            if target_user else ''
+        )
+        resolved_target_role = target_role if target_role is not None else getattr(target_user, 'role', '')
         ActivityLog.objects.create(
             actor=actor,
             actor_role=getattr(actor, 'role', ''),
             action=action,
             target_user=target_user,
-            target_repr=(
-                (f'{target_user.first_name} {target_user.last_name}'.strip() or target_user.email)
-                if target_user else ''
-            ),
-            target_role=getattr(target_user, 'role', ''),
-            state=(target_user.state if target_user else None) or getattr(actor, 'state', None),
+            target_repr=resolved_target_repr,
+            target_role=resolved_target_role,
+            state=state or (target_user.state if target_user else None) or getattr(actor, 'state', None),
             lga=lga or (target_user.lga if target_user else None),
             status=activity_status,
         )

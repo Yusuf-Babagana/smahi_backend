@@ -1379,6 +1379,125 @@ class CoordinatorLGAOverviewTests(CoordinatorDashboardTestBase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
+class AgentLGAScopingTests(CoordinatorDashboardTestBase):
+    """Each agent is entitled to only their own LGA — a plain agent must
+    not see or touch artisans/verifications outside it, even though a
+    state_coordinator (sharing the same IsStateAgent permission) legitimately
+    oversees the whole state. self.kano_agent (base fixture) is in
+    kano_lga_a; every test here proves a kano_lga_b fixture stays
+    invisible/unreachable to them while remaining visible to the
+    coordinator."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import ArtisanProfile, VerificationRequest
+
+        self.lga_a_artisan = User.objects.create_user(
+            email='lga_a_artisan@test.com', password='pass12345',
+            first_name='LgaA', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=self.lga_a_artisan, verification_status='approved')
+
+        self.lga_b_artisan = User.objects.create_user(
+            email='lga_b_artisan@test.com', password='pass12345',
+            first_name='LgaB', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        ArtisanProfile.objects.create(user=self.lga_b_artisan, verification_status='pending')
+        self.lga_b_verification_request = VerificationRequest.objects.create(
+            artisan=self.lga_b_artisan, document_image_1='verification_documents/fake.jpg',
+        )
+
+        self.lga_a_client = User.objects.create_user(
+            email='scoping_lga_a_client@test.com', password='pass12345',
+            first_name='LgaA', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        self.lga_b_client = User.objects.create_user(
+            email='scoping_lga_b_client@test.com', password='pass12345',
+            first_name='LgaB', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+
+    def test_agent_client_list_excludes_other_lgas_in_the_same_state(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/clients/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        emails = [c['email'] for c in response.data['results']]
+        self.assertIn('scoping_lga_a_client@test.com', emails)
+        self.assertNotIn('scoping_lga_b_client@test.com', emails)
+
+    def test_coordinator_client_list_still_sees_the_whole_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get('/api/agent/clients/')
+        emails = [c['email'] for c in response.data['results']]
+        self.assertIn('scoping_lga_a_client@test.com', emails)
+        self.assertIn('scoping_lga_b_client@test.com', emails)
+
+    def test_agent_artisan_list_excludes_other_lgas_in_the_same_state(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/artisans/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        emails = [a['user_details']['email'] for a in response.data['results']]
+        self.assertIn('lga_a_artisan@test.com', emails)
+        self.assertNotIn('lga_b_artisan@test.com', emails)
+
+    def test_coordinator_artisan_list_still_sees_the_whole_state(self):
+        """Regression guard: only 'agent' narrows to LGA — a coordinator
+        must be completely unaffected."""
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get('/api/agent/artisans/')
+        emails = [a['user_details']['email'] for a in response.data['results']]
+        self.assertIn('lga_a_artisan@test.com', emails)
+        self.assertIn('lga_b_artisan@test.com', emails)
+
+    def test_agent_dashboard_stats_scoped_to_own_lga(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        # Only lga_a_artisan/lga_a_client are in this agent's own LGA.
+        self.assertEqual(response.data['total_artisans'], 1)
+        self.assertEqual(response.data['verified_artisans'], 1)
+        self.assertEqual(response.data['total_clients'], 1)
+
+    def test_coordinator_dashboard_stats_still_state_wide(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertEqual(response.data['total_artisans'], 2)
+        self.assertEqual(response.data['total_clients'], 2)
+
+    def test_agent_cannot_verify_an_artisan_outside_their_lga(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(f'/api/agent/verify-artisan/{self.lga_b_artisan.id}/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.lga_b_artisan.artisan_profile.refresh_from_db()
+        self.assertEqual(self.lga_b_artisan.artisan_profile.verification_status, 'pending')
+
+    def test_agent_can_still_verify_an_artisan_in_their_own_lga(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(f'/api/agent/verify-artisan/{self.lga_a_artisan.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+    def test_coordinator_can_verify_across_the_whole_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(f'/api/agent/verify-artisan/{self.lga_b_artisan.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+    def test_verification_request_list_excludes_other_lgas_for_an_agent(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/verification/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        artisan_ids = [row['artisan'] for row in response.data['results']]
+        self.assertNotIn(self.lga_b_artisan.id, artisan_ids)
+
+    def test_verification_request_list_still_state_wide_for_coordinator(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get('/api/verification/')
+        artisan_ids = [row['artisan'] for row in response.data['results']]
+        self.assertIn(self.lga_b_artisan.id, artisan_ids)
+
+
 class CoordinatorReportsViewTests(CoordinatorDashboardTestBase):
     REPORTS_URL = '/api/v1/coordinator/reports/'
 
@@ -1741,6 +1860,138 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.post(self.status_url(self.lagos_coordinator.id), {'status': 'suspended'})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    # --- Audit trail (item 6) ---
+
+    def test_creating_a_coordinator_logs_an_activity(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(self.CREATE_URL, {
+            'email': 'audited_coord@test.com', 'first_name': 'Audited', 'last_name': 'Coordinator',
+            'state': self.ogun.id,
+        })
+        new_coord = User.objects.get(email='audited_coord@test.com')
+        entry = ActivityLog.objects.get(action='coordinator_created', target_user=new_coord)
+        self.assertEqual(entry.actor, self.admin)
+        self.assertEqual(entry.actor_role, 'admin')
+        self.assertEqual(entry.state, self.ogun)
+        self.assertEqual(entry.status, 'active')
+
+    def test_suspending_a_coordinator_logs_coordinator_suspended(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(self.status_url(self.kano_coordinator.id), {'status': 'suspended'})
+        self.assertTrue(
+            ActivityLog.objects.filter(action='coordinator_suspended', target_user=self.kano_coordinator).exists()
+        )
+
+    def test_reactivating_a_coordinator_logs_coordinator_reactivated(self):
+        from .models import ActivityLog
+
+        self.kano_coordinator.account_status = 'suspended'
+        self.kano_coordinator.save(update_fields=['account_status'])
+
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(self.status_url(self.kano_coordinator.id), {'status': 'active'})
+        self.assertTrue(
+            ActivityLog.objects.filter(action='coordinator_reactivated', target_user=self.kano_coordinator).exists()
+        )
+
+    def test_dismissing_a_coordinator_logs_coordinator_dismissed(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(self.status_url(self.kano_coordinator.id), {'status': 'dismissed'})
+        self.assertTrue(
+            ActivityLog.objects.filter(action='coordinator_dismissed', target_user=self.kano_coordinator).exists()
+        )
+
+
+class AuditTrailReportsTests(CoordinatorDashboardTestBase):
+    """Audit trail item 6 — the two action categories that weren't
+    already covered by the Coordinator Dashboard's Activity Log (item 3):
+    reports/escalations, filed via the API and resolved via Django Admin
+    (DisputeReportViewSet is deliberately create+read only)."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            email='reports_admin@test.com', password='pass12345',
+            first_name='Site', last_name='Admin', role='admin',
+        )
+        self.kano_client = User.objects.create_user(
+            email='reports_kano_client@test.com', password='pass12345',
+            first_name='Kano', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+
+    def test_filing_a_report_logs_an_activity(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.kano_client)
+        response = self.client.post('/api/v1/disputes/', {
+            'category': 'quality', 'description': 'Arrived very late and was rude.',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        entry = ActivityLog.objects.get(action='report_filed')
+        self.assertEqual(entry.actor, self.kano_client)
+        self.assertEqual(entry.state, self.kano)
+        self.assertEqual(entry.lga, self.kano_lga_a)
+        self.assertEqual(entry.status, 'open')
+        self.assertIn(str(response.data['id']), entry.target_repr)
+
+    def test_admin_resolving_a_report_via_the_change_form_logs_an_activity(self):
+        from .models import ActivityLog, DisputeReport
+        from django.contrib.admin.sites import site as admin_site
+
+        dispute = DisputeReport.objects.create(
+            reporter=self.kano_client, category='payment', description='Overcharged.',
+        )
+        model_admin = admin_site._registry[DisputeReport]
+
+        class _FakeForm:
+            changed_data = ['status']
+
+        class _FakeRequest:
+            user = self.admin
+
+        dispute.status = 'resolved'
+        model_admin.save_model(_FakeRequest(), dispute, _FakeForm(), change=True)
+
+        entry = ActivityLog.objects.get(action='report_resolved')
+        self.assertEqual(entry.actor, self.admin)
+        self.assertEqual(entry.status, 'resolved')
+        dispute.refresh_from_db()
+        self.assertEqual(dispute.resolved_by, self.admin)
+
+    def test_admin_bulk_dismiss_action_logs_an_activity(self):
+        from django.contrib.admin.sites import site as admin_site
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+
+        from .models import ActivityLog, DisputeReport
+
+        dispute = DisputeReport.objects.create(
+            reporter=self.kano_client, category='other', description='Spam report.',
+        )
+        model_admin = admin_site._registry[DisputeReport]
+
+        # _bulk_transition ends with self.message_user(), which needs a
+        # real request wired up to Django's messages framework — a bare
+        # stub object isn't enough here, unlike save_model below.
+        request = RequestFactory().post('/admin/core/disputereport/')
+        request.user = self.admin
+        request.session = {}
+        request._messages = FallbackStorage(request)
+
+        model_admin._bulk_transition(request, DisputeReport.objects.filter(id=dispute.id), 'dismissed')
+
+        entry = ActivityLog.objects.get(action='report_dismissed')
+        self.assertEqual(entry.actor, self.admin)
+        self.assertEqual(entry.status, 'dismissed')
 
 
 class CategoryTypeSeparationTests(APITestCase):

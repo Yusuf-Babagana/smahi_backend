@@ -587,6 +587,23 @@ class ActivityLog(models.Model):
         ('artisan_registered', 'Registered artisan'),
         ('artisan_verified', 'Completed verification'),
         ('artisan_verification_rejected', 'Rejected verification'),
+        # Reports/escalations (item 6 of the audit-trail spec) — filed via
+        # the API (DisputeReportViewSet), reviewed via Django Admin (see
+        # DisputeReportAdmin — resolution has deliberately never had an API
+        # path of its own, per DisputeReport's own docstring).
+        ('report_filed', 'Filed report'),
+        ('report_investigating', 'Marked report investigating'),
+        ('report_resolved', 'Resolved report'),
+        ('report_dismissed', 'Dismissed report'),
+        # Admin managing Coordinators — one level up the same hierarchy as
+        # agent_created/agent_approved/etc above (AdminCreateCoordinatorView/
+        # AdminCoordinatorStatusView). No 'coordinator_approved': unlike an
+        # agent, a coordinator is active immediately on creation — there is
+        # no pending_approval step for this role.
+        ('coordinator_created', 'Created coordinator'),
+        ('coordinator_suspended', 'Suspended coordinator'),
+        ('coordinator_reactivated', 'Reactivated coordinator'),
+        ('coordinator_dismissed', 'Dismissed coordinator'),
     ]
 
     actor = models.ForeignKey(

@@ -201,23 +201,48 @@ class DisputeReportAdmin(admin.ModelAdmin):
                 related_object=dispute,
             )
 
+    @staticmethod
+    def _log_status_change(request, dispute, new_status):
+        # Audit trail item 6 — report status changes only ever happen here
+        # (Django Admin), never via the API (DisputeReportViewSet is
+        # create+read only), so this is the one place to hook.
+        from .services import log_activity
+        action = {
+            'investigating': 'report_investigating',
+            'resolved': 'report_resolved',
+            'dismissed': 'report_dismissed',
+        }.get(new_status)
+        if not action:
+            return
+        booking = dispute.booking
+        log_activity(
+            request.user, action,
+            target_repr=f'Report #{dispute.id} ({dispute.get_category_display()})',
+            target_role='dispute',
+            state=(booking.state if booking else None) or dispute.reporter.state,
+            lga=(booking.lga if booking else None) or dispute.reporter.lga,
+            activity_status=new_status,
+        )
+
     def save_model(self, request, obj, form, change):
         # Covers editing a single dispute's status directly in the change
         # form, not just the bulk actions below — both paths must stamp
-        # resolved_by/resolved_at and notify consistently.
+        # resolved_by/resolved_at and notify/log consistently.
         status_changed = change and 'status' in form.changed_data
         super().save_model(request, obj, form, change)
-        if status_changed and obj.status in ('resolved', 'dismissed'):
-            update_fields = []
-            if not obj.resolved_by:
-                obj.resolved_by = request.user
-                update_fields.append('resolved_by')
-            if not obj.resolved_at:
-                obj.resolved_at = timezone.now()
-                update_fields.append('resolved_at')
-            if update_fields:
-                obj.save(update_fields=update_fields)
-            self._notify_if_closed(obj, obj.status)
+        if status_changed:
+            if obj.status in ('resolved', 'dismissed'):
+                update_fields = []
+                if not obj.resolved_by:
+                    obj.resolved_by = request.user
+                    update_fields.append('resolved_by')
+                if not obj.resolved_at:
+                    obj.resolved_at = timezone.now()
+                    update_fields.append('resolved_at')
+                if update_fields:
+                    obj.save(update_fields=update_fields)
+                self._notify_if_closed(obj, obj.status)
+            self._log_status_change(request, obj, obj.status)
 
     def _bulk_transition(self, request, queryset, new_status):
         for dispute in queryset:
@@ -227,6 +252,7 @@ class DisputeReportAdmin(admin.ModelAdmin):
                 dispute.resolved_at = timezone.now()
             dispute.save()
             self._notify_if_closed(dispute, new_status)
+            self._log_status_change(request, dispute, new_status)
         self.message_user(request, f'{queryset.count()} dispute(s) marked {new_status}.')
 
     @admin.action(description='Mark as investigating')
