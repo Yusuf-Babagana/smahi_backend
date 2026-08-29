@@ -30,7 +30,7 @@ from django.views.decorators.cache import cache_control
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from django.db.models import Q, F, Count, Sum, Exists, OuterRef
-from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite
+from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite, ActivityLog
 from notifications.models import DeviceToken
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
@@ -40,9 +40,10 @@ from .serializers import (
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
     BookingPhotoSerializer, AgentOverviewSerializer, CoordinatorOverviewSerializer,
+    ActivityLogSerializer,
 )
 from notifications.events import emit
-from .services import approve_artisan_verification
+from .services import approve_artisan_verification, reject_artisan_verification, log_activity
 from .permissions import IsArtisan, IsBusiness, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
 from accounts.serializers import UserSerializer, AdminUserSerializer, AdminUserUpdateSerializer
 
@@ -430,6 +431,8 @@ class AgentRegisterArtisanView(APIView):
             user.artisan_profile.registered_by = request.user
             user.artisan_profile.save(update_fields=['registered_by'])
 
+        log_activity(request.user, 'artisan_registered', target_user=user, activity_status='pending')
+
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
@@ -565,6 +568,8 @@ class CoordinatorCreateAgentView(APIView):
         except Exception:
             logger.exception('Failed to emit agent_pending_approval notification')
 
+        log_activity(request.user, 'agent_created', target_user=user, activity_status='pending_approval')
+
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
@@ -618,9 +623,16 @@ class CoordinatorAgentStatusView(APIView):
         # account_status alone is display-only. Set both together, same as
         # the equivalent Django Admin bulk actions (accounts/admin.py), or a
         # "suspended"/"dismissed" agent could still log in and keep working.
+        previous_status = agent.account_status
         agent.is_active = (new_status == 'active')
         agent.account_status = new_status
         agent.save(update_fields=['is_active', 'account_status'])
+
+        if new_status == 'active':
+            action = 'agent_approved' if previous_status == 'pending_approval' else 'agent_reactivated'
+        else:
+            action = f'agent_{new_status}'  # 'agent_suspended' / 'agent_dismissed' / 'agent_rejected'
+        log_activity(request.user, action, target_user=agent, activity_status=new_status)
 
         return Response({
             'message': f'Agent account set to {new_status}.',
@@ -647,6 +659,24 @@ class CoordinatorReportsView(generics.ListAPIView):
         return DisputeReport.objects.filter(
             Q(reporter__state_id=state_id) | Q(booking__state_id=state_id)
         ).select_related('reporter', 'booking').distinct()
+
+
+class CoordinatorActivityLogView(generics.ListAPIView):
+    """Coordinator Dashboard's Recent Activities / Activity Log — a
+    state-wide, actor-centric audit trail (see core.models.ActivityLog and
+    core.services.log_activity). Read-only: entries are only ever written
+    as a side effect of the real actions elsewhere in this file/services.py,
+    never through this endpoint."""
+    serializer_class = ActivityLogSerializer
+    permission_classes = [IsAuthenticated, IsStateCoordinator]
+    filterset_fields = ['action', 'lga']
+    search_fields = ['target_repr']
+
+    def get_queryset(self):
+        state_id = self.request.user.state_id
+        if not state_id:
+            return ActivityLog.objects.none()
+        return ActivityLog.objects.filter(state_id=state_id).select_related('actor', 'lga')
 
 
 class AgentVerifyArtisanView(APIView):
@@ -994,24 +1024,19 @@ class VerificationRequestViewSet(viewsets.ModelViewSet):
         serializer = VerificationProcessSerializer(data=request.data)
 
         if serializer.is_valid():
-            verification_request.status = serializer.validated_data['status']
-            verification_request.reviewed_by = request.user
-            verification_request.reviewed_at = timezone.now()
-
-            if serializer.validated_data['status'] == 'rejected':
-                verification_request.rejection_reason = serializer.validated_data.get('rejection_reason', '')
-
-            verification_request.save()
-
+            # Routed through the same shared functions AgentVerifyArtisanView
+            # uses (core/services.py) rather than duplicating the approve/
+            # reject logic here — this call site used to skip both the
+            # artisan's emit() notification and the Activity Log entry
+            # entirely, even though it's the only place a *rejection* can
+            # actually happen via the API.
             if serializer.validated_data['status'] == 'approved':
-                artisan_profile, created = ArtisanProfile.objects.get_or_create(
-                    user=verification_request.artisan
-                )
-                artisan_profile.verification_status = 'approved'
-                artisan_profile.save()
+                approve_artisan_verification(verification_request.artisan, reviewed_by=request.user)
+            else:
+                reason = serializer.validated_data.get('rejection_reason', '')
+                reject_artisan_verification(verification_request.artisan, reviewed_by=request.user, reason=reason)
 
-                verification_request.artisan.is_verified = True
-                verification_request.artisan.save()
+            verification_request.refresh_from_db()
 
             return Response(
                 VerificationRequestSerializer(verification_request).data,

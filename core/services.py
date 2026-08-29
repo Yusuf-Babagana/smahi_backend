@@ -4,16 +4,51 @@ duplicated per caller — is what "hybrid admin" actually depends on: the
 agent-facing endpoint and the privileged Django Admin action must always
 agree on what "approved" means.
 """
+import logging
+
 from django.utils import timezone
 
-from .models import ArtisanProfile, VerificationRequest
+from .models import ArtisanProfile, VerificationRequest, ActivityLog
 from notifications.events import emit
+
+logger = logging.getLogger(__name__)
+
+
+def log_activity(actor, action, target_user=None, lga=None, activity_status=''):
+    """Append-only entry for the State Coordinator's Activity Log
+    (ActivityLog, core/models.py). Actor-centric — records who did what —
+    unlike notifications.emit(), which is recipient-centric. Best-effort:
+    a logging failure must never break the real action that triggered it,
+    same reasoning as every emit() call site in this codebase.
+
+    state/lga default to the TARGET's own (not the actor's), so an
+    Admin-driven action — an admin has no state of their own — still
+    lands in the correct state's Coordinator log. Pass `lga` explicitly
+    only when it differs from the target's (there is no such case today).
+    """
+    try:
+        ActivityLog.objects.create(
+            actor=actor,
+            actor_role=getattr(actor, 'role', ''),
+            action=action,
+            target_user=target_user,
+            target_repr=(
+                (f'{target_user.first_name} {target_user.last_name}'.strip() or target_user.email)
+                if target_user else ''
+            ),
+            target_role=getattr(target_user, 'role', ''),
+            state=(target_user.state if target_user else None) or getattr(actor, 'state', None),
+            lga=lga or (target_user.lga if target_user else None),
+            status=activity_status,
+        )
+    except Exception:
+        logger.exception('Failed to record activity log entry (action=%s)', action)
 
 
 def approve_artisan_verification(artisan_user, reviewed_by):
     """Approve an artisan's verification. reviewed_by is whoever took the
-    action — an agent/coordinator (via AgentVerifyArtisanView) or an admin
-    (via Django Admin)."""
+    action — an agent/coordinator (via AgentVerifyArtisanView or
+    VerificationRequestViewSet.process) or an admin (via Django Admin)."""
     artisan_profile, _ = ArtisanProfile.objects.get_or_create(user=artisan_user)
     artisan_profile.verification_status = 'approved'
     artisan_profile.save(update_fields=['verification_status'])
@@ -32,6 +67,7 @@ def approve_artisan_verification(artisan_user, reviewed_by):
         body='Your artisan profile has been verified. Clients can now see your verified badge.',
         related_object=artisan_profile,
     )
+    log_activity(reviewed_by, 'artisan_verified', target_user=artisan_user, activity_status='approved')
     return artisan_profile
 
 
@@ -53,4 +89,5 @@ def reject_artisan_verification(artisan_user, reviewed_by, reason=''):
         body=reason or 'Your verification request was not approved. Please contact support for details.',
         related_object=artisan_profile,
     )
+    log_activity(reviewed_by, 'artisan_verification_rejected', target_user=artisan_user, activity_status='rejected')
     return artisan_profile

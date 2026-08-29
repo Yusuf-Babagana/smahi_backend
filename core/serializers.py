@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings
+from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings, ActivityLog
 from accounts.serializers import UserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
@@ -529,6 +529,31 @@ class AgentOverviewSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'email', 'phone_number', 'gender',
             'serial_number', 'account_status', 'state_details', 'lga_details', 'created_at',
             'artisans_registered', 'artisans_verified',
+        ]
+
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    """One row of the State Coordinator's Activity Log — see
+    core.services.log_activity() for where these are written.
+    actor_name/target_repr fall back to whatever's snapshotted on the row
+    itself (survives the actual account being deleted later), so nothing
+    here needs a live join to accounts.User beyond the optional avatar-ish
+    detail fields."""
+    actor_name = serializers.SerializerMethodField()
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    lga_details = LGASerializer(source='lga', read_only=True)
+
+    def get_actor_name(self, obj):
+        if obj.actor:
+            name = f'{obj.actor.first_name} {obj.actor.last_name}'.strip()
+            return name or obj.actor.email
+        return 'Deleted user'
+
+    class Meta:
+        model = ActivityLog
+        fields = [
+            'id', 'actor_name', 'actor_role', 'action', 'action_display',
+            'target_repr', 'target_role', 'lga_details', 'status', 'created_at',
         ]
 
 

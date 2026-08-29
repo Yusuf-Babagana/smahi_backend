@@ -1080,6 +1080,183 @@ class CoordinatorAgentStatusTests(CoordinatorDashboardTestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+class ActivityLogTests(CoordinatorDashboardTestBase):
+    """The Coordinator Dashboard's Activity Log (item 3) — actor-centric
+    audit entries written by core.services.log_activity() as a side
+    effect of the real actions elsewhere, and CoordinatorActivityLogView,
+    the state-scoped read-only endpoint that surfaces them."""
+    LOG_URL = '/api/v1/coordinator/activity-log/'
+    CREATE_AGENT_URL = '/api/v1/coordinator/agents/create/'
+
+    def status_url(self, agent_id):
+        return f'/api/v1/coordinator/agents/{agent_id}/status/'
+
+    def setUp(self):
+        super().setUp()
+        from .models import VerificationRequest
+
+        self.kano_artisan = User.objects.create_user(
+            email='kano_artisan@test.com', password='pass12345',
+            first_name='Kano', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        self.kano_verification_request = VerificationRequest.objects.create(
+            artisan=self.kano_artisan, document_image_1='verification_documents/fake.jpg',
+        )
+
+    def test_creating_an_agent_logs_an_activity(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.CREATE_AGENT_URL, {
+            'email': 'logged_agent@test.com', 'first_name': 'Logged', 'last_name': 'Agent',
+            'lga': self.kano_lga_b.id,
+        })
+        new_agent = User.objects.get(email='logged_agent@test.com')
+        entry = ActivityLog.objects.get(action='agent_created', target_user=new_agent)
+        self.assertEqual(entry.actor, self.kano_coordinator)
+        self.assertEqual(entry.actor_role, 'state_coordinator')
+        self.assertEqual(entry.target_role, 'agent')
+        self.assertEqual(entry.state, self.kano)
+        self.assertEqual(entry.lga, self.kano_lga_b)
+        self.assertEqual(entry.status, 'pending_approval')
+
+    def test_approving_a_pending_agent_logs_agent_approved_not_reactivated(self):
+        from .models import ActivityLog
+
+        self.kano_agent.account_status = 'pending_approval'
+        self.kano_agent.save(update_fields=['account_status'])
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.status_url(self.kano_agent.id), {'status': 'active'})
+
+        entry = ActivityLog.objects.get(action='agent_approved', target_user=self.kano_agent)
+        self.assertEqual(entry.status, 'active')
+
+    def test_reactivating_a_suspended_agent_logs_agent_reactivated_not_approved(self):
+        from .models import ActivityLog
+
+        self.kano_agent.account_status = 'suspended'
+        self.kano_agent.save(update_fields=['account_status'])
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.status_url(self.kano_agent.id), {'status': 'active'})
+
+        self.assertTrue(ActivityLog.objects.filter(action='agent_reactivated', target_user=self.kano_agent).exists())
+        self.assertFalse(ActivityLog.objects.filter(action='agent_approved', target_user=self.kano_agent).exists())
+
+    def test_suspend_dismiss_reject_each_log_their_own_action(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.status_url(self.kano_agent.id), {'status': 'suspended'})
+        self.assertTrue(ActivityLog.objects.filter(action='agent_suspended', target_user=self.kano_agent).exists())
+
+        self.client.post(self.status_url(self.lagos_agent.id), {'status': 'dismissed'})
+        # lagos_agent belongs to a different coordinator, but the actor here
+        # is still kano_coordinator's own request — cross-state is blocked
+        # by CoordinatorAgentStatusView itself (404), so no entry either way.
+        self.assertFalse(ActivityLog.objects.filter(action='agent_dismissed', target_user=self.lagos_agent).exists())
+
+    def test_registering_an_artisan_logs_an_activity(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.kano_agent)
+        self.client.post('/api/agent/register-artisan/', {
+            'email': 'field_registered_artisan@test.com', 'first_name': 'Field', 'last_name': 'Artisan',
+        })
+        new_artisan = User.objects.get(email='field_registered_artisan@test.com')
+        entry = ActivityLog.objects.get(action='artisan_registered', target_user=new_artisan)
+        self.assertEqual(entry.actor, self.kano_agent)
+        self.assertEqual(entry.actor_role, 'agent')
+        self.assertEqual(entry.state, self.kano)
+
+    def test_agent_verify_artisan_view_logs_and_notifies(self):
+        from .models import ActivityLog
+        from notifications.models import Notification
+
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(f'/api/agent/verify-artisan/{self.kano_artisan.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        entry = ActivityLog.objects.get(action='artisan_verified', target_user=self.kano_artisan)
+        self.assertEqual(entry.status, 'approved')
+        self.assertEqual(entry.lga, self.kano_lga_a)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.kano_artisan, event_type='verification_approved').exists()
+        )
+
+    def test_verification_request_process_approve_now_logs_and_notifies(self):
+        """Regression: this call site used to duplicate the approve logic
+        inline and never call core.services.approve_artisan_verification —
+        it skipped both the artisan's notification and the Activity Log
+        entirely, even though it's the only place a *rejection* can happen
+        via the API at all."""
+        from .models import ActivityLog
+        from notifications.models import Notification
+
+        self.client.force_authenticate(user=self.kano_agent)
+        url = f'/api/verification/{self.kano_verification_request.id}/process/'
+        response = self.client.post(url, {'status': 'approved'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.assertTrue(ActivityLog.objects.filter(action='artisan_verified', target_user=self.kano_artisan).exists())
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.kano_artisan, event_type='verification_approved').exists()
+        )
+        self.kano_artisan.refresh_from_db()
+        self.assertTrue(self.kano_artisan.is_verified)
+
+    def test_verification_request_process_reject_logs_and_notifies(self):
+        from .models import ActivityLog
+        from notifications.models import Notification
+
+        self.client.force_authenticate(user=self.kano_agent)
+        url = f'/api/verification/{self.kano_verification_request.id}/process/'
+        response = self.client.post(url, {'status': 'rejected', 'rejection_reason': 'Blurry documents.'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        entry = ActivityLog.objects.get(action='artisan_verification_rejected', target_user=self.kano_artisan)
+        self.assertEqual(entry.status, 'rejected')
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.kano_artisan, event_type='verification_rejected').exists()
+        )
+
+    def test_coordinator_sees_only_their_own_states_activity(self):
+        from .models import ActivityLog
+
+        ActivityLog.objects.create(
+            actor=self.kano_coordinator, actor_role='state_coordinator', action='agent_created',
+            target_user=self.kano_agent, target_role='agent', state=self.kano, status='pending_approval',
+        )
+        ActivityLog.objects.create(
+            actor=self.lagos_coordinator, actor_role='state_coordinator', action='agent_created',
+            target_user=self.lagos_agent, target_role='agent', state=self.lagos, status='pending_approval',
+        )
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.LOG_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        actors = {row['actor_name'] for row in response.data['results']}
+        self.assertIn('Kano Coordinator', actors)
+        self.assertNotIn('Lagos Coordinator', actors)
+
+    def test_agent_role_cannot_access_activity_log(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.LOG_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_filter_by_action(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.CREATE_AGENT_URL, {
+            'email': 'filter_test_agent@test.com', 'first_name': 'Filter', 'last_name': 'Test',
+            'lga': self.kano_lga_b.id,
+        })
+        response = self.client.get(self.LOG_URL, {'action': 'agent_created'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertTrue(all(row['action'] == 'agent_created' for row in response.data['results']))
+
+
 class CoordinatorReportsViewTests(CoordinatorDashboardTestBase):
     REPORTS_URL = '/api/v1/coordinator/reports/'
 

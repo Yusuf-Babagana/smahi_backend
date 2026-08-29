@@ -558,3 +558,67 @@ class TranslationCache(models.Model):
 
     def __str__(self):
         return f"{self.source_language}->{self.target_language}: {self.source_text[:40]}"
+
+
+class ActivityLog(models.Model):
+    """Append-only, actor-centric audit trail for the State Coordinator's
+    Activity Log (Coordinator Dashboard spec item 3). Deliberately separate
+    from notifications.Notification, which is recipient-centric (who was
+    told) and has no "who did this" field — this model exists specifically
+    to answer that question. Never edited or deleted after creation; only
+    ever written via core.services.log_activity(), which swallows any
+    failure so a logging bug can never break the real action that
+    triggered it.
+
+    `state`/`lga` are denormalized from the TARGET (not the actor) so an
+    Admin-driven action (no state of their own) still shows up correctly
+    in the affected state's Coordinator's log, and so this table stays
+    directly filterable by state without joining through actor or target.
+    `target_repr`/`target_role` are likewise snapshotted at write time so
+    the log stays readable even if the target account is later deleted.
+    """
+    ACTION_CHOICES = [
+        ('agent_created', 'Created agent'),
+        ('agent_approved', 'Approved agent'),
+        ('agent_rejected', 'Rejected agent'),
+        ('agent_suspended', 'Suspended agent'),
+        ('agent_reactivated', 'Reactivated agent'),
+        ('agent_dismissed', 'Dismissed agent'),
+        ('artisan_registered', 'Registered artisan'),
+        ('artisan_verified', 'Completed verification'),
+        ('artisan_verification_rejected', 'Rejected verification'),
+    ]
+
+    actor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='activity_log_entries'
+    )
+    # Snapshot, not derived from actor at read time — actor.role can change
+    # later (e.g. a dismissed agent), but the log should keep saying what
+    # they were when they actually did this.
+    actor_role = models.CharField(max_length=20, blank=True)
+
+    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
+
+    target_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='activity_log_targeted'
+    )
+    target_repr = models.CharField(max_length=150, blank=True)
+    target_role = models.CharField(max_length=20, blank=True)
+
+    state = models.ForeignKey(State, on_delete=models.SET_NULL, null=True, blank=True, related_name='activity_log_entries')
+    lga = models.ForeignKey(LGA, on_delete=models.SET_NULL, null=True, blank=True, related_name='activity_log_entries')
+
+    # The resulting status after this action (e.g. 'pending_approval',
+    # 'active', 'approved', 'rejected') — deliberately free text rather
+    # than a shared choices set, since it spans both account_status and
+    # verification_status's separate vocabularies.
+    status = models.CharField(max_length=30, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['state', '-created_at'])]
+
+    def __str__(self):
+        return f"{self.actor_role or 'someone'} {self.get_action_display()} - {self.target_repr} ({self.created_at:%Y-%m-%d %H:%M})"

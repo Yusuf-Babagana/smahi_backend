@@ -3,7 +3,7 @@ from django.shortcuts import redirect
 from django.utils import timezone
 from .models import (
     Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review,
-    RegistrationPayment, PlatformSettings, DisputeReport, Favorite,
+    RegistrationPayment, PlatformSettings, DisputeReport, Favorite, ActivityLog,
 )
 from notifications.events import emit
 
@@ -34,6 +34,25 @@ class PlatformSettingsAdmin(admin.ModelAdmin):
         # Only ever one row — skip the list page, go straight to editing it.
         obj = PlatformSettings.current()
         return redirect('admin:core_platformsettings_change', obj.pk)
+
+
+@admin.register(ActivityLog)
+class ActivityLogAdmin(admin.ModelAdmin):
+    """Read-only — see core.services.log_activity(); the same rule as
+    Notification, which this mirrors (no delete action exposed anywhere)."""
+    list_display = ['actor_role', 'action', 'target_repr', 'state', 'lga', 'status', 'created_at']
+    list_filter = ['action', 'state', 'actor_role']
+    search_fields = ['target_repr', 'actor__email', 'actor__first_name', 'actor__last_name']
+    date_hierarchy = 'created_at'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Category)
