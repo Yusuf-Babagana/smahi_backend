@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- Primary SEO -->
-  <title>S MAHI Global Services Ltd — Innovating Skills, Empowering Workers | DUNS 669827104</title>
+  <title>S MAHI Global Services Ltd — Innovating Skills, Empowering Workers | DUNS 669827104 </title>
   <meta name="description" content="S MAHI Global Services Ltd bridges skilled professionals with global opportunities through training, certification, and strategic job placement. RC 8681627 · DUNS 669827104." />
   <meta name="keywords" content="S MAHI Global Services, skilled workforce Nigeria, professional certification, job placement, workforce matching, state coordinators, DUNS 669827104" />
   <meta name="author" content="S MAHI Global Services Ltd" />
@@ -53,6 +53,122 @@
     ]
   }
   </script>
+
+  <!-- ===== S-MAHI App + Launch Flyer styles (added; self-contained) ===== -->
+  <style>
+    /* Namespaced so they don't affect the rest of the site.
+       Uses the site's navy/gold tokens with hardcoded fallbacks. */
+
+    /* ---- S-MAHI App body ---- */
+    .app-intro { display:grid; grid-template-columns:1.1fr .9fr; gap:2.5rem; align-items:center; margin-bottom:3rem; }
+    .app-lead { font-size:1.05rem; color:var(--slate-500,#5b6b82); line-height:1.7; margin-bottom:1.5rem; }
+    .app-assistant { display:flex; gap:1rem; padding:1.25rem; background:var(--white,#fff); border:1px solid var(--line,#dbe3ef);
+      border-left:4px solid var(--royal-600,#123f8f); border-radius:1rem; box-shadow:0 12px 30px rgba(7,26,51,.08); margin-bottom:1.5rem; }
+    .app-assistant__icon { width:52px; height:52px; flex-shrink:0; border-radius:14px; display:grid; place-items:center;
+      background:linear-gradient(135deg,#123f8f,#1d55b8); color:var(--gold-400,#e0b83c); font-size:1.35rem; }
+    .app-assistant h4 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-size:1.1rem; color:var(--ink-900,#071a33); margin:0 0 4px; }
+    .app-assistant p { color:var(--slate-500,#5b6b82); font-size:.95rem; margin:0; }
+    .app-examples { display:flex; flex-wrap:wrap; gap:.6rem; }
+    .app-chip { display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .9rem; background:var(--white,#fff);
+      border:1px solid var(--line,#dbe3ef); border-radius:999px; font-size:.85rem; font-weight:600; color:var(--royal-600,#123f8f); box-shadow:0 1px 2px rgba(7,26,51,.06); }
+    .app-chip i { font-size:.75rem; color:var(--gold-500,#c9a227); }
+
+    .app-phone { display:flex; justify-content:center; }
+    .app-phone__frame { position:relative; width:280px; background:var(--ink-900,#071a33); border-radius:40px; padding:14px; box-shadow:0 24px 60px rgba(7,26,51,.28); }
+    .app-phone__notch { position:absolute; top:14px; left:50%; transform:translateX(-50%); width:120px; height:22px; background:var(--ink-900,#071a33); border-radius:0 0 14px 14px; z-index:2; }
+    .app-phone__screen { background:linear-gradient(180deg,#eef2f9,#fff); border-radius:28px; padding:2rem 1rem 1.25rem; min-height:440px; display:flex; flex-direction:column; gap:.75rem; }
+    .app-phone__header { display:flex; align-items:center; justify-content:center; gap:6px; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; color:var(--royal-600,#123f8f); font-size:.9rem; margin-bottom:.5rem; }
+    .app-bubble { max-width:85%; padding:.55rem .9rem; border-radius:1rem; font-size:.85rem; line-height:1.45; }
+    .app-bubble.user { align-self:flex-end; background:linear-gradient(135deg,#123f8f,#1d55b8); color:#fff; border-bottom-right-radius:.4rem; }
+    .app-bubble.bot { align-self:flex-start; background:#fff; color:var(--slate-500,#5b6b82); border:1px solid var(--line,#dbe3ef); border-bottom-left-radius:.4rem; }
+    .app-bubble.bot i { color:var(--royal-600,#123f8f); margin-right:4px; }
+
+    .app-subhead { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:1.6rem; text-align:center; color:var(--ink-900,#071a33); margin-bottom:2rem; }
+
+    .app-steps { display:flex; flex-wrap:wrap; justify-content:center; gap:1.25rem; margin-bottom:3rem; }
+    .app-step { position:relative; flex:1 1 170px; max-width:210px; background:var(--white,#fff); border:1px solid var(--line,#dbe3ef); border-radius:1rem; padding:2rem 1.25rem; text-align:center; box-shadow:0 4px 14px rgba(7,26,51,.06); transition:transform .25s ease, box-shadow .25s ease; }
+    .app-step:hover { transform:translateY(-4px); box-shadow:0 12px 30px rgba(7,26,51,.10); }
+    .app-step__num { position:absolute; top:-14px; left:50%; transform:translateX(-50%); width:32px; height:32px; border-radius:50%; display:grid; place-items:center; background:linear-gradient(135deg,#c9a227,#e0b83c); color:#071a33; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; box-shadow:0 12px 28px rgba(201,162,39,.28); }
+    .app-step i { font-size:1.6rem; color:var(--royal-600,#123f8f); margin:.5rem 0 1rem; }
+    .app-step p { color:var(--slate-500,#5b6b82); font-size:.9rem; font-weight:600; margin:0; }
+
+    .app-features { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1.5rem; margin-bottom:3rem; }
+    .app-feature { background:var(--white,#fff); border:1px solid var(--line,#dbe3ef); border-radius:1.15rem; padding:2rem; box-shadow:0 1px 2px rgba(7,26,51,.06); transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .app-feature:hover { transform:translateY(-6px); box-shadow:0 12px 30px rgba(7,26,51,.10); border-color:#cfe0f7; }
+    .app-feature__icon { width:56px; height:56px; border-radius:14px; display:grid; place-items:center; background:linear-gradient(135deg,#071a33,#123f8f); color:var(--gold-400,#e0b83c); font-size:1.4rem; margin-bottom:1.25rem; box-shadow:0 4px 14px rgba(7,26,51,.08); }
+    .app-feature h4 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-size:1.15rem; color:var(--ink-900,#071a33); margin:0 0 .5rem; }
+    .app-feature p { color:var(--slate-500,#5b6b82); font-size:.925rem; line-height:1.6; margin:0; }
+
+    .app-audience { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:1.5rem; margin-bottom:3rem; }
+    .app-aud { text-align:center; background:linear-gradient(135deg,#eef2f9,#fff); border:1px solid var(--line,#dbe3ef); border-radius:1.5rem; padding:2.5rem 1.5rem; transition:transform .25s ease, box-shadow .25s ease; }
+    .app-aud:hover { transform:translateY(-4px); box-shadow:0 12px 30px rgba(7,26,51,.10); }
+    .app-aud__icon { width:72px; height:72px; margin:0 auto 1.25rem; border-radius:50%; display:grid; place-items:center; background:#fff; border:2px solid #cfe0f7; color:var(--royal-600,#123f8f); font-size:1.8rem; }
+    .app-aud h4 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-size:1.2rem; color:var(--ink-900,#071a33); margin:0 0 .5rem; }
+    .app-aud p { color:var(--slate-500,#5b6b82); line-height:1.6; margin:0; }
+
+    .app-reach { text-align:center; background:linear-gradient(135deg,#071a33,#123f8f); border-radius:1.5rem; padding:1.5rem; margin-bottom:2rem; }
+    .app-reach > span { display:block; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; color:#fff; font-size:1.05rem; margin-bottom:10px; }
+    .app-reach__steps { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px; }
+    .app-reach__steps > span { display:inline-flex; align-items:center; gap:6px; color:#fff; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:600; font-size:.98rem; }
+    .app-reach__steps > i { color:var(--gold-400,#e0b83c); }
+
+    .app-vision { max-width:820px; margin:0 auto; text-align:center; font-size:1.12rem; line-height:1.7; color:var(--slate-500,#5b6b82); font-style:italic; }
+    .app-vision i { color:var(--gold-500,#c9a227); font-size:1.4rem; margin-right:6px; }
+
+    /* ---- Launch flyer (pure CSS, no image) ---- */
+    .flyer { position:relative; max-width:1000px; margin:0 auto 3rem; padding:clamp(1.5rem,4vw,3rem); border-radius:1.5rem; overflow:hidden; color:#fff;
+      background:radial-gradient(circle at 85% 12%,rgba(29,85,184,.5),transparent 45%),radial-gradient(circle at 12% 92%,rgba(201,162,39,.28),transparent 45%),linear-gradient(135deg,#071a33 0%,#0d2b57 55%,#0a2140 100%);
+      box-shadow:0 24px 60px rgba(7,26,51,.28); border:1px solid rgba(255,255,255,.08); }
+    .flyer__glow { position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 72% 40%,rgba(224,184,60,.16),transparent 42%); }
+    .flyer > * { position:relative; z-index:1; }
+    .flyer__top { display:flex; flex-wrap:wrap; gap:1.5rem; align-items:center; justify-content:space-between; margin-bottom:1.25rem; }
+    .flyer__brand { display:flex; align-items:center; gap:1rem; }
+    .flyer__logo { width:60px; height:60px; flex-shrink:0; border-radius:50%; display:grid; place-items:center; font-size:1.7rem; color:var(--gold-400,#e0b83c); background:linear-gradient(135deg,#123f8f,#1d55b8); box-shadow:inset 0 0 0 2px rgba(224,184,60,.5); }
+    .flyer__brand-name { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:1.5rem; letter-spacing:.04em; display:block; line-height:1; }
+    .flyer__brand-sub { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; font-size:.95rem; letter-spacing:.18em; color:var(--gold-400,#e0b83c); display:block; }
+    .flyer__brand-tag { font-size:.72rem; color:#b9c9e4; margin-top:4px; max-width:250px; display:block; }
+    .flyer__headline { text-align:right; display:flex; flex-direction:column; align-items:flex-end; }
+    .flyer__h1 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; line-height:.95; font-size:clamp(1.8rem,6vw,3.4rem); }
+    .flyer__h1.accent { color:var(--gold-400,#e0b83c); }
+    .flyer__ribbon { margin-top:8px; padding:5px 14px; border-radius:6px; background:#071a33; color:#fff; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; font-size:.72rem; letter-spacing:.18em; border:1px solid rgba(224,184,60,.4); }
+    .flyer__lead { text-align:center; font-size:clamp(.95rem,2vw,1.15rem); color:#d6e2f5; margin-bottom:1.5rem; }
+    .flyer__lead .ng { color:#34d399; font-weight:800; }
+    .flyer__mid { display:flex; flex-wrap:wrap; gap:1.5rem; align-items:center; justify-content:space-between; margin-bottom:1.5rem; }
+    .flyer__kano { display:flex; align-items:center; gap:1rem; }
+    .flyer__pin { width:46px; height:46px; border-radius:50%; display:grid; place-items:center; background:linear-gradient(135deg,#c9a227,#e0b83c); color:#071a33; font-size:1.2rem; flex-shrink:0; box-shadow:0 0 0 4px rgba(224,184,60,.22); }
+    .flyer__kano h4 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-size:1.3rem; margin:0; color:#fff; }
+    .flyer__kano p { color:#b9c9e4; font-size:.8rem; margin:0; }
+    .flyer__badge { display:grid; place-items:center; text-align:center; gap:2px; width:150px; height:150px; border-radius:50%; flex-shrink:0; padding:1rem; background:radial-gradient(circle,rgba(255,255,255,.06),rgba(255,255,255,.02)); border:2px solid var(--gold-500,#c9a227); font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; font-size:.72rem; letter-spacing:.04em; color:#ffe6a6; line-height:1.35; box-shadow:0 0 24px rgba(201,162,39,.22); }
+    .flyer__details { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:1rem; padding:1.25rem 1.75rem; margin-bottom:1.5rem; }
+    .flyer__details-label { display:inline-block; padding:4px 12px; border-radius:20px; background:linear-gradient(135deg,#c9a227,#e0b83c); color:#071a33; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:.7rem; letter-spacing:.06em; margin-bottom:10px; }
+    .flyer__details-place { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:clamp(1.4rem,4vw,2.1rem); margin-bottom:1rem; }
+    .flyer__details-list { list-style:none; display:grid; gap:10px; padding:0; margin:0; }
+    .flyer__details-list li { display:flex; align-items:center; gap:10px; font-size:clamp(.95rem,2vw,1.15rem); }
+    .flyer__details-list i { color:var(--gold-400,#e0b83c); width:22px; text-align:center; }
+    .flyer__details-list span { color:#b9c9e4; }
+    .flyer__details-list strong { color:#ffe6a6; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); letter-spacing:.02em; }
+    .flyer__do { margin-bottom:1.5rem; }
+    .flyer__do h5 { text-align:center; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:1rem; letter-spacing:.08em; text-transform:uppercase; color:var(--gold-400,#e0b83c); margin:0 0 1.5rem; }
+    .flyer__do-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:1rem; }
+    .flyer__do-item { text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; }
+    .flyer__do-item i { width:52px; height:52px; border-radius:14px; display:grid; place-items:center; font-size:1.3rem; color:#fff; background:linear-gradient(135deg,rgba(29,85,184,.95),rgba(59,125,224,.75)); border:1px solid rgba(255,255,255,.15); }
+    .flyer__do-item span { font-size:.72rem; color:#d6e2f5; line-height:1.3; }
+    .flyer__reach { text-align:center; background:linear-gradient(135deg,#123f8f,#c9a227); border-radius:1rem; padding:1.25rem; }
+    .flyer__reach > span { display:block; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:1rem; margin-bottom:10px; }
+    .flyer__reach-steps { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px; }
+    .flyer__reach-steps > span { display:inline-flex; align-items:center; gap:6px; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; font-size:.95rem; }
+    .flyer__reach-steps > i { color:rgba(255,255,255,.8); }
+
+    @media (max-width:1024px){ .app-intro{ grid-template-columns:1fr; gap:2rem; } .app-phone{ order:-1; } }
+    @media (max-width:768px){
+      .flyer__top{ flex-direction:column; align-items:flex-start; }
+      .flyer__headline{ text-align:left; align-items:flex-start; }
+      .flyer__mid{ justify-content:center; }
+      .flyer__do-grid{ grid-template-columns:repeat(3,1fr); }
+      .flyer__reach-steps > i, .app-reach__steps > i { display:none; }
+    }
+    @media (max-width:480px){ .flyer__do-grid{ grid-template-columns:repeat(2,1fr); } }
+  </style>
 </head>
 
 <body>
@@ -95,6 +211,7 @@
           <li><a class="nav__link" href="#home">Home</a></li>
           <li><a class="nav__link" href="#services">Services</a></li>
           <li><a class="nav__link" href="#solutions">Solutions</a></li>
+          <li><a class="nav__link" href="#smahi-app">S-MAHI App</a></li>
           <li><a class="nav__link" href="#coordinators">Coordinators</a></li>
           <li><a class="nav__link" href="#presence">Presence</a></li>
           <li><a class="nav__link" href="#certification">Certification</a></li>
@@ -321,6 +438,167 @@
             </ul>
           </article>
         </div>
+      </div>
+    </section>
+
+    <!-- ============================ S-MAHI APP ============================ -->
+    <section class="section section--tint" id="smahi-app">
+      <div class="container">
+
+        <!-- National Launch flyer — drawn with HTML/CSS, no image needed -->
+        <div class="flyer" role="img" aria-label="S-MAHI App National Launching. Kano State, Nigeria. 9 September 2026, 10:00 AM, Central Hotel." data-aos="fade-up">
+          <div class="flyer__glow"></div>
+
+          <div class="flyer__top">
+            <div class="flyer__brand">
+              <div class="flyer__logo"><i class="fas fa-globe-americas"></i></div>
+              <div>
+                <span class="flyer__brand-name">S. MAHI</span>
+                <span class="flyer__brand-sub">GLOBAL SERVICES</span>
+                <span class="flyer__brand-tag">Connecting People, Skills, Services &amp; Opportunities</span>
+              </div>
+            </div>
+            <div class="flyer__headline">
+              <span class="flyer__h1">NATIONAL</span>
+              <span class="flyer__h1 accent">LAUNCHING</span>
+              <span class="flyer__ribbon">BEFORE GLOBAL LAUNCH</span>
+            </div>
+          </div>
+
+          <p class="flyer__lead">A big step toward a global digital future — <strong>starting from <span class="ng">Nigeria</span></strong></p>
+
+          <div class="flyer__mid">
+            <div class="flyer__kano">
+              <div class="flyer__pin"><i class="fas fa-location-dot"></i></div>
+              <div>
+                <h4>KANO STATE</h4>
+                <p>The commercial hub of Northern Nigeria</p>
+              </div>
+            </div>
+            <div class="flyer__badge">
+              <span>ONE PLATFORM.</span>
+              <span>ENDLESS OPPORTUNITIES.</span>
+              <span>LIMITLESS POSSIBILITIES.</span>
+            </div>
+          </div>
+
+          <div class="flyer__details">
+            <div class="flyer__details-label">Launching Location (National Launch)</div>
+            <div class="flyer__details-place">KANO STATE, NIGERIA</div>
+            <ul class="flyer__details-list">
+              <li><i class="fas fa-calendar-days"></i> <span>Date:</span> <strong>09 September 2026</strong></li>
+              <li><i class="fas fa-clock"></i> <span>Time:</span> <strong>10:00 AM</strong></li>
+              <li><i class="fas fa-building"></i> <span>Venue:</span> <strong>Central Hotel</strong></li>
+            </ul>
+          </div>
+
+          <div class="flyer__do">
+            <h5>What you can do on the S-MAHI App</h5>
+            <div class="flyer__do-grid">
+              <div class="flyer__do-item"><i class="fas fa-magnifying-glass"></i><span>Find Professionals &amp; Artisans</span></div>
+              <div class="flyer__do-item"><i class="fas fa-store"></i><span>Find Businesses &amp; Services</span></div>
+              <div class="flyer__do-item"><i class="fas fa-location-dot"></i><span>Nearby Services by Location</span></div>
+              <div class="flyer__do-item"><i class="fas fa-comments"></i><span>Communicate Easily</span></div>
+              <div class="flyer__do-item"><i class="fas fa-robot"></i><span>Help from S-MAHI AI Assistant</span></div>
+              <div class="flyer__do-item"><i class="fas fa-globe"></i><span>Local &amp; International Opportunities</span></div>
+            </div>
+          </div>
+
+          <div class="flyer__reach">
+            <span>From local communities to the world</span>
+            <div class="flyer__reach-steps">
+              <span><i class="fas fa-location-dot"></i> Local</span><i class="fas fa-arrow-right-long"></i>
+              <span><i class="fas fa-map"></i> State</span><i class="fas fa-arrow-right-long"></i>
+              <span><i class="fas fa-flag"></i> National</span><i class="fas fa-arrow-right-long"></i>
+              <span><i class="fas fa-globe"></i> International</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-head section-head--center" data-aos="fade-up">
+          <span class="eyebrow">Our flagship platform</span>
+          <h2 class="section-title">The S-MAHI App</h2>
+          <p class="section-lead">One platform connecting people to trusted skills, services, businesses and opportunities — locally and internationally.</p>
+        </div>
+
+        <div class="app-intro">
+          <div>
+            <p class="app-lead">
+              S-MAHI is a universal digital platform designed to connect people with trusted professionals,
+              skilled workers, businesses, services and opportunities wherever they are — from a mechanic,
+              electrician or plumber to a doctor, lawyer, hotel, hospital or company.
+            </p>
+
+            <div class="app-assistant">
+              <div class="app-assistant__icon"><i class="fas fa-microphone-lines"></i></div>
+              <div>
+                <h4>Powered by the S-MAHI AI Assistant</h4>
+                <p>Simply type or speak what you need. The assistant understands your request, asks for your location when necessary, and guides you to the right businesses, professionals and opportunities.</p>
+              </div>
+            </div>
+
+            <div class="app-examples" role="list" aria-label="Example requests">
+              <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "I need a mechanic"</span>
+              <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "A doctor near me"</span>
+              <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "A hotel in Kano"</span>
+              <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "An electrician"</span>
+            </div>
+          </div>
+
+          <div class="app-phone" aria-hidden="true">
+            <div class="app-phone__frame">
+              <span class="app-phone__notch"></span>
+              <div class="app-phone__screen">
+                <div class="app-phone__header"><i class="fas fa-globe-americas"></i> S-MAHI Assistant</div>
+                <div class="app-bubble user">I need a plumber near me</div>
+                <div class="app-bubble bot"><i class="fas fa-robot"></i> Sure — please share your location so I can find plumbers close to you.</div>
+                <div class="app-bubble user">Kano, Nigeria</div>
+                <div class="app-bubble bot"><i class="fas fa-robot"></i> I found 5 trusted plumbers near you, with names, phone numbers and services.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="app-subhead">How S-MAHI works</h3>
+        <div class="app-steps" data-aos="fade-up">
+          <div class="app-step"><div class="app-step__num">1</div><i class="fas fa-comment-dots"></i><p>Tell S-MAHI what you need</p></div>
+          <div class="app-step"><div class="app-step__num">2</div><i class="fas fa-location-dot"></i><p>Select or provide your location</p></div>
+          <div class="app-step"><div class="app-step__num">3</div><i class="fas fa-list-check"></i><p>S-MAHI identifies relevant options</p></div>
+          <div class="app-step"><div class="app-step__num">4</div><i class="fas fa-circle-info"></i><p>View the available details</p></div>
+          <div class="app-step"><div class="app-step__num">5</div><i class="fas fa-handshake"></i><p>Connect with the provider</p></div>
+        </div>
+
+        <div class="app-features">
+          <div class="app-feature" data-aos="fade-up"><div class="app-feature__icon"><i class="fas fa-robot"></i></div><h4>AI Assistant</h4><p>Interact by text or voice and get guidance based on exactly what you need.</p></div>
+          <div class="app-feature" data-aos="fade-up" data-aos-delay="60"><div class="app-feature__icon"><i class="fas fa-language"></i></div><h4>Real-Time Translation</h4><p>Automatic translation helps you communicate across different languages, anywhere.</p></div>
+          <div class="app-feature" data-aos="fade-up" data-aos-delay="120"><div class="app-feature__icon"><i class="fas fa-map-location-dot"></i></div><h4>GPS &amp; Location</h4><p>Location technology connects you to relevant services in the right area.</p></div>
+          <div class="app-feature" data-aos="fade-up"><div class="app-feature__icon"><i class="fas fa-magnifying-glass-location"></i></div><h4>Smart Discovery</h4><p>Find providers by what you need — no need to know a specific name.</p></div>
+          <div class="app-feature" data-aos="fade-up" data-aos-delay="60"><div class="app-feature__icon"><i class="fas fa-earth-africa"></i></div><h4>Local to Global</h4><p>Built to work across local, state, national and international levels.</p></div>
+          <div class="app-feature" data-aos="fade-up" data-aos-delay="120"><div class="app-feature__icon"><i class="fas fa-layer-group"></i></div><h4>One Platform for Everyone</h4><p>Professionals, artisans, businesses, institutions and customers, together.</p></div>
+        </div>
+
+        <h3 class="app-subhead">Built for everyone</h3>
+        <div class="app-audience">
+          <div class="app-aud" data-aos="fade-up"><div class="app-aud__icon"><i class="fas fa-user-gear"></i></div><h4>For Professionals</h4><p>Skilled workers create their presence and make their services discoverable to customers and opportunities.</p></div>
+          <div class="app-aud" data-aos="fade-up" data-aos-delay="60"><div class="app-aud__icon"><i class="fas fa-store"></i></div><h4>For Businesses</h4><p>Businesses list their products and services to be found by nearby customers through relevant searches.</p></div>
+          <div class="app-aud" data-aos="fade-up" data-aos-delay="120"><div class="app-aud__icon"><i class="fas fa-user"></i></div><h4>For Customers</h4><p>Describe what you need by text or voice, share your location, and discover relevant options instantly.</p></div>
+        </div>
+
+        <div class="app-reach" data-aos="fade-up">
+          <span>From local communities to the world</span>
+          <div class="app-reach__steps">
+            <span><i class="fas fa-location-dot"></i> Local</span><i class="fas fa-arrow-right-long"></i>
+            <span><i class="fas fa-map"></i> State</span><i class="fas fa-arrow-right-long"></i>
+            <span><i class="fas fa-flag"></i> National</span><i class="fas fa-arrow-right-long"></i>
+            <span><i class="fas fa-globe"></i> International</span>
+          </div>
+        </div>
+
+        <p class="app-vision" data-aos="fade-up">
+          <i class="fas fa-quote-left"></i>
+          Our vision is to make it easier for people anywhere to find the skills, services, businesses and
+          opportunities they need — bringing people and opportunities closer together through one connected digital ecosystem.
+        </p>
       </div>
     </section>
 
@@ -753,6 +1031,7 @@
         <div class="footer__col">
           <h4>Explore</h4>
           <ul>
+            <li><a href="#smahi-app">S-MAHI App</a></li>
             <li><a href="#coordinators">State Coordinators</a></li>
             <li><a href="#clientele">Who We Help</a></li>
             <li><a href="#partnership">Partnership</a></li>
