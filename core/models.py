@@ -614,6 +614,11 @@ class ActivityLog(models.Model):
         # artisan_verification_rejected exactly.
         ('business_verified', 'Completed business verification'),
         ('business_verification_rejected', 'Rejected business verification'),
+        # Coordinator CRUD over an artisan/business they personally
+        # registered (core.views.CoordinatorRegisteredUserDetailView) —
+        # 'any user he register', scoped by registered_by, not territory.
+        ('registered_user_updated', 'Updated registered account'),
+        ('registered_user_deactivated', 'Deactivated registered account'),
     ]
 
     actor = models.ForeignKey(

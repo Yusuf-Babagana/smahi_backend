@@ -49,7 +49,7 @@ from .services import (
     log_activity, search_agents,
 )
 from .permissions import IsArtisan, IsBusiness, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
-from accounts.serializers import UserSerializer, AdminUserSerializer, AdminUserUpdateSerializer
+from accounts.serializers import UserSerializer, AdminUserSerializer, AdminUserUpdateSerializer, CoordinatorRegisteredUserUpdateSerializer
 
 User = get_user_model()
 
@@ -1197,6 +1197,119 @@ class CoordinatorAgentSearchView(APIView):
         if 'error' in result:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
+
+
+class CoordinatorRegisteredUserDetailView(APIView):
+    """Coordinator CRUD over an artisan/business account THEY personally
+    registered — "any user he register", not the coordinator's whole
+    state. Deliberately scoped to authorship (ArtisanProfile.registered_by
+    / BusinessProfile.registered_by == request.user), not territory —
+    unlike AgentArtisanListView/AgentBusinessListView, which are
+    state-wide for a coordinator. An artisan/business that self-registered,
+    or was registered by a different agent/coordinator, is out of reach
+    here even though it may well sit inside this coordinator's own state.
+
+    Mirrors AdminUserDetailView's shape (GET/PATCH/DELETE) but with a far
+    smaller edit surface (CoordinatorRegisteredUserUpdateSerializer, not
+    AdminUserUpdateSerializer — no role/account_status/is_active/email
+    here) and DELETE is always a soft-deactivate, never a real row
+    deletion, same convention as everywhere else in this app.
+    """
+    permission_classes = [IsAuthenticated, IsStateCoordinator]
+
+    def _get_target(self, request, user_id):
+        try:
+            user = User.objects.select_related('state', 'lga', 'country').get(
+                id=user_id, role__in=('artisan', 'business'),
+            )
+        except User.DoesNotExist:
+            return None, None, Response({'error': 'Account not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = getattr(user, 'artisan_profile', None) if user.role == 'artisan' else getattr(user, 'business_profile', None)
+        # Same "not found" message whether the account doesn't exist or
+        # simply isn't one this coordinator registered — never reveal that
+        # an out-of-scope account exists.
+        if not profile or profile.registered_by_id != request.user.id:
+            return None, None, Response({'error': 'Account not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return user, profile, None
+
+    def _profile_serializer_class(self, user):
+        return ArtisanProfileSerializer if user.role == 'artisan' else BusinessProfileSerializer
+
+    def get(self, request, user_id):
+        user, profile, error_response = self._get_target(request, user_id)
+        if error_response:
+            return error_response
+        return Response({
+            'user': UserSerializer(user).data,
+            'profile': self._profile_serializer_class(user)(profile).data,
+        })
+
+    def patch(self, request, user_id):
+        user, profile, error_response = self._get_target(request, user_id)
+        if error_response:
+            return error_response
+
+        data = request.data
+
+        user_serializer = CoordinatorRegisteredUserUpdateSerializer(user, data=data, partial=True)
+        if not user_serializer.is_valid():
+            return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        user_serializer.save()
+
+        lga_id = data.get('lga')
+        if lga_id is not None:
+            from locations.models import LGA
+            if not LGA.objects.filter(id=lga_id, state_id=request.user.state_id).exists():
+                return Response(
+                    {'error': 'That LGA does not belong to your state.'}, status=status.HTTP_400_BAD_REQUEST,
+                )
+            user.lga_id = lga_id
+            user.save(update_fields=['lga'])
+
+        # Free-text skill/business-type entry (same UX as
+        # AgentRegisterArtisanView/AgentRegisterBusinessView's own
+        # custom_category_name field) resolves into a real Category exactly
+        # like at registration — reuses UserRegistrationSerializer's own
+        # resolver rather than duplicating it.
+        skill_name = (data.get('skill') or data.get('business_type') or '').strip()
+        profile_data = {k: v for k, v in data.items() if k in ('bio', 'experience_years', 'hourly_rate', 'business_name', 'description', 'registration_number', 'category')}
+        if skill_name:
+            from accounts.serializers import UserRegistrationSerializer
+            category_type = 'artisan' if user.role == 'artisan' else 'business'
+            profile_data['category'] = UserRegistrationSerializer()._resolve_category_id(
+                None, skill_name, '', category_type,
+            )
+
+        if profile_data:
+            profile_serializer_class = ArtisanProfileUpdateSerializer if user.role == 'artisan' else BusinessProfileUpdateSerializer
+            profile_serializer = profile_serializer_class(profile, data=profile_data, partial=True)
+            if not profile_serializer.is_valid():
+                return Response(profile_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            profile_serializer.save()
+
+        log_activity(request.user, 'registered_user_updated', target_user=user, activity_status=user.account_status)
+
+        user.refresh_from_db()
+        return Response({
+            'user': UserSerializer(user).data,
+            'profile': self._profile_serializer_class(user)(profile).data,
+            'message': 'Updated.',
+        })
+
+    def delete(self, request, user_id):
+        user, profile, error_response = self._get_target(request, user_id)
+        if error_response:
+            return error_response
+
+        user.is_active = False
+        user.account_status = 'inactive'
+        user.save(update_fields=['is_active', 'account_status'])
+
+        log_activity(request.user, 'registered_user_deactivated', target_user=user, activity_status='inactive')
+
+        return Response({'message': 'Account deactivated.'})
 
 
 class AgentVerifyArtisanView(APIView):

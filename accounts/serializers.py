@@ -299,6 +299,21 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
         ]
 
 
+class CoordinatorRegisteredUserUpdateSerializer(serializers.ModelSerializer):
+    """What a Coordinator may edit on an artisan/business account they
+    personally registered (core.views.CoordinatorRegisteredUserDetailView)
+    — a small, deliberately conservative subset of AdminUserUpdateSerializer's
+    fields. No role/account_status/is_active/email/state here: those stay
+    Admin-only or go through the dedicated verify/deactivate actions — same
+    reasoning as UserUpdateSerializer excluding them for a user's own
+    self-service profile edit. LGA reassignment is handled separately in
+    the view (needs cross-checking against the coordinator's own state,
+    not a plain field validator)."""
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'phone_number', 'address', 'gender']
+
+
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

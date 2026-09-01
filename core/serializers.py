@@ -75,10 +75,16 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
             'service_countries', 'service_states', 'service_lgas',
             'service_countries_details', 'service_states_details', 'service_lgas_details',
             'verification_status', 'is_available', 'rating', 'total_reviews', 'total_bookings',
-            'created_at', 'updated_at', 'distance', 'is_favorited', 'is_online', 'avg_response_minutes'
+            'created_at', 'updated_at', 'distance', 'is_favorited', 'is_online', 'avg_response_minutes',
+            # Lets the coordinator app/agent/artisans/[id].tsx show "Edit"/
+            # "Deactivate" only for artisans this coordinator actually
+            # registered — CoordinatorRegisteredUserDetailView enforces the
+            # same scope server-side regardless of what the client shows.
+            'registered_by',
         ]
         read_only_fields = [
-            'user', 'verification_status', 'rating', 'total_reviews', 'total_bookings', 'avg_response_minutes'
+            'user', 'verification_status', 'rating', 'total_reviews', 'total_bookings', 'avg_response_minutes',
+            'registered_by',
         ]
 
     def get_is_favorited(self, obj):
@@ -149,6 +155,14 @@ class PublicArtisanProfileSerializer(ArtisanProfileSerializer):
     authenticated, scoped relationship, not a public directory."""
     user_details = PublicUserSerializer(source='user', read_only=True)
 
+    def to_representation(self, instance):
+        # registered_by is a legitimate oversight field for
+        # CoordinatorRegisteredUserDetailView/AgentArtisanListView, but has
+        # no business being public — same RBAC reasoning as user_details above.
+        data = super().to_representation(instance)
+        data.pop('registered_by', None)
+        return data
+
 
 class BusinessProfileSerializer(serializers.ModelSerializer):
     """A registered business's public profile — see BusinessProfile's own
@@ -168,8 +182,10 @@ class BusinessProfileSerializer(serializers.ModelSerializer):
             'category', 'category_name', 'category_name_ha', 'category_material_icon',
             'description', 'registration_number', 'verification_status',
             'created_at', 'updated_at',
+            # Same reasoning as ArtisanProfileSerializer.registered_by above.
+            'registered_by',
         ]
-        read_only_fields = ['user', 'verification_status']
+        read_only_fields = ['user', 'verification_status', 'registered_by']
 
 
 class BusinessProfileUpdateSerializer(serializers.ModelSerializer):
@@ -184,6 +200,11 @@ class PublicBusinessProfileSerializer(BusinessProfileSerializer):
     PublicArtisanProfileSerializer above. AgentBusinessListView (agent/
     coordinator oversight) keeps the full BusinessProfileSerializer."""
     user_details = PublicUserSerializer(source='user', read_only=True)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.pop('registered_by', None)
+        return data
 
 
 class VerificationRequestSerializer(serializers.ModelSerializer):

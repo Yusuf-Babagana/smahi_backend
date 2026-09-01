@@ -1815,6 +1815,174 @@ class AgentRegistrationPaymentTests(CoordinatorDashboardTestBase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
+class CoordinatorRegisteredUserCRUDTests(CoordinatorDashboardTestBase):
+    """Coordinator CRUD over an artisan/business account THEY personally
+    registered (CoordinatorRegisteredUserDetailView) — scoped by
+    registered_by, not by territory, so this proves both "can touch what
+    they registered" and "can't touch what they didn't", even within
+    their own state."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import ArtisanProfile, BusinessProfile
+
+        # Registered by kano_coordinator — the whole point of this feature.
+        self.own_artisan = User.objects.create_user(
+            email='own_artisan@test.com', password='pass12345',
+            first_name='Own', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=self.own_artisan, registered_by=self.kano_coordinator)
+
+        self.own_business = User.objects.create_user(
+            email='own_business@test.com', password='pass12345',
+            first_name='Own', last_name='Business', role='business',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        BusinessProfile.objects.create(
+            user=self.own_business, business_name='Own Store', registered_by=self.kano_coordinator,
+        )
+
+        # Self-registered — same state, but registered_by is blank.
+        self.self_registered_artisan = User.objects.create_user(
+            email='self_registered_artisan@test.com', password='pass12345',
+            first_name='Self', last_name='Registered', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=self.self_registered_artisan)
+
+        # Registered by a DIFFERENT coordinator (lagos), living in lagos.
+        self.other_coordinator_artisan = User.objects.create_user(
+            email='other_coord_artisan@test.com', password='pass12345',
+            first_name='Other', last_name='Coord', role='artisan',
+            country=self.country, state=self.lagos, lga=self.lagos_lga,
+        )
+        ArtisanProfile.objects.create(user=self.other_coordinator_artisan, registered_by=self.lagos_coordinator)
+
+    def detail_url(self, user_id):
+        return f'/api/v1/coordinator/registered-users/{user_id}/'
+
+    def test_coordinator_can_view_an_artisan_they_registered(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.detail_url(self.own_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['user']['email'], 'own_artisan@test.com')
+
+    def test_coordinator_can_view_a_business_they_registered(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.detail_url(self.own_business.id))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['profile']['business_name'], 'Own Store')
+
+    def test_coordinator_cannot_view_a_self_registered_artisan_even_in_their_own_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.detail_url(self.self_registered_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_coordinator_cannot_view_someone_another_coordinator_registered(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.detail_url(self.other_coordinator_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_plain_agent_cannot_access_this_endpoint_at_all(self):
+        """IsStateCoordinator, not IsStateAgent — an agent never gets CRUD
+        here even over someone they themselves registered."""
+        from .models import ArtisanProfile
+
+        agent_registered = User.objects.create_user(
+            email='agent_registered_artisan@test.com', password='pass12345',
+            first_name='Agent', last_name='Registered', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=agent_registered, registered_by=self.kano_agent)
+
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.detail_url(agent_registered.id))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_coordinator_updates_basic_fields_and_skill(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.patch(self.detail_url(self.own_artisan.id), {
+            'first_name': 'Updated', 'phone_number': '08099998888', 'skill': 'Master Plumber',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.own_artisan.refresh_from_db()
+        self.assertEqual(self.own_artisan.first_name, 'Updated')
+        self.assertEqual(self.own_artisan.phone_number, '08099998888')
+        self.own_artisan.artisan_profile.refresh_from_db()
+        self.assertEqual(self.own_artisan.artisan_profile.category.name, 'Master Plumber')
+
+    def test_coordinator_reassigns_lga_within_their_own_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.patch(
+            self.detail_url(self.own_artisan.id), {'lga': self.kano_lga_b.id}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.own_artisan.refresh_from_db()
+        self.assertEqual(self.own_artisan.lga_id, self.kano_lga_b.id)
+
+    def test_coordinator_cannot_reassign_an_lga_from_another_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.patch(
+            self.detail_url(self.own_artisan.id), {'lga': self.lagos_lga.id}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.own_artisan.refresh_from_db()
+        self.assertEqual(self.own_artisan.lga_id, self.kano_lga_a.id, "must be unchanged")
+
+    def test_coordinator_cannot_update_someone_they_did_not_register(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.patch(
+            self.detail_url(self.self_registered_artisan.id), {'first_name': 'Hijacked'}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.self_registered_artisan.refresh_from_db()
+        self.assertEqual(self.self_registered_artisan.first_name, 'Self')
+
+    def test_update_business_name_and_business_type(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.patch(self.detail_url(self.own_business.id), {
+            'business_name': 'Renamed Store', 'business_type': 'Pharmacy',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.own_business.business_profile.refresh_from_db()
+        self.assertEqual(self.own_business.business_profile.business_name, 'Renamed Store')
+        self.assertEqual(self.own_business.business_profile.category.name, 'Pharmacy')
+
+    def test_update_writes_an_activity_log_entry(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.patch(self.detail_url(self.own_artisan.id), {'first_name': 'Logged'}, format='json')
+        self.assertTrue(
+            ActivityLog.objects.filter(action='registered_user_updated', target_user=self.own_artisan).exists()
+        )
+
+    def test_delete_soft_deactivates_the_account(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.delete(self.detail_url(self.own_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.own_artisan.refresh_from_db()
+        self.assertFalse(self.own_artisan.is_active)
+        self.assertEqual(self.own_artisan.account_status, 'inactive')
+        # Never a real row deletion.
+        self.assertTrue(User.objects.filter(id=self.own_artisan.id).exists())
+        self.assertTrue(
+            ActivityLog.objects.filter(action='registered_user_deactivated', target_user=self.own_artisan).exists()
+        )
+
+    def test_cannot_delete_someone_they_did_not_register(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.delete(self.detail_url(self.other_coordinator_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.other_coordinator_artisan.refresh_from_db()
+        self.assertTrue(self.other_coordinator_artisan.is_active)
+
+
 class BookingLocationDerivationTests(CoordinatorDashboardTestBase):
     """BookingViewSet.perform_create must derive Booking.country/state/lga
     from the ARTISAN being booked, never trusting/expecting the client to
@@ -2675,6 +2843,19 @@ class PublicDirectoryPIITests(CoordinatorDashboardTestBase):
             self.assertNotIn(field, user_details, f'{field} must not appear in the public business directory')
         self.assertEqual(user_details['first_name'], 'Pii')
         self.assertEqual(user_details['phone_number'], '08033334444')
+
+    def test_public_artisan_detail_never_leaks_registered_by(self):
+        """registered_by (added for CoordinatorRegisteredUserDetailView's
+        edit-button gating) is a legitimate oversight field, not a public
+        one — same reasoning as PUBLIC_LEAK_FIELDS above."""
+        response = self.client.get(f'/api/artisans/{self.artisan_profile.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertNotIn('registered_by', response.data)
+
+    def test_public_business_detail_never_leaks_registered_by(self):
+        response = self.client.get(f'/api/businesses/{self.business_profile.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertNotIn('registered_by', response.data)
 
     def test_agent_oversight_view_still_sees_the_fuller_artisan_detail(self):
         """Regression guard — AgentArtisanListView is a different,
