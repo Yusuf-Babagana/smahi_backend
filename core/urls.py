@@ -6,6 +6,7 @@ from .views import (
     AIChatView, TranscribeView, AgentArtisanListView, AgentClientListView,
     AgentDashboardStatsView, AgentRegisterArtisanView, AgentVerifyArtisanView,
     AgentServiceRequestsView, AgentBusinessListView, AgentVerifyBusinessView,
+    AgentRegisterBusinessView, AgentInitializeRegistrationPaymentView, AgentVerifyRegistrationPaymentView,
     AdminStatsView, AdminUserListView, AdminUserDetailView, AdminCoordinatorListView,
     AdminCreateCoordinatorView, AdminCoordinatorStatusView,
 )
@@ -27,9 +28,18 @@ urlpatterns = [
     path('agent/dashboard-stats/', AgentDashboardStatsView.as_view(), name='agent-dashboard-stats'),
     path('agent/service-requests/', AgentServiceRequestsView.as_view(), name='agent-service-requests'),
     path('agent/register-artisan/', AgentRegisterArtisanView.as_view(), name='agent-register-artisan'),
+    path('agent/register-business/', AgentRegisterBusinessView.as_view(), name='agent-register-business'),
     path('agent/verify-artisan/<int:user_id>/', AgentVerifyArtisanView.as_view(), name='agent-verify-artisan'),
     path('agent/businesses/', AgentBusinessListView.as_view(), name='agent-businesses'),
     path('agent/verify-business/<int:user_id>/', AgentVerifyBusinessView.as_view(), name='agent-verify-business'),
+    path(
+        'agent/registrations/<int:user_id>/payment/initialize/',
+        AgentInitializeRegistrationPaymentView.as_view(), name='agent-registration-payment-initialize',
+    ),
+    path(
+        'agent/registrations/<int:user_id>/payment/verify/<str:reference>/',
+        AgentVerifyRegistrationPaymentView.as_view(), name='agent-registration-payment-verify',
+    ),
     path('admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
     path('admin/users/', AdminUserListView.as_view(), name='admin-users'),
     path('admin/users/<int:pk>/', AdminUserDetailView.as_view(), name='admin-user-detail'),

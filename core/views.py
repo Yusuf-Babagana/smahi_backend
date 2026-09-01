@@ -544,7 +544,27 @@ class AgentRegisterArtisanView(APIView):
         # state entirely, invisible to that state's own team.
         data['country'] = request.user.country_id
         data['state'] = request.user.state_id
-        data['lga'] = request.user.lga_id
+
+        if request.user.role == 'state_coordinator':
+            # A coordinator oversees their whole state, not one fixed LGA
+            # (state_coordinator has no User.lga of its own) — they must
+            # choose which LGA this artisan belongs to. Caller-supplied,
+            # but verified to actually be inside their own state before
+            # trusting it — same validation CoordinatorCreateAgentView
+            # already does for a new agent's LGA.
+            from locations.models import LGA
+            lga_id = request.data.get('lga')
+            if not lga_id:
+                return Response({'error': 'lga is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not LGA.objects.filter(id=lga_id, state_id=request.user.state_id).exists():
+                return Response(
+                    {'error': 'That LGA does not belong to your state.'}, status=status.HTTP_400_BAD_REQUEST,
+                )
+            data['lga'] = lga_id
+        else:
+            # A plain agent covers exactly one LGA — force it, never trust
+            # whatever (if anything) the client sent.
+            data['lga'] = request.user.lga_id
 
         serializer = UserRegistrationSerializer(data=data)
         if not serializer.is_valid():
@@ -563,6 +583,266 @@ class AgentRegisterArtisanView(APIView):
             'generated_password': generated_password,
             'message': 'Artisan registered. Share this one-time password with them securely — it will not be shown again.',
         }, status=status.HTTP_201_CREATED)
+
+
+class AgentRegisterBusinessView(APIView):
+    """Agent/state-coordinator initiated business registration — mirrors
+    AgentRegisterArtisanView exactly (one-time password generated
+    server-side, LGA choosable by a coordinator / locked for a plain
+    agent, idempotent via client_request_id). No registration-fee step:
+    unlike artisans, businesses have never had one anywhere in this
+    codebase (BusinessProfile's own docstring — deliberately minimal,
+    no booking/fee pipeline built for them yet)."""
+    permission_classes = [IsAuthenticated, IsStateAgent]
+
+    def post(self, request):
+        import secrets
+        from accounts.serializers import UserRegistrationSerializer
+
+        if not request.user.state_id:
+            return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        client_request_id = (request.data.get('client_request_id') or '').strip() or None
+        if client_request_id:
+            existing = User.objects.filter(client_request_id=client_request_id).first()
+            if existing:
+                return Response({
+                    'user': UserSerializer(existing).data,
+                    'generated_password': None,
+                    'message': (
+                        'This business was already registered from an earlier '
+                        'attempt with the same submission — no new account was '
+                        'created. If they never received their one-time '
+                        'password, use the password-reset flow to issue a new one.'
+                    ),
+                    'already_registered': True,
+                }, status=status.HTTP_200_OK)
+
+        business_name = (request.data.get('business_name') or '').strip()
+        if not business_name:
+            return Response({'error': 'business_name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        generated_password = secrets.token_urlsafe(9)
+
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        data['role'] = 'business'
+        data['business_name'] = business_name
+        data['client_request_id'] = client_request_id
+        data['password'] = generated_password
+        data['password_confirm'] = generated_password
+        data['country'] = request.user.country_id
+        data['state'] = request.user.state_id
+
+        if request.user.role == 'state_coordinator':
+            from locations.models import LGA
+            lga_id = request.data.get('lga')
+            if not lga_id:
+                return Response({'error': 'lga is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not LGA.objects.filter(id=lga_id, state_id=request.user.state_id).exists():
+                return Response(
+                    {'error': 'That LGA does not belong to your state.'}, status=status.HTTP_400_BAD_REQUEST,
+                )
+            data['lga'] = lga_id
+        else:
+            data['lga'] = request.user.lga_id
+
+        serializer = UserRegistrationSerializer(data=data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user = serializer.save()
+
+        if hasattr(user, 'business_profile'):
+            user.business_profile.registered_by = request.user
+            user.business_profile.save(update_fields=['registered_by'])
+
+        log_activity(request.user, 'business_registered', target_user=user, activity_status='pending')
+
+        return Response({
+            'user': UserSerializer(user).data,
+            'generated_password': generated_password,
+            'message': 'Business registered. Share this one-time password with them securely — it will not be shown again.',
+        }, status=status.HTTP_201_CREATED)
+
+
+def _get_agent_registered_target(request, user_id):
+    """Resolve+scope the artisan/business a registration-payment action is
+    for — same LGA (agent) / state (coordinator) scoping as
+    AgentVerifyArtisanView/AgentVerifyBusinessView, just covering either
+    role since both can now owe this fee. Returns (user, None) or
+    (None, error_response)."""
+    if request.user.role == 'agent':
+        lga_id = request.user.lga_id
+        if not lga_id:
+            return None, Response({'error': 'Your account has no LGA assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+        lookup = {'lga_id': lga_id}
+    else:
+        state_id = request.user.state_id
+        if not state_id:
+            return None, Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
+        lookup = {'state_id': state_id}
+
+    try:
+        target = User.objects.get(id=user_id, role__in=('artisan', 'business'), **lookup)
+    except User.DoesNotExist:
+        return None, Response({'error': 'Account not found in your territory.'}, status=status.HTTP_404_NOT_FOUND)
+    return target, None
+
+
+class AgentInitializeRegistrationPaymentView(APIView):
+    """A Coordinator/Agent collecting the registration fee right there on
+    their own device, in person, for someone they just registered — a
+    real Paystack charge instead of an in-person cash hand-off (per the
+    "no in person cash collection" requirement). The artisan/business
+    owner completes the checkout (card/bank/USSD) on the same phone;
+    this endpoint just starts that transaction.
+
+    Deliberately separate from accounts.views.initialize_registration_payment
+    (the self-service one, used at login) rather than reusing it directly:
+    that view resolves "who is paying" from the CALLER's own JWT/email,
+    which would always resolve to the agent/coordinator themselves, never
+    the person they're registering. Same Paystack call shape and
+    RegistrationPayment bookkeeping, just for an explicitly-scoped target
+    user instead of request.user."""
+    permission_classes = [IsAuthenticated, IsStateAgent]
+
+    def post(self, request, user_id):
+        import uuid
+        import requests as http_requests
+        from django.conf import settings
+        from accounts.views import PAYSTACK_BASE_URL, _paystack_headers
+        from core.models import RegistrationPayment
+
+        target, error_response = _get_agent_registered_target(request, user_id)
+        if error_response:
+            return error_response
+
+        if target.registration_fee_paid:
+            return Response(
+                {'error': 'Registration fee has already been paid.', 'already_paid': True},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not settings.PAYSTACK_SECRET_KEY:
+            return Response(
+                {'error': 'Payments are not available yet. Their account remains usable — you can complete the registration fee later.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        amount_kobo = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500) * 100
+        reference = f"SMAHI-REG-{uuid.uuid4().hex[:12].upper()}"
+        callback_url = request.build_absolute_uri(f'/api/auth/payments/callback/?reference={reference}')
+        if callback_url.startswith('http://') and not any(
+            h in callback_url for h in ('localhost', '127.0.0.1', '192.168.')
+        ):
+            callback_url = 'https://' + callback_url[len('http://'):]
+
+        payload = {
+            'email': target.email,
+            'amount': amount_kobo,
+            'reference': reference,
+            'currency': 'NGN',
+            'callback_url': callback_url,
+            'metadata': {
+                'user_id': target.id,
+                'purpose': f'{target.role}_registration',
+                'initiated_by': request.user.id,
+            },
+        }
+
+        try:
+            resp = http_requests.post(
+                f'{PAYSTACK_BASE_URL}/transaction/initialize',
+                json=payload, headers=_paystack_headers(), timeout=15,
+            )
+            data = resp.json()
+        except Exception:
+            logger.exception('Failed to connect to Paystack while initializing an agent-collected payment')
+            return Response(
+                {'error': 'Failed to connect to the payment provider. Please try again.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if not data.get('status'):
+            return Response(
+                {'error': data.get('message', 'Payment initialization failed.')}, status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        RegistrationPayment.objects.create(
+            user=target, reference=reference, amount=amount_kobo, status='pending', paystack_response=data,
+        )
+
+        return Response({
+            'authorization_url': data['data']['authorization_url'],
+            'reference': reference,
+            'amount': getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500),
+        })
+
+
+class AgentVerifyRegistrationPaymentView(APIView):
+    """Verifies the Paystack transaction AgentInitializeRegistrationPaymentView
+    started, for the same explicitly-scoped target user — mirrors
+    accounts.views.verify_registration_payment's Paystack-verification
+    logic exactly, just resolving/authorizing the target the agent-scoped
+    way instead of via the caller's own identity."""
+    permission_classes = [IsAuthenticated, IsStateAgent]
+
+    def post(self, request, user_id, reference):
+        import requests as http_requests
+        from django.conf import settings
+        from accounts.views import PAYSTACK_BASE_URL, _paystack_headers
+        from core.models import RegistrationPayment
+
+        target, error_response = _get_agent_registered_target(request, user_id)
+        if error_response:
+            return error_response
+
+        try:
+            payment = RegistrationPayment.objects.get(reference=reference, user=target)
+        except RegistrationPayment.DoesNotExist:
+            return Response({'error': 'Payment record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if payment.status == 'success':
+            return Response({'message': 'Payment already verified.', 'status': 'success'})
+
+        try:
+            resp = http_requests.get(
+                f'{PAYSTACK_BASE_URL}/transaction/verify/{reference}', headers=_paystack_headers(), timeout=15,
+            )
+            data = resp.json()
+        except Exception:
+            logger.exception('Failed to verify an agent-collected payment with Paystack')
+            return Response(
+                {'error': 'Failed to verify payment with the payment provider. Please try again.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if not data.get('status'):
+            payment.status = 'failed'
+            payment.paystack_response = data
+            payment.save(update_fields=['status', 'paystack_response', 'updated_at'])
+            return Response(
+                {'error': data.get('message', 'Payment verification failed.')}, status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tx_data = data.get('data', {})
+        if tx_data.get('status') == 'success':
+            payment.status = 'success'
+            payment.paystack_response = data
+            payment.save(update_fields=['status', 'paystack_response', 'updated_at'])
+
+            target.registration_fee_paid = True
+            target.account_status = 'active'
+            target.save(update_fields=['registration_fee_paid', 'account_status', 'updated_at'])
+
+            log_activity(request.user, 'registration_fee_collected', target_user=target, activity_status='paid')
+
+            return Response({'message': 'Payment verified successfully.', 'status': 'success'})
+        else:
+            payment.status = 'failed'
+            payment.paystack_response = data
+            payment.save(update_fields=['status', 'paystack_response', 'updated_at'])
+            return Response({'error': 'Payment was not successful. Please try again.'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 def _agents_with_registration_counts(queryset):

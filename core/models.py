@@ -585,6 +585,11 @@ class ActivityLog(models.Model):
         ('agent_reactivated', 'Reactivated agent'),
         ('agent_dismissed', 'Dismissed agent'),
         ('artisan_registered', 'Registered artisan'),
+        ('business_registered', 'Registered business'),
+        # Paystack collected right there on the Coordinator/Agent's own
+        # device for someone they just registered — see
+        # AgentInitializeRegistrationPaymentView/AgentVerifyRegistrationPaymentView.
+        ('registration_fee_collected', 'Collected registration fee'),
         ('artisan_verified', 'Completed verification'),
         ('artisan_verification_rejected', 'Rejected verification'),
         # Reports/escalations (item 6 of the audit-trail spec) — filed via

@@ -1498,6 +1498,323 @@ class AgentLGAScopingTests(CoordinatorDashboardTestBase):
         self.assertIn(self.lga_b_artisan.id, artisan_ids)
 
 
+class RegisterArtisanLGAAndSkillTests(CoordinatorDashboardTestBase):
+    """A state_coordinator has no User.lga of their own (unlike a plain
+    agent, who covers exactly one) — they must be able to CHOOSE which of
+    their state's LGAs a newly-registered artisan belongs to, validated
+    against their own state. Also covers the free-text
+    custom_category_name path (UserRegistrationSerializer already
+    supported it; AgentRegisterArtisanView just forwards request.data
+    unchanged, so no new plumbing was needed for that half)."""
+    REGISTER_URL = '/api/agent/register-artisan/'
+
+    def test_coordinator_can_assign_any_lga_in_their_own_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'lga_choice_artisan@test.com', 'first_name': 'Lga', 'last_name': 'Choice',
+            'lga': self.kano_lga_b.id, 'custom_category_name': 'Aluminium Fabrication',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_artisan = User.objects.get(email='lga_choice_artisan@test.com')
+        self.assertEqual(new_artisan.lga_id, self.kano_lga_b.id)
+        self.assertEqual(new_artisan.state_id, self.kano.id)
+        self.assertEqual(new_artisan.artisan_profile.category.name, 'Aluminium Fabrication')
+
+    def test_coordinator_cannot_assign_an_lga_from_another_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'sneaky_lga_artisan@test.com', 'first_name': 'Sneaky', 'last_name': 'Artisan',
+            'lga': self.lagos_lga.id, 'custom_category_name': 'Plumbing',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='sneaky_lga_artisan@test.com').exists())
+
+    def test_coordinator_missing_lga_rejected(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'no_lga_artisan@test.com', 'first_name': 'No', 'last_name': 'Lga',
+            'custom_category_name': 'Plumbing',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='no_lga_artisan@test.com').exists())
+
+    def test_plain_agent_is_still_locked_to_their_own_lga_even_if_they_send_a_different_one(self):
+        """Unlike a coordinator, a plain agent covers exactly one LGA —
+        whatever (if anything) they send for `lga` must be ignored."""
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'agent_locked_lga_artisan@test.com', 'first_name': 'Locked', 'last_name': 'Artisan',
+            'lga': self.kano_lga_b.id, 'custom_category_name': 'Welding',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_artisan = User.objects.get(email='agent_locked_lga_artisan@test.com')
+        self.assertEqual(new_artisan.lga_id, self.kano_lga_a.id, "must stay the agent's own LGA, not the one they sent")
+
+    def test_custom_category_name_reuses_an_existing_category_case_insensitively(self):
+        from .models import Category
+
+        Category.objects.create(name='Tiling', category_type='artisan')
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'tiling_artisan@test.com', 'first_name': 'Tile', 'last_name': 'Setter',
+            'lga': self.kano_lga_a.id, 'custom_category_name': 'tiling',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(Category.objects.filter(name__iexact='tiling').count(), 1, "must reuse, not duplicate")
+
+    def test_registration_fee_starts_unpaid_pending_the_paystack_step(self):
+        """Registering the account and collecting the fee are two
+        separate steps now (AgentInitializeRegistrationPaymentView) — the
+        account itself never starts pre-marked paid."""
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'fee_unpaid_artisan@test.com', 'first_name': 'Fee', 'last_name': 'Unpaid',
+            'custom_category_name': 'Carpentry',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_artisan = User.objects.get(email='fee_unpaid_artisan@test.com')
+        self.assertFalse(new_artisan.registration_fee_paid)
+
+
+class AgentRegisterBusinessTests(CoordinatorDashboardTestBase):
+    """Coordinator-can-register-artisans' exact counterpart for
+    businesses (AgentRegisterBusinessView) — same LGA-choice/lock,
+    idempotency, and location-forcing rules, no registration fee
+    (businesses have never had one anywhere in this codebase)."""
+    REGISTER_URL = '/api/agent/register-business/'
+
+    def test_coordinator_registers_a_business_choosing_the_lga(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'new_business@test.com', 'first_name': 'New', 'last_name': 'Business',
+            'business_name': "Amina's Provisions", 'lga': self.kano_lga_b.id,
+            'custom_category_name': 'Grocery Store',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data.get('generated_password'))
+        new_business = User.objects.get(email='new_business@test.com')
+        self.assertEqual(new_business.role, 'business')
+        self.assertEqual(new_business.lga_id, self.kano_lga_b.id)
+        self.assertEqual(new_business.state_id, self.kano.id)
+        self.assertEqual(new_business.business_profile.business_name, "Amina's Provisions")
+        self.assertEqual(new_business.business_profile.category.name, 'Grocery Store')
+        self.assertEqual(new_business.business_profile.registered_by, self.kano_coordinator)
+
+    def test_missing_business_name_rejected(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'no_name_business@test.com', 'first_name': 'No', 'last_name': 'Name',
+            'lga': self.kano_lga_a.id, 'custom_category_name': 'Hotel',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='no_name_business@test.com').exists())
+
+    def test_coordinator_cannot_assign_an_lga_from_another_state(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'sneaky_business@test.com', 'first_name': 'Sneaky', 'last_name': 'Business',
+            'business_name': 'Sneaky Store', 'lga': self.lagos_lga.id, 'custom_category_name': 'Retail',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='sneaky_business@test.com').exists())
+
+    def test_plain_agent_is_locked_to_their_own_lga(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'agent_business@test.com', 'first_name': 'Agent', 'last_name': 'Business',
+            'business_name': 'Agent Store', 'lga': self.kano_lga_b.id, 'custom_category_name': 'Retail',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_business = User.objects.get(email='agent_business@test.com')
+        self.assertEqual(new_business.lga_id, self.kano_lga_a.id, "must stay the agent's own LGA")
+
+    def test_retrying_the_same_client_request_id_does_not_duplicate(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        payload = {
+            'email': 'idempotent_business@test.com', 'first_name': 'Idem', 'last_name': 'Potent',
+            'business_name': 'Idempotent Store', 'lga': self.kano_lga_a.id,
+            'custom_category_name': 'Retail', 'client_request_id': 'coord-device-biz-0001',
+        }
+        first = self.client.post(self.REGISTER_URL, payload)
+        second = self.client.post(self.REGISTER_URL, payload)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
+        self.assertTrue(second.data.get('already_registered'))
+        self.assertEqual(User.objects.filter(email='idempotent_business@test.com').count(), 1)
+
+    def test_activity_log_entry_created(self):
+        from .models import ActivityLog
+
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.REGISTER_URL, {
+            'email': 'logged_business@test.com', 'first_name': 'Logged', 'last_name': 'Business',
+            'business_name': 'Logged Store', 'lga': self.kano_lga_a.id, 'custom_category_name': 'Retail',
+        })
+        new_business = User.objects.get(email='logged_business@test.com')
+        self.assertTrue(
+            ActivityLog.objects.filter(action='business_registered', target_user=new_business).exists()
+        )
+
+
+class AgentRegistrationPaymentTests(CoordinatorDashboardTestBase):
+    """Coordinator/Agent collects the registration fee via Paystack right
+    there on their own device, for an artisan or business they just
+    registered — no in-person cash. AgentInitializeRegistrationPaymentView/
+    AgentVerifyRegistrationPaymentView, mirroring accounts.views'
+    self-service Paystack functions but for an explicitly-scoped target
+    user instead of the caller's own identity."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import ArtisanProfile, BusinessProfile
+
+        self.lga_a_artisan = User.objects.create_user(
+            email='payment_artisan@test.com', password='pass12345',
+            first_name='Payment', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=self.lga_a_artisan)
+
+        self.lga_b_artisan = User.objects.create_user(
+            email='other_lga_artisan@test.com', password='pass12345',
+            first_name='Other', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        ArtisanProfile.objects.create(user=self.lga_b_artisan)
+
+        self.lga_a_business = User.objects.create_user(
+            email='payment_business@test.com', password='pass12345',
+            first_name='Payment', last_name='Business', role='business',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        BusinessProfile.objects.create(user=self.lga_a_business, business_name='Test Store')
+
+    def init_url(self, user_id):
+        return f'/api/agent/registrations/{user_id}/payment/initialize/'
+
+    def verify_url(self, user_id, reference):
+        return f'/api/agent/registrations/{user_id}/payment/verify/{reference}/'
+
+    def test_initialize_fails_cleanly_when_payments_not_configured(self):
+        with self.settings(PAYSTACK_SECRET_KEY=''):
+            self.client.force_authenticate(user=self.kano_agent)
+            response = self.client.post(self.init_url(self.lga_a_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    def test_agent_initializes_payment_for_an_artisan_in_their_own_lga(self):
+        from unittest.mock import patch
+
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'), patch('requests.post') as mock_post:
+            mock_post.return_value.json.return_value = {
+                'status': True, 'data': {'authorization_url': 'https://paystack.test/pay/xyz'},
+            }
+            self.client.force_authenticate(user=self.kano_agent)
+            response = self.client.post(self.init_url(self.lga_a_artisan.id))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['authorization_url'], 'https://paystack.test/pay/xyz')
+        self.assertTrue(response.data['reference'].startswith('SMAHI-REG-'))
+        self.assertEqual(response.data['amount'], 2500)
+
+        from .models import RegistrationPayment
+        payment = RegistrationPayment.objects.get(reference=response.data['reference'])
+        self.assertEqual(payment.user, self.lga_a_artisan)
+        self.assertEqual(payment.status, 'pending')
+
+    def test_agent_initializes_payment_for_a_business_too(self):
+        from unittest.mock import patch
+
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'), patch('requests.post') as mock_post:
+            mock_post.return_value.json.return_value = {
+                'status': True, 'data': {'authorization_url': 'https://paystack.test/pay/biz'},
+            }
+            self.client.force_authenticate(user=self.kano_agent)
+            response = self.client.post(self.init_url(self.lga_a_business.id))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+    def test_agent_cannot_initialize_payment_for_someone_outside_their_lga(self):
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'):
+            self.client.force_authenticate(user=self.kano_agent)
+            response = self.client.post(self.init_url(self.lga_b_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_coordinator_can_initialize_payment_anywhere_in_their_state(self):
+        from unittest.mock import patch
+
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'), patch('requests.post') as mock_post:
+            mock_post.return_value.json.return_value = {
+                'status': True, 'data': {'authorization_url': 'https://paystack.test/pay/state'},
+            }
+            self.client.force_authenticate(user=self.kano_coordinator)
+            response = self.client.post(self.init_url(self.lga_b_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+    def test_already_paid_returns_already_paid_flag(self):
+        self.lga_a_artisan.registration_fee_paid = True
+        self.lga_a_artisan.save(update_fields=['registration_fee_paid'])
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'):
+            self.client.force_authenticate(user=self.kano_agent)
+            response = self.client.post(self.init_url(self.lga_a_artisan.id))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(response.data.get('already_paid'))
+
+    def test_full_initialize_then_verify_activates_the_account(self):
+        from unittest.mock import patch
+        from .models import ActivityLog
+
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'), patch('requests.post') as mock_post:
+            mock_post.return_value.json.return_value = {
+                'status': True, 'data': {'authorization_url': 'https://paystack.test/pay/full'},
+            }
+            self.client.force_authenticate(user=self.kano_agent)
+            init_response = self.client.post(self.init_url(self.lga_a_artisan.id))
+        reference = init_response.data['reference']
+
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'), patch('requests.get') as mock_get:
+            mock_get.return_value.json.return_value = {'status': True, 'data': {'status': 'success'}}
+            verify_response = self.client.post(self.verify_url(self.lga_a_artisan.id, reference))
+
+        self.assertEqual(verify_response.status_code, status.HTTP_200_OK, verify_response.data)
+        self.assertEqual(verify_response.data['status'], 'success')
+
+        self.lga_a_artisan.refresh_from_db()
+        self.assertTrue(self.lga_a_artisan.registration_fee_paid)
+        self.assertEqual(self.lga_a_artisan.account_status, 'active')
+        self.assertTrue(
+            ActivityLog.objects.filter(action='registration_fee_collected', target_user=self.lga_a_artisan).exists()
+        )
+
+    def test_verify_handles_a_failed_transaction(self):
+        from unittest.mock import patch
+
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'), patch('requests.post') as mock_post:
+            mock_post.return_value.json.return_value = {
+                'status': True, 'data': {'authorization_url': 'https://paystack.test/pay/fail'},
+            }
+            self.client.force_authenticate(user=self.kano_agent)
+            init_response = self.client.post(self.init_url(self.lga_a_artisan.id))
+        reference = init_response.data['reference']
+
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'), patch('requests.get') as mock_get:
+            mock_get.return_value.json.return_value = {'status': True, 'data': {'status': 'failed'}}
+            verify_response = self.client.post(self.verify_url(self.lga_a_artisan.id, reference))
+
+        self.assertEqual(verify_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.lga_a_artisan.refresh_from_db()
+        self.assertFalse(self.lga_a_artisan.registration_fee_paid)
+
+    def test_agent_cannot_verify_a_reference_belonging_to_someone_outside_their_scope(self):
+        from .models import RegistrationPayment
+
+        payment = RegistrationPayment.objects.create(
+            user=self.lga_b_artisan, reference='SMAHI-REG-OUTSIDE01', amount=250000, status='pending',
+        )
+        with self.settings(PAYSTACK_SECRET_KEY='sk_test_xxx'):
+            self.client.force_authenticate(user=self.kano_agent)
+            response = self.client.post(self.verify_url(self.lga_b_artisan.id, payment.reference))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class BookingLocationDerivationTests(CoordinatorDashboardTestBase):
     """BookingViewSet.perform_create must derive Booking.country/state/lga
     from the ARTISAN being booked, never trusting/expecting the client to
