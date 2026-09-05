@@ -542,7 +542,14 @@ class AgentRegisterArtisanView(APIView):
         # request.user.state_id, so trusting client-supplied state/lga/country
         # here let a modified client register an artisan into a different
         # state entirely, invisible to that state's own team.
-        data['country'] = request.user.country_id
+        # Country is derived from the STATE being assigned, not copied from
+        # request.user.country_id directly — an agent/coordinator whose own
+        # country was never set (a pre-existing data gap) was silently
+        # passing that gap on to every artisan/business they registered,
+        # showing "Unknown Country" on the client-facing profile forever
+        # after. Same derive-from-state pattern AdminCreateCoordinatorView
+        # already uses for exactly this reason.
+        data['country'] = request.user.state.country_id
         data['state'] = request.user.state_id
 
         if request.user.role == 'state_coordinator':
@@ -630,7 +637,10 @@ class AgentRegisterBusinessView(APIView):
         data['client_request_id'] = client_request_id
         data['password'] = generated_password
         data['password_confirm'] = generated_password
-        data['country'] = request.user.country_id
+        # Derived from the state being assigned, not copied from
+        # request.user.country_id directly — see AgentRegisterArtisanView's
+        # matching comment for the "Unknown Country" bug this fixes.
+        data['country'] = request.user.state.country_id
         data['state'] = request.user.state_id
 
         if request.user.role == 'state_coordinator':
@@ -942,8 +952,14 @@ class CoordinatorCreateAgentView(APIView):
         data['password'] = generated_password
         data['password_confirm'] = generated_password
         # Country/state forced to the coordinator's own (same reasoning as
-        # AgentRegisterArtisanView) — only LGA is caller-supplied, validated above.
-        data['country'] = request.user.country_id
+        # AgentRegisterArtisanView) — only LGA is caller-supplied, validated
+        # above. Country is derived from the coordinator's STATE, not
+        # copied from request.user.country_id directly — see
+        # AgentRegisterArtisanView's matching comment for the "Unknown
+        # Country" bug this fixes (a coordinator whose own country was
+        # never set would otherwise pass that gap on to every agent they
+        # create too).
+        data['country'] = request.user.state.country_id
         data['state'] = request.user.state_id
         data['client_request_id'] = client_request_id
 

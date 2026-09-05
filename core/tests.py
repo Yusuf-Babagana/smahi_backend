@@ -1576,6 +1576,56 @@ class RegisterArtisanLGAAndSkillTests(CoordinatorDashboardTestBase):
         self.assertFalse(new_artisan.registration_fee_paid)
 
 
+class RegistrationCountryDerivationTests(CoordinatorDashboardTestBase):
+    """Regression: AgentRegisterArtisanView/AgentRegisterBusinessView/
+    CoordinatorCreateAgentView used to copy request.user.country_id
+    verbatim onto every account they created. An agent/coordinator whose
+    OWN country was null (a real, pre-existing data gap) silently passed
+    that gap on to everyone they registered, permanently showing "Unknown
+    Country" on the client-facing artisan profile. Country must now be
+    derived from the STATE being assigned instead, regardless of what (if
+    anything) is on the actor's own country field."""
+
+    def setUp(self):
+        super().setUp()
+        # Simulates the real broken precondition: an existing coordinator/
+        # agent whose own country was never set, despite having a real state.
+        self.kano_coordinator.country = None
+        self.kano_coordinator.save(update_fields=['country'])
+        self.kano_agent.country = None
+        self.kano_agent.save(update_fields=['country'])
+
+    def test_artisan_gets_the_correct_country_even_though_the_agent_has_none(self):
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post('/api/agent/register-artisan/', {
+            'email': 'country_fix_artisan@test.com', 'first_name': 'Country', 'last_name': 'Fix',
+            'custom_category_name': 'Welding',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_artisan = User.objects.get(email='country_fix_artisan@test.com')
+        self.assertEqual(new_artisan.country_id, self.country.id)
+
+    def test_business_gets_the_correct_country_even_though_the_coordinator_has_none(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post('/api/agent/register-business/', {
+            'email': 'country_fix_business@test.com', 'first_name': 'Country', 'last_name': 'Fix',
+            'business_name': 'Fix Store', 'lga': self.kano_lga_a.id, 'custom_category_name': 'Retail',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_business = User.objects.get(email='country_fix_business@test.com')
+        self.assertEqual(new_business.country_id, self.country.id)
+
+    def test_agent_gets_the_correct_country_even_though_the_coordinator_has_none(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post('/api/v1/coordinator/agents/create/', {
+            'email': 'country_fix_agent@test.com', 'first_name': 'Country', 'last_name': 'Fix',
+            'lga': self.kano_lga_b.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_agent = User.objects.get(email='country_fix_agent@test.com')
+        self.assertEqual(new_agent.country_id, self.country.id)
+
+
 class AgentRegisterBusinessTests(CoordinatorDashboardTestBase):
     """Coordinator-can-register-artisans' exact counterpart for
     businesses (AgentRegisterBusinessView) — same LGA-choice/lock,
