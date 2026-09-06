@@ -168,6 +168,11 @@
       .flyer__reach-steps > i, .app-reach__steps > i { display:none; }
     }
     @media (max-width:480px){ .flyer__do-grid{ grid-template-columns:repeat(2,1fr); } }
+
+    /* ---- Coordinator count badge ---- */
+    .coord-card__no { display:inline-grid; place-items:center; min-width:26px; height:26px; padding:0 7px; border-radius:999px;
+      background:linear-gradient(135deg,#123f8f,#1d55b8); color:#fff; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif);
+      font-weight:800; font-size:.78rem; margin-right:8px; box-shadow:0 4px 10px rgba(7,26,51,.18); flex-shrink:0; }
   </style>
 </head>
 
@@ -294,7 +299,7 @@
             <div class="stat__label">Countries reachable</div>
           </div>
           <div class="stat" data-aos="fade-up" data-aos-delay="100">
-            <div class="stat__num" data-count="11"></div>
+            <div class="stat__num" data-count="25"></div>
             <div class="stat__label">State coordinators</div>
           </div>
           <div class="stat" data-aos="fade-up" data-aos-delay="200">
@@ -624,125 +629,230 @@
         </div>
 
         <div class="coord-grid" id="coordGrid">
-          <!-- Taraba -->
-          <article class="coord-card" data-zone="north" data-state="taraba" data-name="state coordinator" data-aos="fade-up">
+          <article class="coord-card" data-zone="north" data-state="adamawa" data-name="hannatu bitrus" data-aos="fade-up">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Taraba</span>
+              <span class="coord-card__state"><span class="coord-card__no">1</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Adamawa</span>
               <span class="coord-card__zone">North</span>
             </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> State Coordinator</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0806 284 8002</p>
-            <a class="coord-card__call" href="tel:+2348062848002"><i class="fas fa-phone-volume"></i> Call now</a>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Hannatu Bitrus</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0912 120 5294</p>
+            <a class="coord-card__call" href="tel:+2349121205294"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
-          <!-- Bauchi -->
-          <article class="coord-card" data-zone="north" data-state="bauchi" data-name="state coordinator" data-aos="fade-up" data-aos-delay="60">
+          <article class="coord-card" data-zone="north" data-state="bauchi" data-name="grace maina waziri" data-aos="fade-up" data-aos-delay="60">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Bauchi</span>
+              <span class="coord-card__state"><span class="coord-card__no">2</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Bauchi</span>
               <span class="coord-card__zone">North</span>
             </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> State Coordinator</p>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Grace Maina Waziri</p>
             <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 615 9903</p>
             <a class="coord-card__call" href="tel:+2348036159903"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
-          <!-- Borno -->
-          <article class="coord-card" data-zone="north" data-state="borno" data-name="state coordinator" data-aos="fade-up" data-aos-delay="120">
+          <article class="coord-card" data-zone="north" data-state="plateau" data-name="joshua ayuba" data-aos="fade-up" data-aos-delay="120">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Borno</span>
+              <span class="coord-card__state"><span class="coord-card__no">3</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Plateau</span>
               <span class="coord-card__zone">North</span>
             </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> State Coordinator</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> +234 803 427 6765</p>
-            <a class="coord-card__call" href="tel:+2348034276765"><i class="fas fa-phone-volume"></i> Call now</a>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Joshua Ayuba</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0816 673 0466</p>
+            <a class="coord-card__call" href="tel:+2348166730466"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
-          <!-- Jigawa -->
-          <article class="coord-card" data-zone="north" data-state="jigawa" data-name="state coordinator" data-aos="fade-up">
+          <article class="coord-card" data-zone="north" data-state="benue" data-name="abah brandan" data-aos="fade-up">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Jigawa</span>
+              <span class="coord-card__state"><span class="coord-card__no">4</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Benue</span>
               <span class="coord-card__zone">North</span>
             </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> State Coordinator</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> +234 816 704 1900</p>
-            <a class="coord-card__call" href="tel:+2348167041900"><i class="fas fa-phone-volume"></i> Call now</a>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Abah Brandan</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0812 285 7169</p>
+            <a class="coord-card__call" href="tel:+2348122857169"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
-          <!-- Katsina -->
-          <article class="coord-card" data-zone="north" data-state="katsina" data-name="state coordinator" data-aos="fade-up" data-aos-delay="60">
+          <article class="coord-card" data-zone="north" data-state="borno" data-name="stephen ayuba" data-aos="fade-up" data-aos-delay="60">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Katsina</span>
+              <span class="coord-card__state"><span class="coord-card__no">5</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Borno</span>
               <span class="coord-card__zone">North</span>
             </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> State Coordinator</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0811 244 4067</p>
-            <a class="coord-card__call" href="tel:+2348112444067"><i class="fas fa-phone-volume"></i> Call now</a>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Stephen Ayuba</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0813 197 1884</p>
+            <a class="coord-card__call" href="tel:+2348131971884"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
-          <!-- Kano -->
-          <article class="coord-card" data-zone="north" data-state="kano" data-name="state coordinator" data-aos="fade-up" data-aos-delay="120">
+          <article class="coord-card" data-zone="south" data-state="ondo" data-name="ahmad shariff" data-aos="fade-up" data-aos-delay="120">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
-              <span class="coord-card__zone">North</span>
-            </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> State Coordinator</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0802 109 6947</p>
-            <a class="coord-card__call" href="tel:+2348021096947"><i class="fas fa-phone-volume"></i> Call now</a>
-          </article>
-          <!-- Lagos -->
-          <article class="coord-card" data-zone="south" data-state="lagos" data-name="state coordinator" data-aos="fade-up">
-            <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Lagos</span>
+              <span class="coord-card__state"><span class="coord-card__no">6</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Ondo</span>
               <span class="coord-card__zone">South</span>
             </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> State Coordinator</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> +234 816 634 0802</p>
-            <a class="coord-card__call" href="tel:+2348166340802"><i class="fas fa-phone-volume"></i> Call now</a>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Ahmad Shariff</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0906 178 5848</p>
+            <a class="coord-card__call" href="tel:+2349061785848"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
-          <!-- Enugu -->
-          <article class="coord-card" data-zone="south" data-state="enugu" data-name="hon. solomon odoh" data-aos="fade-up" data-aos-delay="60">
+          <article class="coord-card" data-zone="north" data-state="nasarawa" data-name="halima bashir liman" data-aos="fade-up">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Enugu</span>
-              <span class="coord-card__zone">South</span>
-            </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Hon. Solomon Odoh</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> +234 902 811 8797</p>
-            <a class="coord-card__call" href="tel:+2349028118797"><i class="fas fa-phone-volume"></i> Call now</a>
-          </article>
-          <!-- Ebonyi -->
-          <article class="coord-card" data-zone="south" data-state="ebonyi" data-name="hon. ijaga okechukwu peter" data-aos="fade-up" data-aos-delay="120">
-            <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Ebonyi</span>
-              <span class="coord-card__zone">South</span>
-            </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Hon. Ijaga Okechukwu Peter</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0813 615 0787</p>
-            <a class="coord-card__call" href="tel:+2348136150787"><i class="fas fa-phone-volume"></i> Call now</a>
-          </article>
-          <!-- Gombe -->
-          <article class="coord-card" data-zone="north" data-state="gombe" data-name="usman dalhatu" data-aos="fade-up">
-            <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Gombe</span>
+              <span class="coord-card__state"><span class="coord-card__no">7</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Nasarawa</span>
               <span class="coord-card__zone">North</span>
             </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Usman Dalhatu</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> +234 816 099 9988</p>
-            <a class="coord-card__call" href="tel:+2348160999988"><i class="fas fa-phone-volume"></i> Call now</a>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Halima Bashir Liman</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0814 723 1134</p>
+            <a class="coord-card__call" href="tel:+2348147231134"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
-          <!-- Abia -->
-          <article class="coord-card" data-zone="south" data-state="abia" data-name="morgan ugonna justice" data-aos="fade-up" data-aos-delay="60">
+          <article class="coord-card" data-zone="north" data-state="katsina" data-name="salisu musa" data-aos="fade-up" data-aos-delay="60">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Abia</span>
+              <span class="coord-card__state"><span class="coord-card__no">8</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Katsina</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Salisu Musa</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 063 8288</p>
+            <a class="coord-card__call" href="tel:+2348030638288"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kebbi" data-name="abubakar jibrin" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">9</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kebbi</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Abubakar Jibrin</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 333 4647</p>
+            <a class="coord-card__call" href="tel:+2348033334647"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="abia" data-name="morgan ugonna justice" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">10</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Abia</span>
               <span class="coord-card__zone">South</span>
             </div>
             <p class="coord-card__person"><i class="fas fa-user-tie"></i> Morgan Ugonna Justice</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0816 099 9988</p>
+            <a class="coord-card__call" href="tel:+2348160999988"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kaduna" data-name="salisu adamu" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">11</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kaduna</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Salisu Adamu</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0806 277 0063</p>
+            <a class="coord-card__call" href="tel:+2348062770063"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kaduna" data-name="victor moses" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">12</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kaduna</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Victor Moses</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0816 556 3434</p>
+            <a class="coord-card__call" href="tel:+2348165563434"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="abubakar idriss yusuf" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">13</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Abubakar Idriss Yusuf</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 972 7342</p>
+            <a class="coord-card__call" href="tel:+2348039727342"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="kassim m. baba" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">14</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Kassim M. Baba</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 458 0148</p>
+            <a class="coord-card__call" href="tel:+2348034580148"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="engr. habila umar" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">15</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Engr. Habila Umar</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0810 636 8801 / 0706 921 5055</p>
+            <a class="coord-card__call" href="tel:+2348106368801"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="shu&#39;aibu ibrahim sa&#39;ad" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">16</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Shu&#39;aibu Ibrahim Sa&#39;ad</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 245 3144</p>
+            <a class="coord-card__call" href="tel:+2348032453144"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="balarabe ibrahim" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">17</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Balarabe Ibrahim</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 469 7040</p>
+            <a class="coord-card__call" href="tel:+2348034697040"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="lagos" data-name="murjanatu abubakar" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">18</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Lagos</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Murjanatu Abubakar</p>
             <p class="coord-card__phone"><i class="fas fa-phone"></i> 0708 324 4890</p>
             <a class="coord-card__call" href="tel:+2347083244890"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
-          <!--Yobe -->
-          <article class="coord-card" data-zone="north" data-state="gombe" data-name="usman dalhatu" data-aos="fade-up">
+          <article class="coord-card" data-zone="south" data-state="rivers" data-name="eze past. osima antony" data-aos="fade-up">
             <div class="coord-card__top">
-              <span class="coord-card__state"><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Yobe</span>
+              <span class="coord-card__state"><span class="coord-card__no">19</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Rivers</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Eze Past. Osima Antony</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 751 9883</p>
+            <a class="coord-card__call" href="tel:+2348037519883"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="ebonyi" data-name="engr. ijaga okechukwu" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">20</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Ebonyi</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Engr. Ijaga Okechukwu</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0902 811 8797</p>
+            <a class="coord-card__call" href="tel:+2349028118797"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="enugu" data-name="odoh solomon agamede" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">21</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Enugu</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Odoh Solomon Agamede</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0816 634 0802</p>
+            <a class="coord-card__call" href="tel:+2348166340802"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="jigawa" data-name="auwalu saleh" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">22</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Jigawa</span>
               <span class="coord-card__zone">North</span>
             </div>
-            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Secretary Yobe</p>
-            <p class="coord-card__phone"><i class="fas fa-phone"></i> +234 706 898 5863</p>
-            <a class="coord-card__call" href="tel:+2348160999988"><i class="fas fa-phone-volume"></i> Call now</a>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Auwalu Saleh</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0706 681 1964</p>
+            <a class="coord-card__call" href="tel:+2347066811964"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="yobe" data-name="ali mohammed sale" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">23</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Yobe</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Ali Mohammed Sale</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0706 898 5863</p>
+            <a class="coord-card__call" href="tel:+2347068985863"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="fct abuja" data-name="abdulhamid mahmud adam" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">24</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>FCT Abuja</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Abdulhamid Mahmud Adam</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0813 759 4890</p>
+            <a class="coord-card__call" href="tel:+2348137594890"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="gombe" data-name="dahiru abdullahi abokinkure" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">25</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Gombe</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Dahiru Abdullahi AbokinKure</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0903 958 4040</p>
+            <a class="coord-card__call" href="tel:+2349039584040"><i class="fas fa-phone-volume"></i> Call now</a>
           </article>
         </div>
 
