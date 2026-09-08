@@ -10,8 +10,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import ArtisanProfile, Booking, Category
-from .views import AIChatView
+from .models import ArtisanProfile, Booking, Category, ServiceTaxonomy
+from .views import AIChatView, AIIntentClassifierView
 
 User = get_user_model()
 
@@ -3364,6 +3364,240 @@ class AISemanticSearchTests(APITestCase):
             mock_openai_cls.return_value.chat.completions.create.side_effect = Exception('boom')
             mapped = AIChatView()._semantic_category_lookup('lawyer')
         self.assertIsNone(mapped)
+
+
+class AIIntentClassifierTests(APITestCase):
+    """S-MAHII Intent Engine (AIIntentClassifierView) — a pure classifier
+    that then runs a REAL search, not a chatbot: one message in, one
+    strict JSON object out, either {"action": "ask", ...} or {"action":
+    "results", "intent": ..., "providers": [...]}. The core guarantee
+    under test isn't "does the model classify well" (that's OpenAI's job,
+    mocked out here) but that this view NEVER passes a hallucinated
+    (service, profession) pair through as a search filter — it must
+    resolve against a real, active ServiceTaxonomy row (seeded by
+    migration 0027, used here as real data rather than re-faked per
+    test), location must resolve against real State/LGA rows, and every
+    failure mode (no API key, a raised exception, malformed JSON, low
+    confidence) degrades to a safe {"action": "ask", ...} instead of
+    fabricating a result or a 500."""
+    URL = '/api/ai/classify-intent/'
+
+    def setUp(self):
+        from locations.models import Country, State, LGA
+        from .models import BusinessProfile
+
+        self.country = Country.objects.create(name='Nigeria')
+        self.kano = State.objects.create(name='Kano', country=self.country)
+        self.kumbotso = LGA.objects.create(name='Kumbotso', state=self.kano)
+
+        # Real rows from migration 0027 — not test-only fixtures, so these
+        # tests also double as an integration check that the seed actually
+        # produced a usable, searchable taxonomy.
+        self.plumbing_row = ServiceTaxonomy.objects.get(service_slug='plumbing')
+        self.car_hire_row = ServiceTaxonomy.objects.get(service_slug='car_hire')
+
+        self.plumber_user = User.objects.create_user(
+            email='plumber_intent@test.com', password='pass12345',
+            first_name='Musa', last_name='Sani', role='artisan',
+            country=self.country, state=self.kano, lga=self.kumbotso,
+        )
+        ArtisanProfile.objects.create(user=self.plumber_user, category=self.plumbing_row.category, is_available=True)
+
+        self.rental_owner = User.objects.create_user(
+            email='rental_intent@test.com', password='pass12345',
+            first_name='Amina', last_name='Bello', role='business',
+            country=self.country, state=self.kano, lga=self.kumbotso,
+        )
+        BusinessProfile.objects.create(
+            user=self.rental_owner, business_name='Kano Car Rentals', category=self.car_hire_row.category,
+        )
+
+    def _mock_reply(self, mock_openai_cls, payload_dict):
+        import json as _json
+        fake_client = mock_openai_cls.return_value
+        fake_client.chat.completions.create.return_value = _fake_completion(_json.dumps(payload_dict))
+        return fake_client
+
+    def _base_payload(self, **overrides):
+        payload = {
+            'intent': 'find_provider', 'detected_language': 'English',
+            'original_query': 'test', 'normalized_query': 'test',
+            'service_category': None, 'service': None, 'task': None,
+            'profession': None, 'provider_type': None,
+            'location': {'state': None, 'lga': None, 'city': None, 'area': None},
+            'use_gps': False, 'urgency': None, 'confidence': 0.9,
+            'needs_clarification': False, 'clarification_question': None,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_missing_message_rejected(self):
+        response = self.client.post(self.URL, {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_returns_503_when_openai_not_configured(self):
+        with self.settings(OPENAI_API_KEY=''):
+            response = self.client.post(self.URL, {'message': 'I need a plumber'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    def test_classifies_and_finds_a_real_artisan(self):
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                service_category='artisan', service='plumbing', profession='plumber', provider_type='artisan',
+                location={'state': 'Kano', 'lga': 'Kumbotso', 'city': None, 'area': None},
+            ))
+            response = self.client.post(self.URL, {'message': 'my pipe is leaking in Kumbotso, Kano'}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['action'], 'results')
+        self.assertEqual(response.data['intent']['service'], 'plumbing')
+        self.assertEqual(response.data['intent']['profession'], 'plumber')
+        self.assertEqual(response.data['intent']['category_id'], self.plumbing_row.category_id)
+        self.assertEqual(response.data['intent']['location']['state_id'], self.kano.id)
+        self.assertEqual(response.data['intent']['location']['lga_id'], self.kumbotso.id)
+        self.assertFalse(response.data['intent']['needs_clarification'])
+        names = [p['user_details']['first_name'] for p in response.data['providers']]
+        self.assertIn('Musa', names)
+
+    def test_classifies_and_finds_a_real_business(self):
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                service_category='business', service='car_hire', profession='car_rental_business', provider_type='business',
+            ))
+            response = self.client.post(self.URL, {'message': 'I need to hire a car'}, format='json')
+
+        self.assertEqual(response.data['action'], 'results')
+        names = [p['business_name'] for p in response.data['providers']]
+        self.assertIn('Kano Car Rentals', names)
+
+    def test_a_service_profession_pair_outside_the_real_taxonomy_is_dropped(self):
+        """A (service, profession) pair the model invents that isn't a
+        real, active ServiceTaxonomy row must never become a search
+        filter — same discipline as _semantic_category_lookup's
+        hallucination guard."""
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                service_category='artisan', service='made_up_service', profession='made_up_trade',
+                provider_type='artisan', confidence=0.9, needs_clarification=False,
+            ))
+            response = self.client.post(self.URL, {'message': 'something obscure'}, format='json')
+
+        # Doesn't resolve, so this must correctly fall back to "ask" even
+        # though the model itself claimed needs_clarification=False.
+        self.assertEqual(response.data['action'], 'ask')
+        self.assertIsNone(response.data['intent']['service'])
+        self.assertIsNone(response.data['intent']['category_id'])
+        self.assertTrue(response.data['intent']['needs_clarification'])
+
+    def test_an_unrecognized_lga_name_never_becomes_a_wrong_id(self):
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                service_category='artisan', service='plumbing', profession='plumber', provider_type='artisan',
+                location={'state': 'Kano', 'lga': 'Not A Real LGA', 'city': None, 'area': None},
+            ))
+            response = self.client.post(self.URL, {'message': 'plumber in some fake place, Kano'}, format='json')
+
+        self.assertEqual(response.data['intent']['location']['state_id'], self.kano.id)
+        self.assertIsNone(response.data['intent']['location']['lga_id'])
+        # The free-text name is still surfaced even when it doesn't resolve.
+        self.assertEqual(response.data['intent']['location']['lga'], 'Not A Real LGA')
+
+    def test_professional_provider_type_returns_no_results_not_a_crash(self):
+        """medical_consultation -> doctor -> professional is seeded but
+        deliberately has no linked Category (no doctor role/profile
+        exists anywhere in this app yet) — must degrade to an honest
+        empty result, never invent one."""
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                service_category='artisan', service='medical_consultation', profession='doctor',
+                provider_type='professional',
+            ))
+            response = self.client.post(self.URL, {'message': 'I need to see a doctor'}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['action'], 'results')
+        self.assertEqual(response.data['providers'], [])
+        self.assertIsNone(response.data['intent']['category_id'])
+
+    def test_low_confidence_asks_instead_of_searching(self):
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                service_category='artisan', service='plumbing', profession='plumber', provider_type='artisan',
+                confidence=0.2, needs_clarification=False,
+            ))
+            response = self.client.post(self.URL, {'message': 'maybe a plumber?'}, format='json')
+
+        self.assertEqual(response.data['action'], 'ask')
+
+    def test_vague_request_needs_clarification(self):
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                confidence=0.2, needs_clarification=True,
+                clarification_question='What exactly do you need fixed?',
+            ))
+            response = self.client.post(self.URL, {'message': 'fix something in my house'}, format='json')
+
+        self.assertEqual(response.data['action'], 'ask')
+        self.assertEqual(response.data['question'], 'What exactly do you need fixed?')
+
+    def test_api_error_degrades_to_a_safe_ask_response_not_a_500(self):
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            mock_openai_cls.return_value.chat.completions.create.side_effect = Exception('boom')
+            response = self.client.post(self.URL, {'message': 'I need a plumber'}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['action'], 'ask')
+        self.assertIsNotNone(response.data['question'])
+
+    def test_confidence_is_clamped_to_the_valid_range(self):
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                service_category='artisan', service='plumbing', profession='plumber', provider_type='artisan',
+                confidence=5.0,
+            ))
+            response = self.client.post(self.URL, {'message': 'plumber'}, format='json')
+        self.assertEqual(response.data['intent']['confidence'], 1.0)
+
+    def test_electrical_installation_and_repair_share_the_same_category(self):
+        """Two different service_slugs mapping to the same profession
+        (electrician) must resolve to the SAME real Category — confirms
+        the seed migration's dedup logic worked, not just that each row
+        exists independently."""
+        install_row = ServiceTaxonomy.objects.get(service_slug='electrical_installation')
+        repair_row = ServiceTaxonomy.objects.get(service_slug='electrical_repair')
+        self.assertIsNotNone(install_row.category_id)
+        self.assertEqual(install_row.category_id, repair_row.category_id)
+
+    def test_taxonomy_text_includes_seeded_groups_and_rows(self):
+        from core.views import _intent_taxonomy_text, _intent_taxonomy_cache
+        _intent_taxonomy_cache['fetched_at'] = 0.0  # force a fresh fetch
+        text = _intent_taxonomy_text()
+        self.assertIn('Home & Trades', text)
+        self.assertIn('plumbing -> plumber -> artisan', text)
+        self.assertIn('Health', text)
+        self.assertIn('medical_consultation -> doctor -> professional', text)
+
+    def test_intent_falls_back_to_a_valid_value_when_the_model_sends_garbage(self):
+        from unittest.mock import patch
+        with self.settings(OPENAI_API_KEY='sk_test'), patch('core.views.openai.OpenAI') as mock_openai_cls:
+            self._mock_reply(mock_openai_cls, self._base_payload(
+                intent='not_a_real_intent',
+                service_category='artisan', service='plumbing', profession='plumber', provider_type='artisan',
+            ))
+            response = self.client.post(self.URL, {'message': 'plumber'}, format='json')
+        self.assertIn(response.data['intent']['intent'], (
+            'find_provider', 'find_business', 'find_product',
+            'book_service', 'ask_about_service', 'general_conversation',
+        ))
 
 
 class AIBookingActionsTests(BookingTestBase):

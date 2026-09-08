@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.utils import timezone
 from .models import (
-    Category, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review,
+    Category, ServiceTaxonomy, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review,
     RegistrationPayment, PlatformSettings, DisputeReport, Favorite, ActivityLog,
 )
 from notifications.events import emit
@@ -60,6 +60,19 @@ class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'name_ha', 'parent', 'icon', 'created_at']
     list_filter = ['parent']
     search_fields = ['name', 'name_ha', 'description']
+
+
+@admin.register(ServiceTaxonomy)
+class ServiceTaxonomyAdmin(admin.ModelAdmin):
+    """The Intent Engine's taxonomy — add a row here and it's live in the
+    AI's system prompt within _INTENT_TAXONOMY_TTL_SECONDS (10 min), no
+    deploy needed. See ServiceTaxonomy's own docstring for why `category`
+    is a separate, admin-linked field rather than reusing profession as
+    the category name directly."""
+    list_display = ['service_slug', 'profession', 'provider_type', 'group', 'category', 'is_active']
+    list_filter = ['provider_type', 'group', 'is_active']
+    search_fields = ['service_slug', 'service_label', 'profession']
+    autocomplete_fields = ['category']
 
 
 @admin.register(ArtisanProfile)

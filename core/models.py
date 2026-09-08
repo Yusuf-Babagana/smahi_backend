@@ -66,6 +66,64 @@ class Category(models.Model):
         return self.name
 
 
+class ServiceTaxonomy(models.Model):
+    """The Intent Engine's admin-editable taxonomy (core.views.
+    AIIntentClassifierView): service -> profession -> provider_type,
+    injected into the AI's system prompt at runtime — an admin adds a row
+    here and it's instantly usable, no code change or retraining needed.
+
+    Deliberately separate from Category rather than reusing it directly:
+    Category is the raw, organically-grown list every artisan/business
+    actually registers under (see UserRegistrationSerializer.
+    _resolve_category_id — anyone can create a new one just by typing a
+    profession at registration). This table is a curated, human-meaning
+    bridge on top of that for the AI to reason with — a job-title-shaped
+    'profession' ("plumber", "car_rental_business", "doctor"), often with
+    several services mapping to the SAME profession (electrical_installation
+    and electrical_repair both mean "electrician"). `category` links a row
+    to the real Category once a matching one exists, which is what makes a
+    classified request actually usable to query ArtisanProfile/
+    BusinessProfile — see core.views.search_providers_for_intent().
+    """
+    PROVIDER_TYPE_CHOICES = [
+        ('artisan', 'Artisan'),
+        ('business', 'Business'),
+        # Not yet backed by a real role/profile anywhere in this app (no
+        # "professional"/doctor account type exists today) — admins can
+        # still record the taxonomy row ahead of that support landing;
+        # search simply returns no results for this provider_type until
+        # it does, rather than inventing a match.
+        ('professional', 'Professional'),
+    ]
+
+    service_slug = models.SlugField(max_length=60, unique=True)
+    service_label = models.CharField(max_length=100, help_text="Human-readable, e.g. 'Electrical Installation'")
+    profession = models.CharField(max_length=100, help_text="e.g. 'electrician', 'car_rental_business', 'doctor'")
+    provider_type = models.CharField(max_length=20, choices=PROVIDER_TYPE_CHOICES)
+    # Free-text grouping for the admin list and the AI prompt's section
+    # headers (e.g. "Home & Trades", "Automotive", "Health") — purely
+    # organizational, no behavior depends on it.
+    group = models.CharField(max_length=100, blank=True)
+    category = models.ForeignKey(
+        Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='taxonomy_rows',
+        help_text="The real, searchable Category this profession resolves to. Leave blank until one exists.",
+    )
+    # Lets an admin retire a row (e.g. a typo'd slug that already reached
+    # the AI's cached prompt) without losing its history — same soft-
+    # disable convention as everywhere else in this app.
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Service taxonomy row'
+        verbose_name_plural = 'Service taxonomy'
+        ordering = ['group', 'profession', 'service_slug']
+
+    def __str__(self):
+        return f"{self.service_slug} → {self.profession} ({self.provider_type})"
+
+
 class ArtisanProfile(models.Model):
     VERIFICATION_STATUS_CHOICES = [
         ('pending', 'Pending'),

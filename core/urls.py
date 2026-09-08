@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, ArtisanViewSet, ArtisanProfileView, BusinessProfileViewSet, BusinessProfileView,
     VerificationRequestViewSet, BookingViewSet, ReviewViewSet,
-    AIChatView, TranscribeView, AgentArtisanListView, AgentClientListView,
+    AIChatView, AIIntentClassifierView, TranscribeView, AgentArtisanListView, AgentClientListView,
     AgentDashboardStatsView, AgentRegisterArtisanView, AgentVerifyArtisanView,
     AgentServiceRequestsView, AgentBusinessListView, AgentVerifyBusinessView,
     AgentRegisterBusinessView, AgentInitializeRegistrationPaymentView, AgentVerifyRegistrationPaymentView,
@@ -47,5 +47,6 @@ urlpatterns = [
     path('admin/coordinators/create/', AdminCreateCoordinatorView.as_view(), name='admin-coordinator-create'),
     path('admin/coordinators/<int:coordinator_id>/status/', AdminCoordinatorStatusView.as_view(), name='admin-coordinator-status'),
     path('ai/chat/', AIChatView.as_view(), name='ai-chat'),
+    path('ai/classify-intent/', AIIntentClassifierView.as_view(), name='ai-classify-intent'),
     path('ai/transcribe/', TranscribeView.as_view(), name='ai-transcribe'),
 ]
