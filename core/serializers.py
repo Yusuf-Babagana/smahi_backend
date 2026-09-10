@@ -600,7 +600,8 @@ class AgentOverviewSerializer(serializers.ModelSerializer):
         model = get_user_model()
         fields = [
             'id', 'first_name', 'last_name', 'email', 'phone_number', 'gender',
-            'serial_number', 'account_status', 'state_details', 'lga_details', 'created_at',
+            'serial_number', 'referral_code', 'account_status',
+            'state_details', 'lga_details', 'created_at',
             'artisans_registered', 'artisans_verified',
         ]
 
@@ -650,7 +651,7 @@ class CoordinatorOverviewSerializer(serializers.ModelSerializer):
         model = get_user_model()
         fields = [
             'id', 'first_name', 'last_name', 'email', 'phone_number', 'gender',
-            'account_status', 'state_details', 'created_at', 'agents_count',
+            'account_status', 'referral_code', 'state_details', 'created_at', 'agents_count',
         ]
 
     def get_agents_count(self, obj):

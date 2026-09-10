@@ -12,6 +12,7 @@ from .views import (
     CoordinatorLGAOverviewView, CoordinatorAgentSearchView, CoordinatorRegisteredUserDetailView,
     FavoriteListView, FavoriteToggleView, PresenceHeartbeatView,
     DeviceTokenRegisterView, DeviceTokenUnregisterView,
+    ReferralValidateView, ReferralMeView,
 )
 
 router = DefaultRouter()
@@ -19,6 +20,8 @@ router.register(r'disputes', DisputeReportViewSet, basename='dispute')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('referrals/validate/', ReferralValidateView.as_view(), name='referral-validate'),
+    path('referrals/me/', ReferralMeView.as_view(), name='referral-me'),
     path('coordinator/agents/', CoordinatorAgentListView.as_view(), name='coordinator-agents'),
     path('coordinator/agents/create/', CoordinatorCreateAgentView.as_view(), name='coordinator-agent-create'),
     path('coordinator/agents/<int:agent_id>/status/', CoordinatorAgentStatusView.as_view(), name='coordinator-agent-status'),

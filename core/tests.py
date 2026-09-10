@@ -3963,3 +3963,343 @@ class BookingNotificationsTests(BookingTestBase):
         self.patch_status(booking, self.artisan_user, 'completed', total_cost='15000.00')
         self.patch_status(booking, self.artisan_user, 'completed')  # no-op re-send
         self.assertEqual(Notification.objects.filter(event_type='booking_completed').count(), 1)
+
+
+class ReferralApiTests(CoordinatorDashboardTestBase):
+    """The referral network (Coordinator -> Agent -> Service Provider):
+    code minting on creation/approval, sponsor links set at registration,
+    validation allowlists, and the owner-only 'my referral' dashboard.
+    Reuses CoordinatorDashboardTestBase's two-state fixtures so every test
+    can prove state A's coordinator/data never leaks to state B."""
+
+    ME_URL = '/api/v1/referrals/me/'
+    VALIDATE_URL = '/api/v1/referrals/validate/'
+    CREATE_AGENT_URL = '/api/v1/coordinator/agents/create/'
+    REGISTER_ARTISAN_URL = '/api/agent/register-artisan/'
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            email='referral_admin@test.com', password='pass12345',
+            first_name='Ref', last_name='Admin', role='admin',
+        )
+        self.outsider = User.objects.create_user(
+            email='outsider@test.com', password='pass12345',
+            first_name='T', last_name='Outsider', role='client',
+        )
+
+    def status_url(self, agent_id):
+        return f'/api/v1/coordinator/agents/{agent_id}/status/'
+
+    def approve_agent(self, agent):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.status_url(agent.id), {'status': 'active'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        agent.refresh_from_db()
+
+    # --- Code minting ---
+
+    def test_approving_an_agent_mints_their_referral_code(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        created = self.client.post(self.CREATE_AGENT_URL, {
+            'email': 'mint_agent@test.com', 'first_name': 'Mint', 'last_name': 'Agent',
+            'lga': self.kano_lga_b.id,
+        })
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        agent = User.objects.get(email='mint_agent@test.com')
+        self.assertEqual(agent.account_status, 'pending_approval')
+        self.assertIsNone(agent.referral_code, "a code must NOT exist before approval")
+        self.assertEqual(agent.sponsor_coordinator_id, self.kano_coordinator.id,
+                         "the coordinator is recorded as sponsor from creation, before approval")
+
+        self.approve_agent(agent)
+        self.assertEqual(agent.account_status, 'active')
+        self.assertRegex(agent.referral_code, r'^SMAHI-AG-[A-Z2-9]{4}$')
+
+    def test_approving_twice_never_mints_a_second_code(self):
+        self.approve_agent(self.kano_agent)
+        code = self.kano_agent.referral_code
+        self.assertRegex(code, r'^SMAHI-AG-[A-Z2-9]{4}$')
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.status_url(self.kano_agent.id), {'status': 'active'})
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.referral_code, code, "re-approval must not mint a second code")
+
+    def test_rejected_or_dismissed_agent_never_receives_a_code(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.status_url(self.kano_agent.id), {'status': 'rejected'})
+        self.kano_agent.refresh_from_db()
+        self.assertIsNone(self.kano_agent.referral_code, "a seat-vacating status must never mint a code")
+
+    def test_coordinator_creation_mints_state_prefixed_code(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/admin/coordinators/create/', {
+            'email': 'new_coord@test.com', 'first_name': 'New', 'last_name': 'Coordinator',
+            'state': self.ogun.id,  # no state_code -> falls back to state-name prefix
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_coord = User.objects.get(email='new_coord@test.com')
+        # Ogun has no state_code -> falls back to the first 3 letters of its
+        # name: "OGU" (NOT "OGN" — the fallback is state.name[:3], no "N").
+        self.assertRegex(new_coord.referral_code, r'^SMAHI-OGU-[A-Z2-9]{4}$')
+
+    def test_distinct_codes_for_distinct_agents(self):
+        self.client.force_authenticate(user=self.kano_coordinator)
+        for i, email in enumerate(('unique_a@test.com', 'unique_b@test.com')):
+            response = self.client.post(self.CREATE_AGENT_URL, {
+                'email': email, 'first_name': 'Unique', 'last_name': f'Agent{i}',
+                'lga': self.kano_lga_a.id,
+            })
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        a = User.objects.get(email='unique_a@test.com')
+        b = User.objects.get(email='unique_b@test.com')
+        self.approve_agent(a)
+        self.approve_agent(b)
+        self.assertNotEqual(a.referral_code, b.referral_code)
+
+    def test_sponsor_links_set_when_an_agent_registers_an_artisan(self):
+        # Give the agent a coordinator first so the chain is complete.
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(self.REGISTER_ARTISAN_URL, {
+            'email': 'chained_artisan@test.com', 'first_name': 'Chain', 'last_name': 'Artisan',
+            'custom_category_name': 'Plumbing',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        artisan = User.objects.get(email='chained_artisan@test.com')
+        self.assertEqual(artisan.sponsor_agent_id, self.kano_agent.id)
+        self.assertEqual(artisan.sponsor_coordinator_id, self.kano_coordinator.id)
+        self.assertEqual(artisan.artisan_profile.registered_by_id, self.kano_agent.id)
+        self.assertIsNone(artisan.referral_code, "artisans/clients never carry referral codes")
+
+    # --- Validation ---
+
+    def test_unknown_or_blank_code_reads_as_invalid(self):
+        self.client.force_authenticate(user=self.outsider)
+        for payload in ({'code': 'SMAHI-KN-ZZZZ'}, {'code': '   '}, {'code': ''}):
+            response = self.client.post(self.VALIDATE_URL, payload)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertFalse(response.data['valid'])
+            self.assertEqual(response.data['error'], 'Invalid referral code.')
+
+    def test_validation_accepts_lowercase_and_matches_owner(self):
+        self.approve_agent(self.kano_agent)
+        code = self.kano_agent.referral_code
+        self.client.force_authenticate(user=self.outsider)
+        response = self.client.post(self.VALIDATE_URL, {'code': code.lower()})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertTrue(response.data['valid'])
+        self.assertEqual(response.data['role'], 'agent')
+        self.assertEqual(response.data['agent']['referral_code'], code)
+        self.assertEqual(response.data['coordinator'], None, "kano agent has no coordinator in the test DB")
+
+    def test_dismissed_agent_code_reads_as_no_longer_valid(self):
+        self.approve_agent(self.kano_agent)
+        code = self.kano_agent.referral_code
+        self.client.force_authenticate(user=self.kano_coordinator)
+        self.client.post(self.status_url(self.kano_agent.id), {'status': 'dismissed'})
+        self.client.force_authenticate(user=self.outsider)
+        response = self.client.post(self.VALIDATE_URL, {'code': code})
+        self.assertFalse(response.data['valid'])
+        self.assertEqual(response.data['error'], 'This referral code is no longer valid.')
+
+    def test_coordinator_code_validation_returns_the_coordinator(self):
+        self.kano_coordinator.referral_code = 'SMAHI-KN-TEST1'
+        self.kano_coordinator.save(update_fields=['referral_code'])
+        self.client.force_authenticate(user=self.outsider)
+        response = self.client.post(self.VALIDATE_URL, {'code': 'smahi-kn-test1'})
+        self.assertTrue(response.data['valid'])
+        self.assertEqual(response.data['role'], 'state_coordinator')
+        self.assertEqual(response.data['agent'], None)
+        self.assertEqual(response.data['coordinator']['name'], 'Kano Coordinator')
+
+    def test_validation_never_leaks_email_phone_or_address(self):
+        self.approve_agent(self.kano_agent)
+        code = self.kano_agent.referral_code
+        self.client.force_authenticate(user=self.outsider)
+        response = self.client.post(self.VALIDATE_URL, {'code': code})
+        serialized = str(response.data)
+        self.assertNotIn('email', response.data, response.data)
+        self.assertNotIn('phone_number', response.data)
+        self.assertNotIn('address', response.data)
+        self.assertNotIn(self.kano_agent.email, serialized)
+
+    # --- "My referral" dashboard ---
+
+    def test_agent_me_returns_own_code_and_coordinator(self):
+        self.approve_agent(self.kano_agent)
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.ME_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['referral_code'], self.kano_agent.referral_code)
+        self.assertEqual(response.data['coordinator']['name'], 'Kano Coordinator')
+        self.assertEqual(response.data['total_service_providers_registered'], 0)
+
+    def test_agent_me_resolves_state_coordinator_when_sponsor_is_missing(self):
+        """Legacy agent with no recorded sponsor still sees the current
+        coordinator of their state as their overseer."""
+        self.approve_agent(self.kano_agent)
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get(self.ME_URL)
+        self.assertEqual(response.data['coordinator']['name'], 'Kano Coordinator')
+
+    def test_coordinator_me_counts_only_their_state(self):
+        self.kano_coordinator.referral_code = 'SMAHI-KN-TEST1'
+        self.kano_coordinator.save(update_fields=['referral_code'])
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.ME_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['referral_code'], 'SMAHI-KN-TEST1')
+        self.assertEqual(response.data['total_agents'], 1, "only Kano's agent counts")
+        self.assertEqual(response.data['active_agents'], 1)
+
+    def test_outsider_me_never_exposes_anyone_elses_code(self):
+        self.approve_agent(self.kano_agent)
+        self.kano_coordinator.referral_code = 'SMAHI-KN-TEST1'
+        self.kano_coordinator.save(update_fields=['referral_code'])
+        self.client.force_authenticate(user=self.outsider)
+        response = self.client.get(self.ME_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertIsNone(response.data['referral_code'])
+        self.assertEqual(response.data['coordinator'], None)
+        serialized = str(response.data)
+        self.assertNotIn('SMAHI-KN-TEST1', serialized)
+        self.assertNotIn(self.kano_agent.referral_code, serialized)
+
+    def test_coordinator_agent_list_surfaces_referral_codes(self):
+        self.approve_agent(self.kano_agent)
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get('/api/v1/coordinator/agents/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        row = next(a for a in response.data['results'] if a['email'] == 'kano_agent@test.com')
+        self.assertEqual(row['referral_code'], self.kano_agent.referral_code)
+
+    # --- Optional referral code on the registration process ---
+
+    def register_payload(self, role='client', **overrides):
+        """A valid public self-registration (accounts.views.register_view).
+        state defaults to Kano so the network-scoping rules below can be
+        exercised; country/lga provided so the territory is complete."""
+        payload = {
+            'email': 'referral_reg@test.com',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'first_name': 'Referral',
+            'last_name': 'Reg',
+            'role': role,
+            'country': self.country.id,
+            'state': self.kano.id,
+            'lga': self.kano_lga_a.id,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_self_registration_with_a_coordinator_code_is_claimed_by_the_coordinator(self):
+        self.kano_coordinator.referral_code = 'SMAHI-KN-TEST1'
+        self.kano_coordinator.save(update_fields=['referral_code'])
+        response = self.client.post('/api/auth/register/', self.register_payload(
+            role='artisan', email='coord_claimed@test.com', referral_code='smahi-kn-test1',
+        ))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        artisan = User.objects.get(email='coord_claimed@test.com')
+        self.assertEqual(artisan.sponsor_coordinator_id, self.kano_coordinator.id,
+                         "the coordinator's code plants the new account under them")
+        self.assertIsNone(artisan.sponsor_agent_id)
+        self.assertIsNone(artisan.referral_code, "the input code is attribution, never minted onto the new account")
+
+    def test_self_registration_with_an_agent_code_attaches_the_full_chain(self):
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+        self.approve_agent(self.kano_agent)
+        response = self.client.post('/api/auth/register/', self.register_payload(
+            role='client', email='agent_claimed@test.com', referral_code=self.kano_agent.referral_code,
+        ))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        client = User.objects.get(email='agent_claimed@test.com')
+        self.assertEqual(client.sponsor_agent_id, self.kano_agent.id)
+        self.assertEqual(client.sponsor_coordinator_id, self.kano_coordinator.id,
+                         "an agent referral carries the chain up to the agent's own coordinator")
+        self.assertIsNone(client.referral_code)
+
+    def test_registration_with_an_invalid_referral_code_is_rejected(self):
+        response = self.client.post('/api/auth/register/', self.register_payload(
+            referral_code='SMAHI-KN-ZZZZ',
+        ))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertIn('referral_code', response.data)
+        self.assertFalse(User.objects.filter(email='referral_reg@test.com').exists())
+
+    def test_registration_with_a_cross_state_referral_code_is_rejected(self):
+        """A registrant picking Kano must not be planted under a Lagos
+        coordinator's network — the territory stays coherent."""
+        self.lagos_coordinator.referral_code = 'SMAHI-LA-TEST1'
+        self.lagos_coordinator.save(update_fields=['referral_code'])
+        response = self.client.post('/api/auth/register/', self.register_payload(
+            referral_code='SMAHI-LA-TEST1',
+        ))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertIn('referral_code', response.data)
+        self.assertFalse(User.objects.filter(email='referral_reg@test.com').exists())
+
+    def test_the_claimed_artisan_counts_in_the_coordinators_referral_dashboard(self):
+        self.kano_coordinator.referral_code = 'SMAHI-KN-TEST1'
+        self.kano_coordinator.save(update_fields=['referral_code'])
+        response = self.client.post('/api/auth/register/', self.register_payload(
+            role='artisan', email='counted_under@test.com', referral_code='SMAHI-KN-TEST1',
+        ))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.client.force_authenticate(user=self.kano_coordinator)
+        me = self.client.get(self.ME_URL)
+        self.assertEqual(me.data['total_service_providers_recorded'], 1,
+                         "a self-registered artisan under the coordinator's code counts in their network")
+
+    def test_an_agent_code_cannot_sponsor_a_new_agent(self):
+        """The chain is strictly Coordinator -> Agent: when a Coordinator
+        creates an agent, only a Coordinator referral code is meaningful."""
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+        self.approve_agent(self.kano_agent)
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.CREATE_AGENT_URL, {
+            'email': 'agent_no_sponsor_agent@test.com', 'first_name': 'Chain', 'last_name': 'Rule',
+            'lga': self.kano_lga_b.id, 'referral_code': self.kano_agent.referral_code,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertIn('referral_code', response.data)
+        self.assertFalse(User.objects.filter(email='agent_no_sponsor_agent@test.com').exists())
+
+    def test_creating_an_agent_with_the_coordinators_referral_code_attaches_them(self):
+        self.kano_coordinator.referral_code = 'SMAHI-KN-TEST1'
+        self.kano_coordinator.save(update_fields=['referral_code'])
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.CREATE_AGENT_URL, {
+            'email': 'coord_coded_agent@test.com', 'first_name': 'Coded', 'last_name': 'Agent',
+            'lga': self.kano_lga_b.id, 'referral_code': 'SMAHI-KN-TEST1',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        agent = User.objects.get(email='coord_coded_agent@test.com')
+        self.assertEqual(agent.sponsor_coordinator_id, self.kano_coordinator.id,
+                         "the entered referral code attaches the agent to that coordinator (the creator here)")
+
+    def test_a_referral_code_wins_over_the_registering_actor(self):
+        """A coordinator registering an artisan who submits someone's code
+        attributes the network to the code owner, not the registrar."""
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+        self.approve_agent(self.kano_agent)
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.REGISTER_ARTISAN_URL, {
+            'email': 'coded_artisan@test.com', 'first_name': 'Coded', 'last_name': 'Artisan',
+            'custom_category_name': 'Plumbing', 'lga': self.kano_lga_b.id,
+            'referral_code': self.kano_agent.referral_code,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        artisan = User.objects.get(email='coded_artisan@test.com')
+        self.assertEqual(artisan.sponsor_agent_id, self.kano_agent.id,
+                         "the entered code — not the registering coordinator — sponsors the artisan")
+        self.assertEqual(artisan.sponsor_coordinator_id, self.kano_coordinator.id)
+        self.assertEqual(artisan.artisan_profile.registered_by_id, self.kano_coordinator.id,
+                         "registered_by stays the physical registrar while sponsorship follows the code")

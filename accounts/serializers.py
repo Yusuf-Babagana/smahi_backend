@@ -34,6 +34,22 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     # Business-only — validated as required in validate() when role='business'.
     business_name = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=150)
 
+    # Optional referral code entered at registration time (the app's
+    # register.tsx / create-agent.tsx / agent register screens). When a
+    # valid code is present, the NEW account is permanently sponsored by its
+    # owner — Coordinator code -> sponsor_coordinator; Agent code ->
+    # sponsor_agent (+ that agent's own coordinator). It is purely a
+    # network-attribution input and is deliberately never written to the new
+    # user's own referral_code field (that is minted by the creation/
+    # approval flows only). Resolved in validate() so role/state rules can
+    # be enforced; see create().
+    # validators=[] is deliberate: the model's referral_code is unique+blank
+    # (a code-hosting column), and this serializer's field is a *different
+    # thing* — an attribution input being resolved, never stored. Without
+    # this, DRF would apply the model's UniqueValidator and reject every
+    # referral code that already belongs to its (real) owner.
+    referral_code = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True, max_length=40, validators=[])
+
     # Self-service registration (accounts.views.register_view, AllowAny —
     # no authentication) must never be able to mint a privileged account.
     # Every authorization check in this API (IsAdmin/IsStateAgent/
@@ -66,6 +82,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             # the time between registering and that first dashboard visit.
             'latitude', 'longitude',
             'category_id', 'custom_category_name', 'custom_category_icon', 'business_name',
+            # Optional referral code (retired into the sponsor FKs by
+            # create() — see the field's own comment above).
+            'referral_code',
             # Offline-first registration's idempotency key — see the field's
             # own docstring on the User model for why this exists.
             'client_request_id',
@@ -139,6 +158,37 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if attrs.get('role') == 'business' and not attrs.get('business_name', '').strip():
             raise serializers.ValidationError({"business_name": "A business name is required."})
 
+        # Optional referral code — resolves to its owner and stores the
+        # resolved owner for create() to attach as the new account's
+        # permanent sponsor. Runs in validate() (not in a per-field
+        # validator) because it needs the registrant's chosen role/state to
+        # enforce the network rules below.
+        raw_referral = attrs.pop('referral_code', None) or ''
+        referral_code = str(raw_referral).strip() if raw_referral else ''
+        self._resolved_referrer = None
+        if referral_code:
+            from core.referrals import resolve_referral_code
+
+            owner, reason = resolve_referral_code(referral_code)
+            if owner is None:
+                # resolve_referral_code() returns reason 'not_active' only
+                # once the owner has ever existed but no longer holds their
+                # seat; anything else simply never matched a code.
+                message = 'This referral code is no longer valid.' if reason == 'not_active' else 'This referral code is invalid.'
+                raise serializers.ValidationError({'referral_code': message})
+            # The chain is strictly Coordinator -> Agent -> Service Provider:
+            # an Agent code sponsors Service Providers only, never another
+            # Agent being created (whose sponsor is always a Coordinator).
+            if attrs.get('role') == 'agent' and owner.role != 'state_coordinator':
+                raise serializers.ValidationError({'referral_code': 'Only a Coordinator referral code can sponsor an agent.'})
+            # Keep the network territory-coherent: a new account in State A
+            # must not be planted under a sponsor operating in State B.
+            new_state = attrs.get('state')
+            new_state_id = getattr(new_state, 'id', None)
+            if new_state_id and owner.state_id and owner.state_id != new_state_id:
+                raise serializers.ValidationError({'referral_code': 'This referral code belongs to a different state.'})
+            self._resolved_referrer = owner
+
         return attrs
 
     def _resolve_category_id(self, category_id, custom_category_name, custom_category_icon, category_type):
@@ -195,6 +245,23 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 category_id=resolved_category_id,
                 verification_status='pending'
             )
+
+        # Attach the referral sponsorship resolved in validate(), if any —
+        # permanently (never cleared on a later dismissal, matching how the
+        # chain is otherwise recorded). A Coordinator code makes them the
+        # coordinator; an Agent code makes them the agent sponsor and pulls
+        # the chain up with their own coordinator (or, for a legacy agent
+        # with none recorded, the state's current standing coordinator).
+        referrer = getattr(self, '_resolved_referrer', None)
+        if referrer is not None:
+            from core.referrals import effective_coordinator
+
+            if referrer.role == 'state_coordinator':
+                user.sponsor_coordinator = referrer
+            else:  # agent
+                user.sponsor_agent = referrer
+                user.sponsor_coordinator = referrer.sponsor_coordinator or effective_coordinator(referrer)
+            user.save(update_fields=['sponsor_agent', 'sponsor_coordinator'])
 
         return user
 

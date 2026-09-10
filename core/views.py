@@ -48,6 +48,10 @@ from .services import (
     approve_business_verification, reject_business_verification,
     log_activity, search_agents,
 )
+from .referrals import (
+    coordinator_directory_entry, effective_coordinator, generate_referral_code,
+    recent_network_activity, referral_stats, referee_summary, resolve_referral_code,
+)
 from .permissions import IsArtisan, IsBusiness, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
 from accounts.serializers import UserSerializer, AdminUserSerializer, AdminUserUpdateSerializer, CoordinatorRegisteredUserUpdateSerializer
 
@@ -583,6 +587,19 @@ class AgentRegisterArtisanView(APIView):
             user.artisan_profile.registered_by = request.user
             user.artisan_profile.save(update_fields=['registered_by'])
 
+        # Permanently record who recruited this artisan into the network
+        # (Coordinator -> Agent -> Service Provider). A referral code entered
+        # on the form was already resolved and attached by
+        # UserRegistrationSerializer.create() — that wins. Otherwise the
+        # sponsor is the registering actor — an Agent links the artisan to
+        # both themselves and their own Coordinator; a Coordinator
+        # registering directly links the artisan to themselves only, skipping
+        # the agent level.
+        if not (user.sponsor_agent_id or user.sponsor_coordinator_id):
+            user.sponsor_agent = request.user if request.user.role == 'agent' else None
+            user.sponsor_coordinator = request.user if request.user.role == 'state_coordinator' else request.user.sponsor_coordinator
+        user.save(update_fields=['sponsor_agent', 'sponsor_coordinator'])
+
         log_activity(request.user, 'artisan_registered', target_user=user, activity_status='pending')
 
         return Response({
@@ -665,6 +682,13 @@ class AgentRegisterBusinessView(APIView):
         if hasattr(user, 'business_profile'):
             user.business_profile.registered_by = request.user
             user.business_profile.save(update_fields=['registered_by'])
+
+        # Same permanent sponsor linking as AgentRegisterArtisanView — an
+        # optional referral code on the form wins over the actor default.
+        if not (user.sponsor_agent_id or user.sponsor_coordinator_id):
+            user.sponsor_agent = request.user if request.user.role == 'agent' else None
+            user.sponsor_coordinator = request.user if request.user.role == 'state_coordinator' else request.user.sponsor_coordinator
+        user.save(update_fields=['sponsor_agent', 'sponsor_coordinator'])
 
         log_activity(request.user, 'business_registered', target_user=user, activity_status='pending')
 
@@ -983,7 +1007,17 @@ class CoordinatorCreateAgentView(APIView):
         state_code = request.user.state.state_code or request.user.state.name[:3].upper()
         user.account_status = 'pending_approval'
         user.serial_number = f"AGT-{state_code}-{user.id:05d}"
-        user.save(update_fields=['account_status', 'serial_number'])
+        # Permanently record the coordinator who recruited this agent — the
+        # referral chain (Coordinator -> Agent); see core/referrals.py. Set
+        # at creation (before approval) so the sponsor is known even if the
+        # agent is later dismissed/rejected. An optional referral code the
+        # coordinator entered is resolved by UserRegistrationSerializer and
+        # already attached in its create() — that wins; otherwise the
+        # creating coordinator sponsors them. The agent doesn't get their own
+        # referral_code until they're actually approved (CoordinatorAgentStatusView).
+        if not user.sponsor_coordinator_id:
+            user.sponsor_coordinator = request.user
+        user.save(update_fields=['account_status', 'serial_number', 'sponsor_coordinator'])
 
         # Best-effort — a failed notification must never fail the actual
         # agent creation, which already succeeded and is the real outcome.
@@ -1056,7 +1090,16 @@ class CoordinatorAgentStatusView(APIView):
         previous_status = agent.account_status
         agent.is_active = (new_status == 'active')
         agent.account_status = new_status
-        agent.save(update_fields=['is_active', 'account_status'])
+        update_fields = ['is_active', 'account_status']
+
+        # Mint the agent's own referral code the moment they become active
+        # (idempotent — never overwrites an existing code). This is what
+        # turns "agent approved" into "agent with a shareable code", per the
+        # agreed design (code minted on approval/activation, not at signup).
+        if new_status == 'active' and not agent.referral_code:
+            agent.referral_code = generate_referral_code('AG')
+            update_fields.append('referral_code')
+        agent.save(update_fields=update_fields)
 
         if new_status == 'active':
             action = 'agent_approved' if previous_status == 'pending_approval' else 'agent_reactivated'
@@ -1068,6 +1111,65 @@ class CoordinatorAgentStatusView(APIView):
             'message': f'Agent account set to {new_status}.',
             'agent': {'id': agent.id, 'email': agent.email, 'account_status': agent.account_status, 'is_active': agent.is_active},
         })
+
+
+class ReferralValidateView(APIView):
+    """POST /api/v1/referrals/validate/ — resolve a referral code to its
+    owner without leaking anything beyond the fixed allowlist in
+    referee_summary() (owner badge name, role, serial number, state, code
+    — no email/phone/address). Any authenticated user may validate a code
+    they were handed; the response never contains a raw User row.
+
+    Two distinct failure messages on purpose:
+      * 'Invalid referral code.'               — no such code (never minted, or
+        the account behind it doesn't hold a code-bearing role).
+      * 'This referral code is no longer valid.' — the code EXISTS but its
+        owner no longer holds an active seat (dismissed/rejected agent,
+        dismissed/inactive coordinator). Kept distinct from the generic
+        failure so a caller can't enumerate which codes belong to currently
+        active people vs. ever-minted codes; only the seat-holder status
+        differs, mirroring resolve_referral_code()'s single source of truth.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        code = request.data.get('code', '') if isinstance(request.data, dict) else ''
+        owner, reason = resolve_referral_code(code)
+        if owner is None:
+            return Response({
+                'valid': False,
+                'error': 'This referral code is no longer valid.' if reason == 'not_active' else 'Invalid referral code.',
+            })
+        return Response(referee_summary(owner))
+
+
+class ReferralMeView(APIView):
+    """GET /api/v1/referrals/me/ — the logged-in user's own referral
+    dashboard: their referral code (agents/coordinators), the Coordinator
+    they report to (agents), and their recruitment statistics. Owner-only
+    — another user's code is never exposed unless that user is this
+    user's own Coordinator. State-scoped: a Coordinator's stats cover only
+    their own state's agents and the service providers registered under
+    them/their agents; an Agent's cover only what they registered."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role == 'state_coordinator':
+            coordinator = user
+            profile = coordinator_directory_entry(coordinator)
+        elif user.role == 'agent':
+            profile = coordinator_directory_entry(effective_coordinator(user))
+        else:
+            profile = None
+
+        data = {
+            'referral_code': user.referral_code or None,
+            'coordinator': profile,
+            'recent_activity': recent_network_activity(user),
+        }
+        data.update(referral_stats(user))
+        return Response(data)
 
 
 class CoordinatorReportsView(generics.ListAPIView):
@@ -1660,6 +1762,15 @@ class AdminCreateCoordinatorView(APIView):
 
         log_activity(request.user, 'coordinator_created', target_user=user, activity_status='active')
 
+        # Mint the coordinator's shareable code immediately (a coordinator
+        # has no approval step, so creation == activation). Format: the
+        # state's code is the static prefix (SMAHI-KN-7X42); the random
+        # tail makes the whole code unique. Idempotent via the unique
+        # constraint and the random-tail retry in generate_referral_code.
+        state_code = state.state_code or state.name[:3].upper()
+        user.referral_code = generate_referral_code(state_code)
+        user.save(update_fields=['referral_code'])
+
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
@@ -1695,7 +1806,17 @@ class AdminCoordinatorStatusView(APIView):
 
         coordinator.is_active = (new_status == 'active')
         coordinator.account_status = new_status
-        coordinator.save(update_fields=['is_active', 'account_status'])
+        update_fields = ['is_active', 'account_status']
+
+        # Safety net for a coordinator who somehow has no code yet (e.g. a
+        # legacy account created before referrals existed, being reactivated
+        # for the first time). Idempotent — an existing code is never
+        # overwritten.
+        if new_status == 'active' and not coordinator.referral_code:
+            state_code = (coordinator.state.state_code or coordinator.state.name[:3].upper()) if coordinator.state else 'ST'
+            coordinator.referral_code = generate_referral_code(state_code)
+            update_fields.append('referral_code')
+        coordinator.save(update_fields=update_fields)
 
         # No 'coordinator_approved' — unlike an agent, a coordinator has no
         # pending_approval step, so 'active' from this endpoint only ever

@@ -125,6 +125,30 @@ class User(AbstractUser):
     # UserRegistrationSerializer/register_view/AgentRegisterArtisanView for
     # the actual replay check.
     client_request_id = models.CharField(max_length=64, unique=True, null=True, blank=True, db_index=True)
+    # Referral / recruitment network (Coordinator -> Agent -> Service Provider).
+    #
+    # * referral_code    — unique, human-shareable code minted when a
+    #                      Coordinator or Agent is activated (e.g.
+    #                      "SMAHI-KN-7X42" for a Coordinator,
+    #                      "SMAHI-AG-92KD" for an Agent). Null/blank for every
+    #                      other role and for all legacy accounts created
+    #                      before referrals existed; set permanently once a
+    #                      code is generated.
+    # * sponsor_coordinator — the State Coordinator who recruited this user
+    #                      (or whose code was redeemed/matched at creation).
+    # * sponsor_agent     — the Agent who recruited this user (or whose code
+    #                      was redeemed/matched at creation).
+    #
+    # Both sponsor FKs are nullable for backward compatibility (legacy rows)
+    # and are deliberately kept permanent once set — they are never cleared
+    # when a sponsor is later dismissed/suspended, so referral history and
+    # downstream statistics stay intact. Stored directly on User (rather than
+    # a separate Referral model) per the agreed design, since the mobile app
+    # already reads role fields straight off `user` and the same account can
+    # both sponsor and be sponsored.
+    referral_code = models.CharField(max_length=40, unique=True, null=True, blank=True, db_index=True)
+    sponsor_coordinator = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='coordinator_recruits')
+    sponsor_agent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='agent_recruits')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
