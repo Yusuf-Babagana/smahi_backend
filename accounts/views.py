@@ -54,7 +54,7 @@ def register_view(request):
         # If Paystack isn't configured yet (no secret key), skip this so
         # accounts don't get stuck inactive with no way to pay — the fee stays
         # owed (registration_fee_paid=False) and is collected once payments go live.
-        if user.role == 'artisan' and settings.PAYSTACK_SECRET_KEY:
+        if user.role in ('artisan', 'business') and settings.PAYSTACK_SECRET_KEY:
             user.account_status = 'inactive'
             user.save(update_fields=['account_status'])
 
@@ -90,8 +90,8 @@ def register_view(request):
             }
         }
 
-        # Tell the frontend that an artisan must pay before they can use the app
-        if user.role == 'artisan':
+        # Tell the frontend that an artisan or business must pay before they can use the app
+        if user.role in ('artisan', 'business'):
             response_data['requires_payment'] = True
             response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
 
@@ -164,16 +164,16 @@ def login_view(request):
         }
     }
 
-    # Self-heal: an artisan may have PAID without the app managing to verify
+    # Self-heal: an artisan or business may have PAID without the app managing to verify
     # (connection lost / app closed on the payment page). Check Paystack for
     # their recent pending references before demanding payment again.
-    if user.role == 'artisan' and not user.registration_fee_paid:
+    if user.role in ('artisan', 'business') and not user.registration_fee_paid:
         _reconcile_pending_payments(user)
         if user.registration_fee_paid:
             response_data['user'] = UserSerializer(user).data
 
-    # Artisans who haven't paid the registration fee need to be redirected
-    if user.role == 'artisan' and not user.registration_fee_paid:
+    # Artisans and businesses who haven't paid the registration fee need to be redirected
+    if user.role in ('artisan', 'business') and not user.registration_fee_paid:
         response_data['requires_payment'] = True
         response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
 
@@ -526,9 +526,9 @@ def initialize_registration_payment(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    if user.role != 'artisan':
+    if user.role not in ('artisan', 'business'):
         return Response(
-            {'error': 'Registration fee applies to artisans only.'},
+            {'error': 'Registration fee applies to artisans and businesses only.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -576,7 +576,7 @@ def initialize_registration_payment(request):
         'callback_url': callback_url,
         'metadata': {
             'user_id': user.id,
-            'purpose': 'artisan_registration',
+            'purpose': f'{user.role}_registration',
         },
     }
 
@@ -644,9 +644,9 @@ def verify_registration_payment(request, reference):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    if user.role != 'artisan':
+    if user.role not in ('artisan', 'business'):
         return Response(
-            {'error': 'Registration fee applies to artisans only.'},
+            {'error': 'Registration fee applies to artisans and businesses only.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 

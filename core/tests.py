@@ -41,7 +41,7 @@ class BookingTestBase(APITestCase):
             artisan=self.artisan_user,
             service_description='Fix leaking sink',
             address='12 Test Street',
-            scheduled_date=timezone.now() + timedelta(days=1),
+            scheduled_date=timezone.now() + timedelta(days=2),
             status='pending',
         )
         defaults.update(overrides)

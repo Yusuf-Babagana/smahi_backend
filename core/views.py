@@ -127,12 +127,20 @@ class BusinessProfileViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelView
     def get_serializer_class(self):
         if self.action in ('update', 'partial_update'):
             return BusinessProfileUpdateSerializer
+        # Agents, coordinators, and admins oversight get the full profile serializer (with user_details)
+        user = getattr(self.request, 'user', None)
+        if user and user.is_authenticated and user.role in ('agent', 'state_coordinator', 'admin'):
+            return BusinessProfileSerializer
         # RBAC (item 11): public directory (AllowAny) — same reasoning as
         # ArtisanViewSet.get_serializer_class() above.
         return PublicBusinessProfileSerializer
 
     def get_queryset(self):
-        return BusinessProfile.objects.select_related('user', 'category')
+        qs = BusinessProfile.objects.select_related('user', 'category')
+        if getattr(settings, 'PAYSTACK_SECRET_KEY', ''):
+            if self.action == 'list' and not self.request.query_params.get('user'):
+                qs = qs.filter(user__registration_fee_paid=True)
+        return qs
 
 
 class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
@@ -153,6 +161,10 @@ class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
     def get_serializer_class(self):
         if self.action in ('update', 'partial_update'):
             return ArtisanProfileUpdateSerializer
+        # Agents, coordinators, and admins oversight get the full profile serializer (with user_details)
+        user = getattr(self.request, 'user', None)
+        if user and user.is_authenticated and user.role in ('agent', 'state_coordinator', 'admin'):
+            return ArtisanProfileSerializer
         # RBAC (item 11): this endpoint is a public directory (AllowAny) —
         # PublicArtisanProfileSerializer nests only PublicUserSerializer,
         # never the full one, regardless of who (if anyone) is asking.
@@ -171,6 +183,8 @@ class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
         # own updates — otherwise they could never toggle themselves back on.
         if self.action == 'list' and not self.request.query_params.get('user'):
             queryset = queryset.filter(is_available=True)
+            if getattr(settings, 'PAYSTACK_SECRET_KEY', ''):
+                queryset = queryset.filter(user__registration_fee_paid=True)
         
         # Note: I removed the prefetch_related for service_countries to keep it simple
 
@@ -341,10 +355,18 @@ class AgentArtisanListView(generics.ListAPIView):
         if user.role == 'agent':
             if not user.lga_id:
                 return ArtisanProfile.objects.none()
-            return base.filter(user__lga_id=user.lga_id).distinct()
-        if not user.state_id:
+            qs = base.filter(user__lga_id=user.lga_id).distinct()
+        elif not user.state_id:
             return ArtisanProfile.objects.none()
-        return base.filter(user__state_id=user.state_id).distinct()
+        else:
+            qs = base.filter(user__state_id=user.state_id).distinct()
+
+        payment_status = self.request.query_params.get('payment_status')
+        if payment_status == 'paid':
+            qs = qs.filter(user__registration_fee_paid=True)
+        elif payment_status == 'unpaid':
+            qs = qs.filter(user__registration_fee_paid=False)
+        return qs
 
 
 class AgentClientListView(generics.ListAPIView):
@@ -386,10 +408,18 @@ class AgentBusinessListView(generics.ListAPIView):
         if user.role == 'agent':
             if not user.lga_id:
                 return BusinessProfile.objects.none()
-            return base.filter(user__lga_id=user.lga_id).distinct()
-        if not user.state_id:
+            qs = base.filter(user__lga_id=user.lga_id).distinct()
+        elif not user.state_id:
             return BusinessProfile.objects.none()
-        return base.filter(user__state_id=user.state_id).distinct()
+        else:
+            qs = base.filter(user__state_id=user.state_id).distinct()
+
+        payment_status = self.request.query_params.get('payment_status')
+        if payment_status == 'paid':
+            qs = qs.filter(user__registration_fee_paid=True)
+        elif payment_status == 'unpaid':
+            qs = qs.filter(user__registration_fee_paid=False)
+        return qs
 
 
 class AgentServiceRequestsView(generics.ListAPIView):
@@ -598,7 +628,13 @@ class AgentRegisterArtisanView(APIView):
         if not (user.sponsor_agent_id or user.sponsor_coordinator_id):
             user.sponsor_agent = request.user if request.user.role == 'agent' else None
             user.sponsor_coordinator = request.user if request.user.role == 'state_coordinator' else request.user.sponsor_coordinator
-        user.save(update_fields=['sponsor_agent', 'sponsor_coordinator'])
+        
+        # Artisans must pay the registration fee before their account is activated
+        if getattr(settings, 'PAYSTACK_SECRET_KEY', ''):
+            user.account_status = 'inactive'
+            user.registration_fee_paid = False
+
+        user.save(update_fields=['sponsor_agent', 'sponsor_coordinator', 'account_status', 'registration_fee_paid'])
 
         log_activity(request.user, 'artisan_registered', target_user=user, activity_status='pending')
 
@@ -688,7 +724,13 @@ class AgentRegisterBusinessView(APIView):
         if not (user.sponsor_agent_id or user.sponsor_coordinator_id):
             user.sponsor_agent = request.user if request.user.role == 'agent' else None
             user.sponsor_coordinator = request.user if request.user.role == 'state_coordinator' else request.user.sponsor_coordinator
-        user.save(update_fields=['sponsor_agent', 'sponsor_coordinator'])
+
+        # Businesses must pay the registration fee before their account is activated
+        if getattr(settings, 'PAYSTACK_SECRET_KEY', ''):
+            user.account_status = 'inactive'
+            user.registration_fee_paid = False
+
+        user.save(update_fields=['sponsor_agent', 'sponsor_coordinator', 'account_status', 'registration_fee_paid'])
 
         log_activity(request.user, 'business_registered', target_user=user, activity_status='pending')
 
@@ -1074,7 +1116,7 @@ class CoordinatorCreateAgentView(APIView):
         except Exception:
             logger.exception("Failed to dispatch welcome credentials email to new agent %s", user.email)
 
-        log_activity(request.user, 'agent_created', target_user=user, activity_status='active')
+        log_activity(request.user, 'agent_created', target_user=user, activity_status=user.account_status)
 
         coord_name = f"{request.user.first_name} {request.user.last_name}".strip() or "Coordinator"
         lga_name = user.lga.name if user.lga else "assigned LGA"
@@ -1514,6 +1556,12 @@ class AgentVerifyArtisanView(APIView):
         except User.DoesNotExist:
             return Response({'error': not_found_message}, status=status.HTTP_404_NOT_FOUND)
 
+        if getattr(settings, 'PAYSTACK_SECRET_KEY', '') and not artisan_user.registration_fee_paid:
+            return Response(
+                {'error': 'Cannot verify this artisan: registration fee of ₦2,500 has not been paid.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         artisan_profile = approve_artisan_verification(artisan_user, reviewed_by=request.user)
 
         return Response({
@@ -1555,6 +1603,12 @@ class AgentVerifyBusinessView(APIView):
             business_user = User.objects.get(id=user_id, role='business', **lookup)
         except User.DoesNotExist:
             return Response({'error': not_found_message}, status=status.HTTP_404_NOT_FOUND)
+
+        if new_status == 'approved' and getattr(settings, 'PAYSTACK_SECRET_KEY', '') and not business_user.registration_fee_paid:
+            return Response(
+                {'error': 'Cannot verify this business: registration fee of ₦2,500 has not been paid.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if new_status == 'approved':
             business_profile = approve_business_verification(business_user, reviewed_by=request.user)
