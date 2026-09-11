@@ -265,6 +265,49 @@ def password_reset_confirm_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def change_password_view(request):
+    current_password = request.data.get('current_password', '')
+    new_password = request.data.get('new_password', '')
+    confirm_password = request.data.get('confirm_password', '')
+
+    if not current_password or not new_password:
+        return Response(
+            {'error': 'Current password and new password are required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not request.user.check_password(current_password):
+        return Response(
+            {'error': 'Current password is incorrect.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if confirm_password and new_password != confirm_password:
+        return Response(
+            {'error': 'New passwords do not match.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if len(new_password) < 6:
+        return Response(
+            {'error': 'New password must be at least 6 characters.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if current_password == new_password:
+        return Response(
+            {'error': 'New password must be different from current password.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    request.user.set_password(new_password)
+    request.user.save(update_fields=['password'])
+
+    return Response({'message': 'Password changed successfully.'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def request_email_verification_view(request):
     if request.user.email_verified:
         return Response(

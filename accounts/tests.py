@@ -464,3 +464,62 @@ class ProfileUpdateRoundsHighPrecisionCoordinatesTests(APITestCase):
         user.refresh_from_db()
         self.assertAlmostEqual(float(user.latitude), 11.945524, places=5)
         self.assertAlmostEqual(float(user.longitude), 8.482704, places=5)
+
+
+class ChangePasswordTests(APITestCase):
+    def setUp(self):
+        self.agent = User.objects.create_user(
+            email='agent_change_pass@test.com',
+            password='Smahi@5683',
+            first_name='Aliyu',
+            last_name='Sani',
+            role='agent',
+        )
+        self.url = '/api/auth/change-password/'
+
+    def test_authenticated_agent_can_change_password(self):
+        self.client.force_authenticate(self.agent)
+        response = self.client.post(self.url, {
+            'current_password': 'Smahi@5683',
+            'new_password': 'MySecurePassword2026',
+            'confirm_password': 'MySecurePassword2026',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.agent.refresh_from_db()
+        self.assertTrue(self.agent.check_password('MySecurePassword2026'))
+        self.assertFalse(self.agent.check_password('Smahi@5683'))
+
+    def test_change_password_requires_correct_current_password(self):
+        self.client.force_authenticate(self.agent)
+        response = self.client.post(self.url, {
+            'current_password': 'WrongPassword123',
+            'new_password': 'MySecurePassword2026',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Current password is incorrect', response.data.get('error', ''))
+
+    def test_change_password_rejects_short_password(self):
+        self.client.force_authenticate(self.agent)
+        response = self.client.post(self.url, {
+            'current_password': 'Smahi@5683',
+            'new_password': '123',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('at least 6 characters', response.data.get('error', ''))
+
+    def test_change_password_rejects_same_password(self):
+        self.client.force_authenticate(self.agent)
+        response = self.client.post(self.url, {
+            'current_password': 'Smahi@5683',
+            'new_password': 'Smahi@5683',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('different from current password', response.data.get('error', ''))
+
+    def test_change_password_unauthenticated_rejected(self):
+        response = self.client.post(self.url, {
+            'current_password': 'Smahi@5683',
+            'new_password': 'MySecurePassword2026',
+        })
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+

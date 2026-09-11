@@ -1051,8 +1051,17 @@ class CoordinatorCreateAgentView(APIView):
                         <p style="margin: 6px 0; font-size: 14px;"><strong>Agent ID:</strong> <span style="color: #0F172A;">{user.serial_number}</span></p>
                     </div>
 
+                    <div style="text-align: center; margin: 28px 0 20px 0;">
+                        <a href="https://play.google.com/store/apps/details?id=com.smahi.app" target="_blank" style="background-color: #1B5FD9; color: #FFFFFF; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(27, 95, 217, 0.3);">
+                            📱 Download S-MAHI on Google Play
+                        </a>
+                        <p style="margin-top: 10px; font-size: 12px; color: #64748B;">
+                            Direct link: <a href="https://play.google.com/store/apps/details?id=com.smahi.app" style="color: #1B5FD9; word-break: break-all;">https://play.google.com/store/apps/details?id=com.smahi.app</a>
+                        </p>
+                    </div>
+
                     <p style="font-size: 14px; line-height: 1.6; color: #475569;">
-                        Please open the S-MAHI app, log in using your email and temporary password, and access your Field Agent Dashboard to begin onboarding artisans and businesses in your LGA.
+                        Please download the S-MAHI app, log in using your email and temporary password, and access your Field Agent Dashboard to begin onboarding artisans and businesses in your LGA. You can change your password anytime directly in the app.
                     </p>
                 </div>
                 
@@ -1071,10 +1080,13 @@ class CoordinatorCreateAgentView(APIView):
         lga_name = user.lga.name if user.lga else "assigned LGA"
         share_message = (
             f"Hello {user.first_name}, you have been appointed as an S-MAHI Agent for {lga_name} LGA by {coord_name}.\n\n"
-            f"Download the S-MAHI app and log in with:\n"
+            f"1. Download S-MAHI on Google Play Store:\n"
+            f"https://play.google.com/store/apps/details?id=com.smahi.app\n\n"
+            f"2. Log in with your credentials:\n"
             f"Email: {user.email}\n"
             f"Password: {generated_password}\n"
-            f"Agent ID: {user.serial_number}"
+            f"Agent ID: {user.serial_number}\n\n"
+            f"You can change your temporary password anytime directly in the app."
         )
 
         return Response({
