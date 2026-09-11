@@ -104,18 +104,39 @@ def register_view(request):
 @permission_classes([AllowAny])
 @throttle_classes([ScopedRateThrottle])
 def login_view(request):
-    email = request.data.get('email')
+    identifier = (
+        request.data.get('email')
+        or request.data.get('phone')
+        or request.data.get('phone_number')
+        or request.data.get('identifier')
+        or ''
+    ).strip()
     password = request.data.get('password')
 
-    if not email or not password:
+    if not identifier or not password:
         return Response(
-            {'error': 'Email and password are required.'},
+            {'error': 'Email or phone number and password are required.'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    try:
-        user = User.objects.get(email=email)
-    except User.DoesNotExist:
+    user = None
+    if '@' in identifier:
+        user = User.objects.filter(email__iexact=identifier).first()
+    else:
+        # Normalize phone variants: e.g. 08012345678, +2348012345678, 2348012345678
+        clean_digits = ''.join(c for c in identifier if c.isdigit())
+        phone_variants = {identifier}
+        if clean_digits:
+            phone_variants.add(clean_digits)
+            if clean_digits.startswith('234') and len(clean_digits) > 3:
+                phone_variants.add('0' + clean_digits[3:])
+                phone_variants.add('+' + clean_digits)
+            elif clean_digits.startswith('0') and len(clean_digits) > 1:
+                phone_variants.add('234' + clean_digits[1:])
+                phone_variants.add('+234' + clean_digits[1:])
+        user = User.objects.filter(phone_number__in=phone_variants).first()
+
+    if not user:
         return Response(
             {'error': 'Invalid credentials.'},
             status=status.HTTP_401_UNAUTHORIZED

@@ -969,78 +969,122 @@ class CoordinatorCreateAgentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        generated_password = secrets.token_urlsafe(9)
+        email = (request.data.get('email') or '').strip().lower()
+        if not email:
+            return Response({'email': ['Agent personal email is required.']}, status=status.HTTP_400_BAD_REQUEST)
+
+        phone_number = (request.data.get('phone_number') or request.data.get('phone') or '').strip()
+
+        # Generate a clean, human-friendly default password (e.g. Smahi@4821)
+        import random
+        pin = f"{random.randint(1000, 9999)}"
+        generated_password = f"Smahi@{pin}"
 
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         data['role'] = 'agent'
+        data['email'] = email
+        data['phone_number'] = phone_number
         data['password'] = generated_password
         data['password_confirm'] = generated_password
-        # Country/state forced to the coordinator's own (same reasoning as
-        # AgentRegisterArtisanView) — only LGA is caller-supplied, validated
-        # above. Country is derived from the coordinator's STATE, not
-        # copied from request.user.country_id directly — see
-        # AgentRegisterArtisanView's matching comment for the "Unknown
-        # Country" bug this fixes (a coordinator whose own country was
-        # never set would otherwise pass that gap on to every agent they
-        # create too).
         data['country'] = request.user.state.country_id
         data['state'] = request.user.state_id
         data['client_request_id'] = client_request_id
 
-        # extra_allowed_roles is what actually lets 'agent' through
-        # validate_role here — see that method's own comment. The public
-        # register_view never passes this, so it can't create agents.
         serializer = UserRegistrationSerializer(data=data, extra_allowed_roles={'agent'})
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         user = serializer.save()
 
-        # Not active yet, even though a Coordinator just created them — a
-        # deliberate second checkpoint before real access/credentials go
-        # live (Coordinator Dashboard spec's explicit workflow). Serial
-        # number needs user.id, so it's generated after save() rather than
-        # handed to the serializer. state_code is nullable/blank on State
-        # (some states, especially outside Nigeria, may never have one set)
-        # — falls back to the state's own name rather than ever putting the
-        # literal string "None" in a real Agent ID.
+        # Check if coordinator requested auto-approval/instant activation (modern mobile flow)
+        # or standard pending_approval (legacy workflow and tests)
+        auto_approve = bool(request.data.get('auto_approve') or request.data.get('auto_activate'))
+
         state_code = request.user.state.state_code or request.user.state.name[:3].upper()
-        user.account_status = 'pending_approval'
+        user.account_status = 'active' if auto_approve else 'pending_approval'
         user.serial_number = f"AGT-{state_code}-{user.id:05d}"
-        # Permanently record the coordinator who recruited this agent — the
-        # referral chain (Coordinator -> Agent); see core/referrals.py. Set
-        # at creation (before approval) so the sponsor is known even if the
-        # agent is later dismissed/rejected. An optional referral code the
-        # coordinator entered is resolved by UserRegistrationSerializer and
-        # already attached in its create() — that wins; otherwise the
-        # creating coordinator sponsors them. The agent doesn't get their own
-        # referral_code until they're actually approved (CoordinatorAgentStatusView).
         if not user.sponsor_coordinator_id:
             user.sponsor_coordinator = request.user
+        
+        if auto_approve:
+            from core.referrals import ensure_referral_code
+            ensure_referral_code(user)
+        else:
+            try:
+                emit(
+                    'agent_pending_approval',
+                    recipient=request.user,
+                    title='New agent awaiting your approval',
+                    body=f"{user.first_name} {user.last_name} ({user.serial_number}) is pending your approval.",
+                    related_object=user,
+                )
+            except Exception:
+                logger.exception('Failed to emit agent_pending_approval notification')
+
         user.save(update_fields=['account_status', 'serial_number', 'sponsor_coordinator'])
 
-        # Best-effort — a failed notification must never fail the actual
-        # agent creation, which already succeeded and is the real outcome.
+        # Deliver credentials to agent's personal email via Brevo
+        email_sent = False
         try:
-            emit(
-                'agent_pending_approval',
-                recipient=request.user,
-                title='New agent awaiting your approval',
-                body=f"{user.first_name} {user.last_name} ({user.serial_number}) is pending your approval.",
-                related_object=user,
-            )
-        except Exception:
-            logger.exception('Failed to emit agent_pending_approval notification')
+            from notifications.brevo import send_transactional_email
+            coord_name = f"{request.user.first_name} {request.user.last_name}".strip() or "State Coordinator"
+            state_name = request.user.state.name if request.user.state else "your state"
+            lga_name = user.lga.name if user.lga else "assigned LGA"
+            subject = "Welcome to S-MAHI — Your Agent Account Credentials"
+            html_content = f"""
+            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #F8FAFC; border-radius: 12px; color: #1E293B;">
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <h1 style="color: #1B5FD9; margin: 0; font-size: 24px; font-weight: 800;">S-MAHI</h1>
+                    <p style="color: #64748B; font-size: 14px; margin-top: 4px;">Service Marketplace & Artisan Network</p>
+                </div>
+                
+                <div style="background-color: #FFFFFF; border-radius: 12px; padding: 28px; border: 1px solid #E2E8F0; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                    <h2 style="color: #0F172A; font-size: 18px; margin-top: 0;">Hello {user.first_name},</h2>
+                    <p style="font-size: 15px; line-height: 1.6; color: #334155;">
+                        Congratulations! You have been appointed as an official <strong>S-MAHI Field Agent</strong> for <strong>{lga_name} LGA</strong>, {state_name}, by State Coordinator <strong>{coord_name}</strong>.
+                    </p>
+                    
+                    <div style="background-color: #EFF6FF; border-left: 4px solid #1B5FD9; padding: 16px 20px; border-radius: 6px; margin: 24px 0;">
+                        <h3 style="color: #1E40AF; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Your Login Credentials</h3>
+                        <p style="margin: 6px 0; font-size: 14px;"><strong>Email:</strong> <span style="color: #0F172A;">{user.email}</span></p>
+                        <p style="margin: 6px 0; font-size: 14px;"><strong>Temporary Password:</strong> <span style="background-color: #DBEAFE; padding: 3px 8px; border-radius: 4px; font-weight: 700; color: #1E40AF; letter-spacing: 1px;">{generated_password}</span></p>
+                        <p style="margin: 6px 0; font-size: 14px;"><strong>Agent ID:</strong> <span style="color: #0F172A;">{user.serial_number}</span></p>
+                    </div>
 
-        log_activity(request.user, 'agent_created', target_user=user, activity_status='pending_approval')
+                    <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+                        Please open the S-MAHI app, log in using your email and temporary password, and access your Field Agent Dashboard to begin onboarding artisans and businesses in your LGA.
+                    </p>
+                </div>
+                
+                <div style="text-align: center; margin-top: 24px; color: #94A3B8; font-size: 12px;">
+                    <p style="margin: 0;">This is an automated notification from S-MAHI Platform.</p>
+                </div>
+            </div>
+            """
+            email_sent = send_transactional_email(to_email=user.email, subject=subject, html_content=html_content)
+        except Exception:
+            logger.exception("Failed to dispatch welcome credentials email to new agent %s", user.email)
+
+        log_activity(request.user, 'agent_created', target_user=user, activity_status='active')
+
+        coord_name = f"{request.user.first_name} {request.user.last_name}".strip() or "Coordinator"
+        lga_name = user.lga.name if user.lga else "assigned LGA"
+        share_message = (
+            f"Hello {user.first_name}, you have been appointed as an S-MAHI Agent for {lga_name} LGA by {coord_name}.\n\n"
+            f"Download the S-MAHI app and log in with:\n"
+            f"Email: {user.email}\n"
+            f"Password: {generated_password}\n"
+            f"Agent ID: {user.serial_number}"
+        )
 
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
+            'email_sent': email_sent,
+            'share_message': share_message,
             'message': (
-                'Agent created and is Pending Approval — share this one-time password with '
-                'them securely (it will not be shown again), then approve them from the agents '
-                'list once you\'re ready for their account to become active.'
+                f'Agent created successfully! Credentials have been sent to {user.email}. '
+                f'You can also share them directly with the agent.'
             ),
         }, status=status.HTTP_201_CREATED)
 
