@@ -938,11 +938,33 @@ def _agents_with_registration_counts(queryset):
     )
 
 
+def _coordinator_visible_agents(coordinator):
+    """Which agents a state coordinator can see and manage, now that a
+    state holds many coordinators (the one-per-state rule is gone —
+    accounts/0018): the coordinator's OWN agents (permanent
+    sponsor_coordinator link), plus legacy agents in the same state that
+    were never claimed by anyone (registered before the referral network
+    or while the state had no standing coordinator). Strictly-claimed
+    agents of a DIFFERENT coordinator in the same state are excluded —
+    agents partition among their sponsors, so no coordinator can touch a
+    colleague's team. In a single-coordinator state this reduces to
+    exactly the old state-wide filter, so existing behavior is unchanged.
+    """
+    return User.objects.filter(
+        role='agent', state_id=coordinator.state_id,
+    ).filter(
+        Q(sponsor_coordinator_id=coordinator.id) | Q(sponsor_coordinator__isnull=True)
+    )
+
+
 class CoordinatorAgentListView(generics.ListAPIView):
-    """All agents in the requesting state coordinator's own state, each
-    annotated with how many artisans they've registered and verified —
-    the actual oversight a coordinator needs that a bare agent list
-    (identical to IsStateAgent's artisan/client scoping) doesn't give."""
+    """Agents belonging to the requesting state coordinator — their own
+    recruits (the permanent sponsor_coordinator link + unclaimed legacy
+    agents in the same state), each annotated with how many artisans
+    they've registered and verified — the actual oversight a coordinator
+    needs that a bare agent list (identical to IsStateAgent's artisan/
+    client scoping) doesn't give. With multiple coordinators per state,
+    a colleague's claimed agents are deliberately out of reach."""
     serializer_class = AgentOverviewSerializer
     permission_classes = [IsAuthenticated, IsStateCoordinator]
     filterset_fields = ['lga', 'account_status']
@@ -954,11 +976,10 @@ class CoordinatorAgentListView(generics.ListAPIView):
     search_fields = ['first_name', 'last_name', 'email', 'phone_number', 'lga__name']
 
     def get_queryset(self):
-        state_id = self.request.user.state_id
-        if not state_id:
+        if not self.request.user.state_id:
             return User.objects.none()
         return _agents_with_registration_counts(
-            User.objects.filter(role='agent', state_id=state_id)
+            _coordinator_visible_agents(self.request.user)
         ).order_by('-created_at')
 
 
@@ -1145,10 +1166,12 @@ class CoordinatorCreateAgentView(APIView):
 
 class CoordinatorAgentStatusView(APIView):
     """Coordinator approves/suspends/reactivates/dismisses/rejects one of
-    their own state's agents. Scoped to the same state as the coordinator
-    — can't touch an agent in a different state, and can't touch anything
-    but an 'agent'. This is also how a 'pending_approval' agent
-    (CoordinatorCreateAgentView) actually gets approved — setting
+    their OWN agents — scoped to the same ownership rule as
+    CoordinatorAgentListView (their recruits + unclaimed legacy agents),
+    and can't touch anything but an 'agent'. A colleague's claimed agent
+    in the same state is as out of reach as one in a different state,
+    both returning the same 404. This is also how a 'pending_approval'
+    agent (CoordinatorCreateAgentView) actually gets approved — setting
     status='active' from there works exactly the same as reactivating a
     suspended one, no separate endpoint needed."""
     permission_classes = [IsAuthenticated, IsStateCoordinator]
@@ -1166,7 +1189,7 @@ class CoordinatorAgentStatusView(APIView):
             return Response({'error': 'Your account has no state assigned.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            agent = User.objects.get(id=agent_id, role='agent', state_id=state_id)
+            agent = _coordinator_visible_agents(request.user).get(id=agent_id)
         except User.DoesNotExist:
             return Response({'error': 'Agent not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1339,7 +1362,7 @@ class CoordinatorLGAOverviewView(APIView):
             return Response({'error': 'LGA not found in your state.'}, status=status.HTTP_404_NOT_FOUND)
 
         agents = _agents_with_registration_counts(
-            User.objects.filter(role='agent', lga_id=lga.id)
+            _coordinator_visible_agents(request.user).filter(lga_id=lga.id)
         ).order_by('-created_at')
 
         # Verification activities — an artisan's home LGA is their own
@@ -1715,7 +1738,7 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
     AdminCreateCoordinatorView for the first). Explicitly requested:
     Admin needs to view/edit/deactivate any account directly from the
     mobile app — most immediately, to resolve states that ended up with
-    more than one active coordinator without needing Django Admin access.
+    multiple active coordinators without needing Django Admin access.
 
     DELETE is always a soft-delete (is_active=False, account_status=
     'inactive'), never a real row deletion — matches the app's existing
@@ -1724,9 +1747,7 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
     tied to this user's FK relations. 'inactive' (not 'dismissed') is
     used deliberately — 'dismissed' is reserved for the specific agent/
     coordinator lifecycle endpoints (CoordinatorAgentStatusView/
-    AdminCoordinatorStatusView), but both statuses equally free up a
-    state's one-coordinator slot (see the User model's own
-    unique_active_coordinator_per_state constraint)."""
+    AdminCoordinatorStatusView)."""
     permission_classes = [IsAuthenticated, IsAdmin]
     queryset = User.objects.all().select_related('state', 'lga', 'country')
 
@@ -1740,7 +1761,7 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
             return super().update(request, *args, **kwargs)
         except IntegrityError:
             return Response(
-                {'error': 'This change conflicts with an existing rule (e.g. that state already has an active coordinator).'},
+                {'error': 'This change conflicts with an existing rule (e.g. that email is already in use).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1785,6 +1806,14 @@ class AdminCreateCoordinatorView(APIView):
     and Admin has no "own state" to force — so state is caller-supplied
     here, validated to be a real State, with country derived from it
     rather than trusted separately (so the two can never mismatch).
+
+    A state may hold any number of coordinators concurrently (10+ is
+    expected as the network grows) — this view never blocks re-assigning
+    an existing state, the way it did under the old one-coordinator-per-
+    state rule (unique_active_coordinator_per_state, removed in
+    accounts/0018). New coordinators report referrals they generate
+    through their own referral_code; AdminCoordinatorStatusView's
+    suspended/dismissed lifecycle still works the same per-coordinator.
     """
     permission_classes = [IsAuthenticated, IsAdmin]
 
@@ -1816,26 +1845,6 @@ class AdminCreateCoordinatorView(APIView):
         if not state:
             return Response({'error': 'That state does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # One state, one coordinator holding the role at a time — 'active'
-        # and 'suspended' both still occupy the seat; 'dismissed' and
-        # 'inactive' (AdminUserDetailView's soft-delete) both free it up.
-        # Mirrors the matching UniqueConstraint on the User model exactly
-        # (accounts.models) — that's the DB-level backstop against a race
-        # between two concurrent requests; this check is what gives a
-        # clean, specific error in the normal (non-race) case instead of
-        # a raw IntegrityError.
-        existing_coordinator = User.objects.filter(
-            role='state_coordinator', state_id=state.id, account_status__in=['active', 'suspended']
-        ).first()
-        if existing_coordinator:
-            return Response({
-                'error': (
-                    f"{state.name} already has a coordinator "
-                    f"({existing_coordinator.first_name} {existing_coordinator.last_name}). "
-                    "Dismiss them first before assigning a new one."
-                ),
-            }, status=status.HTTP_400_BAD_REQUEST)
-
         # 8-digit numeric PIN rather than AgentRegisterArtisanView/
         # CoordinatorCreateAgentView's longer token_urlsafe — deliberately
         # scoped to coordinators only (explicit request): still randomly
@@ -1860,15 +1869,7 @@ class AdminCreateCoordinatorView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            user = serializer.save()
-        except IntegrityError:
-            # The pre-check above raced with another request that got
-            # there first — same message either way, from the caller's
-            # perspective this is just a slower version of that check.
-            return Response({
-                'error': f"{state.name} already has a coordinator. Dismiss them first before assigning a new one.",
-            }, status=status.HTTP_400_BAD_REQUEST)
+        user = serializer.save()
 
         log_activity(request.user, 'coordinator_created', target_user=user, activity_status='active')
 

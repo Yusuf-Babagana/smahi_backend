@@ -815,6 +815,40 @@ class CoordinatorAgentListTests(CoordinatorDashboardTestBase):
         response = self.client.get(self.LIST_URL)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_coordinator_cannot_see_another_same_state_coordinators_claimed_agent(self):
+        """Multi-coordinator partition: an agent claimed by one Kano
+        coordinator (permanent sponsor_coordinator link) is invisible to a
+        second Kano coordinator, while unclaimed legacy agents in the same
+        state stay visible to both."""
+        other_kano_coord = User.objects.create_user(
+            email='other_kano_coord@test.com', password='pass12345',
+            first_name='Other', last_name='KanoCoordinator', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+        User.objects.create_user(
+            email='claimed_by_kano@test.com', password='pass12345',
+            first_name='Claimed', last_name='Agent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_coordinator=self.kano_coordinator,
+        )
+
+        # The claiming coordinator sees their own agent plus unclaimed ones.
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.get(self.LIST_URL)
+        emails = [a['email'] for a in response.data['results']]
+        self.assertIn('claimed_by_kano@test.com', emails)
+        self.assertIn('kano_agent@test.com', emails)
+
+        # The second same-state coordinator sees only unclaimed agents —
+        # someone else's claimed agent is as out of reach as another
+        # state's.
+        self.client.force_authenticate(user=other_kano_coord)
+        response = self.client.get(self.LIST_URL)
+        emails = [a['email'] for a in response.data['results']]
+        self.assertIn('kano_agent@test.com', emails)
+        self.assertNotIn('claimed_by_kano@test.com', emails)
+        self.assertNotIn('lagos_agent@test.com', emails)
+
 
 class CoordinatorCreateAgentTests(CoordinatorDashboardTestBase):
     CREATE_URL = '/api/v1/coordinator/agents/create/'
@@ -1078,6 +1112,30 @@ class CoordinatorAgentStatusTests(CoordinatorDashboardTestBase):
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.post(self.status_url(self.kano_agent.id), {'status': 'banned'})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_coordinator_cannot_manage_another_same_state_coordinators_claimed_agent(self):
+        other_kano_coord = User.objects.create_user(
+            email='other_kano_coord@test.com', password='pass12345',
+            first_name='Other', last_name='KanoCoordinator', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+        # Claim the base kano_agent under the FIRST coordinator, then try
+        # to suspend it as a second coordinator in the same state.
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+
+        self.client.force_authenticate(user=other_kano_coord)
+        response = self.client.post(self.status_url(self.kano_agent.id), {'status': 'suspended'})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.account_status, 'active', 'must be completely untouched')
+
+        # The claiming coordinator still manages it normally.
+        self.client.force_authenticate(user=self.kano_coordinator)
+        response = self.client.post(self.status_url(self.kano_agent.id), {'status': 'suspended'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.account_status, 'suspended')
 
 
 class ActivityLogTests(CoordinatorDashboardTestBase):
@@ -2386,17 +2444,21 @@ class AdminUserCRUDTests(CoordinatorDashboardTestBase):
         self.assertEqual(self.kano_agent.first_name, 'Renamed')
         self.assertEqual(self.kano_agent.phone_number, '08099998888')
 
-    def test_editing_account_status_that_violates_one_coordinator_per_state_is_rejected_cleanly(self):
-        """Regression guard for exactly the scenario that motivated this
-        endpoint: turning a second user into an active coordinator for a
-        state that already has one must fail with a clean 400, not a raw
-        500 from an uncaught IntegrityError."""
+    def test_editing_a_user_into_a_coordinator_for_a_state_that_already_has_coordinators_succeeds(self):
+        """The one-coordinator-per-state rule is gone (constraint removed
+        in accounts/0018): Admin may now turn a user into an active
+        coordinator for a state that already holds coordinators — a second
+        coordinator is not a violation anymore, so this succeeds cleanly
+        instead of hitting a DB constraint."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.patch(self.detail_url(self.lagos_agent.id), {
             'role': 'state_coordinator', 'state': self.kano.id, 'account_status': 'active',
         })
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.lagos_agent.refresh_from_db()
+        self.assertEqual(self.lagos_agent.role, 'state_coordinator')
+        self.assertEqual(self.lagos_agent.state_id, self.kano.id)
+        self.assertTrue(self.lagos_agent.is_active)
 
     def test_delete_is_a_soft_delete_not_a_real_deletion(self):
         self.client.force_authenticate(user=self.admin)
@@ -2509,29 +2571,66 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
         self.assertTrue(new_coord.is_active)
         self.assertTrue(new_coord.check_password(password), "the returned password must actually be the one that was set")
 
-    def test_cannot_create_a_second_coordinator_for_a_state_that_already_has_one(self):
+    def test_can_create_multiple_coordinators_for_the_same_state(self):
+        """The one-coordinator-per-state rule is gone (DB constraint
+        removed in accounts/0018): a state may host 10+ coordinators.
+        Creating a second and third coordinator for a state that already
+        has one succeeds — each gets their own row, referral code, and
+        recruits."""
         self.client.force_authenticate(user=self.admin)
-        response = self.client.post(self.CREATE_URL, {
-            'email': 'second_kano_coord@test.com', 'first_name': 'Second', 'last_name': 'Coordinator',
-            'state': self.kano.id,
-        })
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Kano', response.data.get('error', ''))
-        self.assertFalse(User.objects.filter(email='second_kano_coord@test.com').exists())
+        for email, first in [('second_kano_coord@test.com', 'Second'), ('third_kano_coord@test.com', 'Third')]:
+            response = self.client.post(self.CREATE_URL, {
+                'email': email, 'first_name': first, 'last_name': 'Coordinator',
+                'state': self.kano.id,
+            })
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+            self.assertTrue(response.data.get('generated_password'))
+            coord = User.objects.get(email=email)
+            self.assertEqual(coord.role, 'state_coordinator')
+            self.assertEqual(coord.state_id, self.kano.id)
+            self.assertTrue(coord.is_active)
 
-    def test_a_suspended_coordinator_still_blocks_a_new_one(self):
-        """Suspended is temporary, not vacated — only dismissal actually
-        opens the state up for a replacement."""
+    def test_a_suspended_coordinator_does_not_block_a_new_one(self):
+        """Suspended used to occupy the state's single coordinator 'seat';
+        with multi-coordinator states there is no seat to occupy — another
+        coordinator for the same state can always be created."""
         self.kano_coordinator.account_status = 'suspended'
         self.kano_coordinator.save(update_fields=['account_status'])
 
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.CREATE_URL, {
-            'email': 'sneaky_second_coord@test.com', 'first_name': 'Sneaky', 'last_name': 'Coordinator',
+            'email': 'coexist_suspended_coord@test.com', 'first_name': 'Coexist', 'last_name': 'Suspended',
             'state': self.kano.id,
         })
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertFalse(User.objects.filter(email='sneaky_second_coord@test.com').exists())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_coord = User.objects.get(email='coexist_suspended_coord@test.com')
+        self.assertEqual(new_coord.state_id, self.kano.id)
+
+    def test_agents_count_reflects_each_coordinators_own_recruits(self):
+        """In a multi-coordinator state, Admin's per-coordinator
+        agents_count is the coordinator's own team — claimed recruits
+        (permanent sponsor_coordinator link) plus unclaimed legacy agents
+        in the state — not the whole state's agent population."""
+        second_kano = User.objects.create_user(
+            email='second_kano_admin_test@test.com', password='pass12345',
+            first_name='Second', last_name='KanoCoord', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+        User.objects.create_user(
+            email='claimed_under_second@test.com', password='pass12345',
+            first_name='Claimed', last_name='Second', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_coordinator=second_kano,
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.LIST_URL)
+        rows = {c['email']: c['agents_count'] for c in response.data['results']}
+        # kano_coordinator only oversees the base unclaimed kano_agent (1);
+        # second_kano oversees its claimed agent plus the same unclaimed
+        # kano_agent via the legacy fallback (2).
+        self.assertEqual(rows['kano_coord@test.com'], 1)
+        self.assertEqual(rows['second_kano_admin_test@test.com'], 2)
 
     def test_can_create_a_new_coordinator_after_the_old_one_is_dismissed(self):
         self.kano_coordinator.account_status = 'dismissed'

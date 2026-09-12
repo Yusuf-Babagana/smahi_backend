@@ -202,8 +202,16 @@ def search_agents(requesting_user, query=None, lga=None, phone_number=None, seri
     if not requesting_user.state_id:
         return {'error': 'no_state_assigned', 'message': 'Your account has no state assigned.'}
 
+    # Ownership rule, mirroring core.views._coordinator_visible_agents: a
+    # coordinator may only search agents under themselves (permanent
+    # sponsor_coordinator link) plus unclaimed legacy agents in their
+    # state. A colleague's claimed agents in the same state are out of
+    # reach here — the same partition multi-coordinator states rely on
+    # across every coordinator-facing endpoint.
     qs = User.objects.filter(
-        role='agent', state_id=requesting_user.state_id
+        role='agent', state_id=requesting_user.state_id,
+    ).filter(
+        Q(sponsor_coordinator_id=requesting_user.id) | Q(sponsor_coordinator__isnull=True)
     ).select_related('state', 'lga')
 
     if lga:

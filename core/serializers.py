@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings, ActivityLog
 from accounts.serializers import UserSerializer, PublicUserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
@@ -640,10 +641,14 @@ class CoordinatorOverviewSerializer(serializers.ModelSerializer):
     agents_count is a per-object query (SerializerMethodField), not a
     queryset annotation — deliberately: there's no direct FK from Agent to
     Coordinator (both just share state_id), so a real annotation would
-    need a Subquery/OuterRef. Not worth the complexity here: unlike an
-    agent's artisan counts (which list pages with many rows), the number
-    of state coordinators is realistically capped at one per state (~37
-    for Nigeria) — an N+1 query pattern at that scale is a non-issue."""
+    need a Subquery/OuterRef. Not worth the complexity here: this field
+    counts agents under THIS coordinator specifically (their own recruits
+    plus unclaimed legacy agents in their state — same ownership rule as
+    _coordinator_visible_agents in core.views), so Admin sees each
+    coordinator's team at a glance now that a state can hold 10+
+    coordinators instead of one. Unclaimed agents count toward every
+    coordinator in that state until claimed."""
+
     state_details = StateLiteSerializer(source='state', read_only=True)
     agents_count = serializers.SerializerMethodField()
 
@@ -657,4 +662,9 @@ class CoordinatorOverviewSerializer(serializers.ModelSerializer):
     def get_agents_count(self, obj):
         if not obj.state_id:
             return 0
-        return get_user_model().objects.filter(role='agent', state_id=obj.state_id).count()
+        User = get_user_model()
+        return User.objects.filter(
+            role='agent',
+        ).filter(
+            Q(sponsor_coordinator_id=obj.id) | Q(sponsor_coordinator__isnull=True, state_id=obj.state_id)
+        ).count()
