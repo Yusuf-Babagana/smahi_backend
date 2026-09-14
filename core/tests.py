@@ -1633,6 +1633,42 @@ class RegisterArtisanLGAAndSkillTests(CoordinatorDashboardTestBase):
         new_artisan = User.objects.get(email='fee_unpaid_artisan@test.com')
         self.assertFalse(new_artisan.registration_fee_paid)
 
+    def test_coordinator_registers_an_artisan_and_credentials_are_emailed(self):
+        """A coordinator's artisan registration must dispatch the welcome
+        credentials email automatically (same behaviour as agent creation);
+        the account is created and the email_sent flag is returned so the
+        frontend can confirm delivery."""
+        from unittest.mock import patch
+
+        with patch('notifications.brevo.send_transactional_email', return_value=True) as mocked:
+            self.client.force_authenticate(user=self.kano_coordinator)
+            response = self.client.post(self.REGISTER_URL, {
+                'email': 'emailed_artisan@test.com', 'first_name': 'Emailed', 'last_name': 'Artisan',
+                'lga': self.kano_lga_a.id, 'custom_category_name': 'Plumbing',
+            })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data.get('email_sent'))
+        self.assertEqual(mocked.call_count, 1)
+        call_kwargs = mocked.call_args.kwargs
+        self.assertEqual(call_kwargs['to_email'], 'emailed_artisan@test.com')
+        self.assertIn('Artisan Account Credentials', call_kwargs['subject'])
+        self.assertIn(response.data['generated_password'], call_kwargs['html_content'])
+
+    def test_plain_agent_registers_an_artisan_without_an_email(self):
+        """Existing behaviour preserved: a plain agent's artisan
+        registration stays password-share-only — no email is dispatched."""
+        from unittest.mock import patch
+
+        with patch('notifications.brevo.send_transactional_email', return_value=True) as mocked:
+            self.client.force_authenticate(user=self.kano_agent)
+            response = self.client.post(self.REGISTER_URL, {
+                'email': 'manual_artisan@test.com', 'first_name': 'Manual', 'last_name': 'Artisan',
+                'custom_category_name': 'Welding',
+            })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertFalse(response.data.get('email_sent'))
+        mocked.assert_not_called()
+
 
 class RegistrationCountryDerivationTests(CoordinatorDashboardTestBase):
     """Regression: AgentRegisterArtisanView/AgentRegisterBusinessView/
@@ -1762,6 +1798,43 @@ class AgentRegisterBusinessTests(CoordinatorDashboardTestBase):
         self.assertTrue(
             ActivityLog.objects.filter(action='business_registered', target_user=new_business).exists()
         )
+
+    def test_coordinator_registers_a_business_and_credentials_are_emailed(self):
+        """A coordinator's business registration must dispatch the welcome
+        credentials email automatically (same behaviour as agent creation);
+        the account is created and the email_sent flag is returned so the
+        frontend can confirm delivery."""
+        from unittest.mock import patch
+
+        with patch('notifications.brevo.send_transactional_email', return_value=True) as mocked:
+            self.client.force_authenticate(user=self.kano_coordinator)
+            response = self.client.post(self.REGISTER_URL, {
+                'email': 'emailed_business@test.com', 'first_name': 'Emailed', 'last_name': 'Business',
+                'business_name': "Yusuf's Pharmacy", 'lga': self.kano_lga_b.id,
+                'custom_category_name': 'Pharmacy',
+            })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data.get('email_sent'))
+        self.assertEqual(mocked.call_count, 1)
+        call_kwargs = mocked.call_args.kwargs
+        self.assertEqual(call_kwargs['to_email'], 'emailed_business@test.com')
+        self.assertIn('Business Account Credentials', call_kwargs['subject'])
+        self.assertIn(response.data['generated_password'], call_kwargs['html_content'])
+
+    def test_plain_agent_registers_a_business_without_an_email(self):
+        """Existing behaviour preserved: a plain agent's business
+        registration stays password-share-only — no email is dispatched."""
+        from unittest.mock import patch
+
+        with patch('notifications.brevo.send_transactional_email', return_value=True) as mocked:
+            self.client.force_authenticate(user=self.kano_agent)
+            response = self.client.post(self.REGISTER_URL, {
+                'email': 'manual_business@test.com', 'first_name': 'Manual', 'last_name': 'Business',
+                'business_name': 'Manual Store', 'lga': self.kano_lga_a.id, 'custom_category_name': 'Retail',
+            })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertFalse(response.data.get('email_sent'))
+        mocked.assert_not_called()
 
 
 class AgentRegistrationPaymentTests(CoordinatorDashboardTestBase):

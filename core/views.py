@@ -523,6 +523,85 @@ class AgentDashboardStatsView(APIView):
         return Response(data)
 
 
+def _send_coordinator_welcome_email(user, generated_password, request):
+    """Deliver an account-credentials welcome email to an artisan or
+    business account created by a state coordinator — mirroring
+    CoordinatorCreateAgentView's agent-credential Brevo email, so every
+    account a coordinator creates gets its login credentials dispatched
+    automatically. Called only for coordinator-initiated registrations
+    (a plain agent's artisan/business registrations keep their current
+    no-email behaviour).
+
+    Best-effort by design: any provider failure only logs and returns
+    False — the registration itself must never fail because email
+    dispatch did."""
+    from notifications.brevo import send_transactional_email
+
+    coord_name = f"{request.user.first_name} {request.user.last_name}".strip() or "State Coordinator"
+    state_name = user.state.name if user.state else "your state"
+    lga_name = user.lga.name if user.lga else "assigned LGA"
+
+    if user.role == 'business':
+        subject = 'Welcome to S-MAHI — Your Business Account Credentials'
+        intro = (
+            f'Congratulations! Your business has been registered on S-MAHI in '
+            f'<strong>{lga_name} LGA</strong>, {state_name}, by State Coordinator '
+            f'<strong>{coord_name}</strong>.'
+        )
+        audience = 'business'
+    else:
+        subject = 'Welcome to S-MAHI — Your Artisan Account Credentials'
+        intro = (
+            f'Congratulations! You have been registered as an official '
+            f'<strong>S-MAHI Artisan</strong> in <strong>{lga_name} LGA</strong>, '
+            f'{state_name}, by State Coordinator <strong>{coord_name}</strong>.'
+        )
+        audience = 'artisan'
+
+    html_content = f"""
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #F8FAFC; border-radius: 12px; color: #1E293B;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #1B5FD9; margin: 0; font-size: 24px; font-weight: 800;">S-MAHI</h1>
+            <p style="color: #64748B; font-size: 14px; margin-top: 4px;">Service Marketplace & Artisan Network</p>
+        </div>
+
+        <div style="background-color: #FFFFFF; border-radius: 12px; padding: 28px; border: 1px solid #E2E8F0; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+            <h2 style="color: #0F172A; font-size: 18px; margin-top: 0;">Hello {user.first_name},</h2>
+            <p style="font-size: 15px; line-height: 1.6; color: #334155;">{intro}</p>
+
+            <div style="background-color: #EFF6FF; border-left: 4px solid #1B5FD9; padding: 16px 20px; border-radius: 6px; margin: 24px 0;">
+                <h3 style="color: #1E40AF; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Your Login Credentials</h3>
+                <p style="margin: 6px 0; font-size: 14px;"><strong>Email:</strong> <span style="color: #0F172A;">{user.email}</span></p>
+                <p style="margin: 6px 0; font-size: 14px;"><strong>Temporary Password:</strong> <span style="background-color: #DBEAFE; padding: 3px 8px; border-radius: 4px; font-weight: 700; color: #1E40AF; letter-spacing: 1px;">{generated_password}</span></p>
+            </div>
+
+            <div style="text-align: center; margin: 28px 0 20px 0;">
+                <a href="https://play.google.com/store/apps/details?id=com.smahi.app" target="_blank" style="background-color: #1B5FD9; color: #FFFFFF; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(27, 95, 217, 0.3);">
+                    📱 Download S-MAHI on Google Play
+                </a>
+                <p style="margin-top: 10px; font-size: 12px; color: #64748B;">
+                    Direct link: <a href="https://play.google.com/store/apps/details?id=com.smahi.app" style="color: #1B5FD9; word-break: break-all;">https://play.google.com/store/apps/details?id=com.smahi.app</a>
+                </p>
+            </div>
+
+            <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+                Please download the S-MAHI app, log in using your email and temporary password, and access your {audience} dashboard. You can change your password anytime directly in the app.
+            </p>
+        </div>
+
+        <div style="text-align: center; margin-top: 24px; color: #94A3B8; font-size: 12px;">
+            <p style="margin: 0;">This is an automated notification from S-MAHI Platform.</p>
+        </div>
+    </div>
+    """
+
+    try:
+        return send_transactional_email(to_email=user.email, subject=subject, html_content=html_content)
+    except Exception:
+        logger.exception("Failed to dispatch welcome credentials email to new %s %s", user.role, user.email)
+        return False
+
+
 class AgentRegisterArtisanView(APIView):
     """Agent/state-coordinator initiated artisan registration.
 
@@ -638,9 +717,18 @@ class AgentRegisterArtisanView(APIView):
 
         log_activity(request.user, 'artisan_registered', target_user=user, activity_status='pending')
 
+        # A state coordinator's registrations get credentials emailed to the
+        # artisan automatically (same as CoordinatorCreateAgentView does for
+        # agents) — a plain agent's registrations remain password-share
+        # only, exactly as before.
+        email_sent = False
+        if request.user.role == 'state_coordinator':
+            email_sent = _send_coordinator_welcome_email(user, generated_password, request)
+
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
+            'email_sent': email_sent,
             'message': 'Artisan registered. Share this one-time password with them securely — it will not be shown again.',
         }, status=status.HTTP_201_CREATED)
 
@@ -734,9 +822,17 @@ class AgentRegisterBusinessView(APIView):
 
         log_activity(request.user, 'business_registered', target_user=user, activity_status='pending')
 
+        # Same coordinator-only credential email as the artisan flow —
+        # a coordinator's registrations get credentials emailed to the
+        # business automatically; a plain agent's stay password-share only.
+        email_sent = False
+        if request.user.role == 'state_coordinator':
+            email_sent = _send_coordinator_welcome_email(user, generated_password, request)
+
         return Response({
             'user': UserSerializer(user).data,
             'generated_password': generated_password,
+            'email_sent': email_sent,
             'message': 'Business registered. Share this one-time password with them securely — it will not be shown again.',
         }, status=status.HTTP_201_CREATED)
 
