@@ -1,189 +1,950 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Website Suspended</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Playfair+Display:ital,wght@1,700&display=swap" rel="stylesheet">
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>S MAHI Global Services - Innovating Skills, Empowering Workers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  </head>
+  <body>
+    <!-- Preloader -->
+    <div class="preloader">
+      <div class="preloader-content">
+        <div class="logo-animation">
+          <i class="fas fa-globe-americas"></i>
+        </div>
+        <div class="loading-text">Loading Excellence...</div>
+      </div>
+    </div>
 
-        body {
-            font-family: 'Syne', sans-serif;
-            background: #0d0f14;
-            color: #fff;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-        }
+    <!-- Header -->
+    <header class="header">
+      <nav class="nav">
+        <div class="nav-container">
+          <div class="nav-logo">
+            <div class="logo-icon">
+              <i class="fas fa-globe-americas"></i>
+            </div>
+            <div class="logo-text">
+              <span class="logo-main">S MAHI</span>
+              <span class="logo-sub">Global Services</span>
+            </div>
+          </div>
+          <ul class="nav-menu">
+            <li><a href="#home" class="nav-link">Home</a></li>
+            <li><a href="#services" class="nav-link">Services</a></li>
+            <li><a href="#smahi-app" class="nav-link">S-MAHI App</a></li>  <!-- ADD -->
+            <li><a href="#presence" class="nav-link">Global Reach</a></li>
+            <li><a href="#certification" class="nav-link">Certification</a></li>
+            <li><a href="#partnership" class="nav-link">Partnership</a></li>
+            <li><a href="#contact" class="nav-link">Contact</a></li>
+          </ul>
+          <div class="nav-actions">
+            <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="btn-agent">
+              <i class="fas fa-user-plus"></i>
+              Agent Portal
+            </a>
+            <div class="nav-toggle">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
 
-        .card {
-            text-align: center;
-            max-width: 520px;
-            width: 100%;
-            animation: up 0.9s cubic-bezier(0.16,1,0.3,1) both;
-        }
+    <main>
+      <!-- Hero Section -->
+      <section id="home" class="hero">
+        <div class="hero-bg">
+          <div class="hero-particles"></div>
+          <div class="hero-gradient"></div>
+        </div>
+        <div class="hero-container">
+          <div class="hero-content">
+            <div class="hero-badge">
+              <i class="fas fa-star"></i>
+              <span>Leading Global Workforce Solutions</span>
+            </div>
+            <h1 class="hero-title">
+              <span class="title-line">Innovating Skills,</span>
+              <span class="title-line gradient-text">Empowering Workers</span>
+            </h1>
+            <p class="hero-subtitle">
+              Bridging the gap between skilled professionals and global opportunities through 
+              comprehensive training, certification, and strategic partnerships across continents.
+            </p>
+            <div class="hero-stats">
+              <div class="stat-item">
+                <div class="stat-number">5000+</div>
+                <div class="stat-label">Professionals Trained</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-number">50+</div>
+                <div class="stat-label">Global Partners</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-number">15+</div>
+                <div class="stat-label">Countries Reached</div>
+              </div>
+            </div>
+            <div class="hero-actions">
+              <a href="#certification" class="btn btn-primary">
+                <span>Get Certified</span>
+                <i class="fas fa-arrow-right"></i>
+              </a>
+              <a href="#partnership" class="btn btn-secondary">
+                <i class="fas fa-handshake"></i>
+                <span>Partner With Us</span>
+              </a>
+            </div>
+          </div>
+          <div class="hero-visual">
+            <div class="visual-container">
+              <div class="floating-card card-1">
+                <i class="fas fa-graduation-cap"></i>
+                <span>Education</span>
+              </div>
+              <div class="floating-card card-2">
+                <i class="fas fa-certificate"></i>
+                <span>Certification</span>
+              </div>
+              <div class="floating-card card-3">
+                <i class="fas fa-globe"></i>
+                <span>Global Reach</span>
+              </div>
+              <div class="central-orb">
+                <div class="orb-inner">
+                  <i class="fas fa-users"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-        .logo {
-            margin-bottom: 52px;
-            opacity: 0.9;
-        }
+      <!-- Services Section -->
+      <section id="services" class="services">
+        <div class="container">
+          <div class="section-header">
+            <div class="section-badge">Our Expertise</div>
+            <h2 class="section-title">Comprehensive Workforce Solutions</h2>
+            <p class="section-subtitle">
+              Delivering end-to-end services that transform careers and connect talent with global opportunities
+            </p>
+          </div>
+          <div class="services-grid">
+            <div class="service-card featured">
+              <div class="card-header">
+                <div class="service-icon">
+                  <i class="fas fa-hard-hat"></i>
+                </div>
+                <div class="service-badge">Most Popular</div>
+              </div>
+              <h3>Construction & Engineering</h3>
+              <p>Advanced training programs for construction professionals, engineers, and technical specialists with international standards.</p>
+              <ul class="service-features">
+                <li><i class="fas fa-check"></i> OSHA Certified Training</li>
+                <li><i class="fas fa-check"></i> Project Management</li>
+                <li><i class="fas fa-check"></i> Safety Protocols</li>
+              </ul>
+              <div class="service-action">
+                <a href="#contact" class="btn-service">Learn More</a>
+              </div>
+            </div>
+            
+            <div class="service-card">
+              <div class="card-header">
+                <div class="service-icon">
+                  <i class="fas fa-chalkboard-teacher"></i>
+                </div>
+              </div>
+              <h3>Education & Training</h3>
+              <p>Comprehensive educational programs designed to enhance skills and accelerate career advancement.</p>
+              <ul class="service-features">
+                <li><i class="fas fa-check"></i> Digital Learning Platform</li>
+                <li><i class="fas fa-check"></i> Expert Instructors</li>
+                <li><i class="fas fa-check"></i> Flexible Scheduling</li>
+              </ul>
+              <div class="service-action">
+                <a href="#contact" class="btn-service">Learn More</a>
+              </div>
+            </div>
 
-        .logo img {
-            height: 28px;
-            width: auto;
-            filter: brightness(0) invert(1);
-        }
+            <div class="service-card">
+              <div class="card-header">
+                <div class="service-icon">
+                  <i class="fas fa-certificate"></i>
+                </div>
+              </div>
+              <h3>Professional Certification</h3>
+              <p>Internationally recognized certifications that validate skills and open doors to global opportunities.</p>
+              <ul class="service-features">
+                <li><i class="fas fa-check"></i> ISO Compliant</li>
+                <li><i class="fas fa-check"></i> Digital Verification</li>
+                <li><i class="fas fa-check"></i> Lifetime Validity</li>
+              </ul>
+              <div class="service-action">
+                <a href="#contact" class="btn-service">Learn More</a>
+              </div>
+            </div>
 
-        .badge {
-            display: inline-block;
-            font-size: 10px;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: #f5a623;
-            border: 1px solid rgba(245,166,35,0.35);
-            border-radius: 100px;
-            padding: 5px 14px;
-            margin-bottom: 28px;
-        }
+            <div class="service-card">
+              <div class="card-header">
+                <div class="service-icon">
+                  <i class="fas fa-users-cog"></i>
+                </div>
+              </div>
+              <h3>Workforce Matching</h3>
+              <p>Connecting skilled professionals with employers worldwide through our extensive global network.</p>
+              <ul class="service-features">
+                <li><i class="fas fa-check"></i> AI-Powered Matching</li>
+                <li><i class="fas fa-check"></i> Global Job Database</li>
+                <li><i class="fas fa-check"></i> Career Support</li>
+              </ul>
+              <div class="service-action">
+                <a href="#contact" class="btn-service">Learn More</a>
+              </div>
+            </div>
 
-        h1 {
-            font-family: 'Playfair Display', serif;
-            font-style: italic;
-            font-weight: 700;
-            font-size: clamp(1.9rem, 5.5vw, 2.6rem);
-            line-height: 1.1;
-            letter-spacing: -0.01em;
-            margin-bottom: 12px;
-            white-space: nowrap;
-            background: linear-gradient(
-                90deg,
-                #ffffff 0%,
-                #ffffff 30%,
-                #f5a623 45%,
-                #ffe0a0 52%,
-                #f5a623 58%,
-                #ffffff 72%,
-                #ffffff 100%
-            );
-            background-size: 250% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: shimmer 3.5s linear infinite;
-        }
+            <div class="service-card">
+              <div class="card-header">
+                <div class="service-icon">
+                  <i class="fas fa-handshake"></i>
+                </div>
+              </div>
+              <h3>International Partnerships</h3>
+              <p>Building strategic alliances between local talent and global opportunities through trusted partnerships.</p>
+              <ul class="service-features">
+                <li><i class="fas fa-check"></i> Government Relations</li>
+                <li><i class="fas fa-check"></i> Corporate Partnerships</li>
+                <li><i class="fas fa-check"></i> Cross-Border Solutions</li>
+              </ul>
+              <div class="service-action">
+                <a href="#contact" class="btn-service">Learn More</a>
+              </div>
+            </div>
 
-        h2 {
-            font-family: 'Playfair Display', serif;
-            font-style: italic;
-            font-weight: 400;
-            font-size: clamp(1rem, 2.8vw, 1.3rem);
-            line-height: 1.3;
-            letter-spacing: -0.01em;
-            margin-bottom: 32px;
-            opacity: 0.55;
-            background: linear-gradient(
-                90deg,
-                #ffffff 0%,
-                #ffffff 30%,
-                #f5a623 45%,
-                #ffe0a0 52%,
-                #f5a623 58%,
-                #ffffff 72%,
-                #ffffff 100%
-            );
-            background-size: 250% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: shimmer 3.5s linear infinite;
-        }
+            <div class="service-card">
+              <div class="card-header">
+                <div class="service-icon">
+                  <i class="fas fa-building"></i>
+                </div>
+              </div>
+              <h3>Institution Development</h3>
+              <p>Establishing and developing training centers and educational institutions to expand global reach.</p>
+              <ul class="service-features">
+                <li><i class="fas fa-check"></i> Infrastructure Setup</li>
+                <li><i class="fas fa-check"></i> Curriculum Development</li>
+                <li><i class="fas fa-check"></i> Quality Assurance</li>
+              </ul>
+              <div class="service-action">
+                <a href="#contact" class="btn-service">Learn More</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- ============================ S-MAHI APP ============================ -->
+<section id="smahi-app" class="smahi-app">
+  <div class="container">
+      <!-- National Launch banner image -->
+<a href="#contact" class="app-launch-banner" aria-label="S-MAHI National Launching — Kano State, 9 September 2026">
+  <img src="images/smahi-launch.jpg"
+       alt="S-MAHI App National Launching — Kano State, Nigeria. 9 September 2026, 10:00 AM, Central Hotel."
+       loading="lazy" width="1280" height="853" />
+</a>
+    <div class="section-header">
+      <div class="section-badge">Our Flagship Platform</div>
+      <h2 class="section-title">The S-MAHI App</h2>
+      <p class="section-subtitle">
+        One platform connecting people to trusted skills, services, businesses and
+        opportunities — locally and internationally.
+      </p>
+    </div>
 
-        @keyframes shimmer {
-            0%   { background-position: 200% center; }
-            100% { background-position: -50% center; }
-        }
+    <!-- Intro + AI assistant + phone mockup -->
+    <div class="app-intro">
+      <div class="app-intro-text">
+        <p class="app-lead">
+          S-MAHI is a universal digital platform designed to connect people with trusted
+          professionals, skilled workers, businesses, services and opportunities wherever they are —
+          from a mechanic, electrician or plumber to a doctor, lawyer, hotel, hospital or company.
+        </p>
 
-        .sub {
-            font-size: 0.92rem;
-            color: #6b7490;
-            line-height: 1.65;
-            margin-bottom: 44px;
-            font-weight: 400;
-        }
-
-        .cta {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            background: #fff;
-            color: #0d0f14;
-            text-decoration: none;
-            border-radius: 6px;
-            padding: 13px 24px;
-            font-family: 'Syne', sans-serif;
-            font-weight: 700;
-            font-size: 0.9rem;
-            letter-spacing: 0.01em;
-            transition: opacity 0.2s, transform 0.2s;
-            margin-bottom: 52px;
-        }
-
-        .cta:hover { opacity: 0.88; transform: translateY(-1px); }
-
-        .cta img {
-            height: 18px;
-            width: auto;
-            filter: brightness(0);
-        }
-
-        .powered {
-            font-size: 11px;
-            letter-spacing: 0.1em;
-            color: #8891a8;
-            text-transform: uppercase;
-        }
-
-        .powered a {
-            color: #8891a8;
-            text-decoration: none;
-            transition: color 0.2s;
-        }
-
-        .powered a:hover { color: #fff; }
-
-        @keyframes up {
-            from { opacity: 0; transform: translateY(24px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-
-        @media (max-width: 480px) {
-            h1, h2 { white-space: normal; }
-        }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="logo">
-            <img src="https://olitt.com/wp-content/uploads/2025/08/Olitt-logo-website-builder-300x118.webp" alt="Olitt">
+        <div class="app-assistant">
+          <div class="app-assistant-icon"><i class="fas fa-microphone-lines"></i></div>
+          <div class="app-assistant-body">
+            <h4>Powered by the S-MAHI AI Assistant</h4>
+            <p>
+              Simply type or speak what you need. The assistant understands your request, asks for
+              your location when necessary, and guides you to the right businesses, professionals
+              and opportunities.
+            </p>
+          </div>
         </div>
 
-        <div class="badge">Account Suspended</div>
+        <div class="app-examples" role="list" aria-label="Example requests">
+          <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "I need a mechanic"</span>
+          <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "A doctor near me"</span>
+          <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "A hotel in Kano"</span>
+          <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "An electrician"</span>
+        </div>
+      </div>
 
-        <h1>Website suspended.</h1>
-        <h2>Please check with your hosting admin.</h2>
-
-        <p class="sub">Build and deploy your website in 2 minutes<br>using Olitt AI website builder.</p>
-
-        <a href="https://olitt.com" target="_blank" class="cta">
-            <img src="https://olitt.com/wp-content/uploads/2025/08/Olitt-logo-website-builder-300x118.webp" alt="">
-            Get started free
-        </a>
-
-        <p class="powered">Powered by <a href="https://olitt.com" target="_blank">Olitt</a></p>
+      <!-- Phone mockup showing the AI chat -->
+      <div class="app-phone" aria-hidden="true">
+        <div class="app-phone-frame">
+          <span class="app-phone-notch"></span>
+          <div class="app-phone-screen">
+            <div class="app-phone-header"><i class="fas fa-globe-americas"></i> S-MAHI Assistant</div>
+            <div class="app-bubble user">I need a plumber near me</div>
+            <div class="app-bubble bot"><i class="fas fa-robot"></i> Sure — please share your location so I can find plumbers close to you.</div>
+            <div class="app-bubble user">Kano, Nigeria</div>
+            <div class="app-bubble bot"><i class="fas fa-robot"></i> I found 5 trusted plumbers near you, with names, phone numbers and services.</div>
+          </div>
+        </div>
+      </div>
     </div>
-</body>
+
+    <!-- How it works -->
+    <h3 class="app-subhead">How S-MAHI works</h3>
+    <div class="app-steps">
+      <div class="app-step"><div class="app-step-num">1</div><i class="fas fa-comment-dots"></i><p>Tell S-MAHI what you need</p></div>
+      <div class="app-step"><div class="app-step-num">2</div><i class="fas fa-location-dot"></i><p>Select or provide your location</p></div>
+      <div class="app-step"><div class="app-step-num">3</div><i class="fas fa-list-check"></i><p>S-MAHI identifies relevant options</p></div>
+      <div class="app-step"><div class="app-step-num">4</div><i class="fas fa-circle-info"></i><p>View the available details</p></div>
+      <div class="app-step"><div class="app-step-num">5</div><i class="fas fa-handshake"></i><p>Connect with the provider</p></div>
+    </div>
+
+    <!-- Core features -->
+    <div class="app-features">
+      <div class="app-feature">
+        <div class="app-feature-icon"><i class="fas fa-robot"></i></div>
+        <h4>AI Assistant</h4>
+        <p>Interact by text or voice and get guidance based on exactly what you need.</p>
+      </div>
+      <div class="app-feature">
+        <div class="app-feature-icon"><i class="fas fa-language"></i></div>
+        <h4>Real-Time Translation</h4>
+        <p>Automatic translation helps you communicate across different languages, anywhere.</p>
+      </div>
+      <div class="app-feature">
+        <div class="app-feature-icon"><i class="fas fa-map-location-dot"></i></div>
+        <h4>GPS &amp; Location</h4>
+        <p>Location technology connects you to relevant services in the right area.</p>
+      </div>
+      <div class="app-feature">
+        <div class="app-feature-icon"><i class="fas fa-magnifying-glass-location"></i></div>
+        <h4>Smart Discovery</h4>
+        <p>Find providers by what you need — no need to know a specific name.</p>
+      </div>
+      <div class="app-feature">
+        <div class="app-feature-icon"><i class="fas fa-earth-africa"></i></div>
+        <h4>Local to Global</h4>
+        <p>Built to work across local, state, national and international levels.</p>
+      </div>
+      <div class="app-feature">
+        <div class="app-feature-icon"><i class="fas fa-layer-group"></i></div>
+        <h4>One Platform for Everyone</h4>
+        <p>Professionals, artisans, businesses, institutions and customers, together.</p>
+      </div>
+    </div>
+
+    <!-- Who it's for -->
+    <h3 class="app-subhead">Built for everyone</h3>
+    <div class="app-audience">
+      <div class="app-aud-card">
+        <div class="app-aud-icon"><i class="fas fa-user-gear"></i></div>
+        <h4>For Professionals</h4>
+        <p>Skilled workers create their presence and make their services discoverable to customers and opportunities.</p>
+      </div>
+      <div class="app-aud-card">
+        <div class="app-aud-icon"><i class="fas fa-store"></i></div>
+        <h4>For Businesses</h4>
+        <p>Businesses list their products and services to be found by nearby customers through relevant searches.</p>
+      </div>
+      <div class="app-aud-card">
+        <div class="app-aud-icon"><i class="fas fa-user"></i></div>
+        <h4>For Customers</h4>
+        <p>Describe what you need by text or voice, share your location, and discover relevant options instantly.</p>
+      </div>
+    </div>
+
+    <!-- Reach bar -->
+    <div class="app-reach">
+      <span><i class="fas fa-location-dot"></i> Local</span>
+      <i class="fas fa-arrow-right-long"></i>
+      <span><i class="fas fa-map"></i> State</span>
+      <i class="fas fa-arrow-right-long"></i>
+      <span><i class="fas fa-flag"></i> National</span>
+      <i class="fas fa-arrow-right-long"></i>
+      <span><i class="fas fa-globe"></i> International</span>
+    </div>
+
+    <!-- Vision -->
+    <p class="app-vision">
+      <i class="fas fa-quote-left"></i>
+      Our vision is to make it easier for people anywhere to find the skills, services, businesses
+      and opportunities they need — bringing people and opportunities closer together through one
+      connected digital ecosystem.
+    </p>
+  </div>
+</section>
+
+
+      <!-- Global Presence -->
+      <section id="presence" class="presence">
+        <div class="container">
+          <div class="section-header">
+            <div class="section-badge">Global Network</div>
+            <h2 class="section-title">Our Worldwide Presence</h2>
+            <p class="section-subtitle">
+              Strategically positioned across continents to serve our global community
+            </p>
+          </div>
+          <div class="presence-content">
+            <div class="presence-map">
+              <div class="map-container">
+                <div class="region africa">
+                  <div class="region-marker nigeria">
+                    <div class="marker-pulse"></div>
+                    <div class="marker-dot"></div>
+                    <div class="marker-label">Nigeria</div>
+                  </div>
+                </div>
+                <div class="region middle-east">
+                  <div class="region-marker qatar">
+                    <div class="marker-pulse"></div>
+                    <div class="marker-dot"></div>
+                    <div class="marker-label">Qatar</div>
+                  </div>
+                  <div class="region-marker saudi">
+                    <div class="marker-pulse"></div>
+                    <div class="marker-dot"></div>
+                    <div class="marker-label">Saudi Arabia</div>
+                  </div>
+                  <div class="region-marker uae">
+                    <div class="marker-pulse"></div>
+                    <div class="marker-dot"></div>
+                    <div class="marker-label">UAE</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="presence-details">
+              <div class="presence-region">
+                <div class="region-header">
+                  <i class="fas fa-map-marker-alt"></i>
+                  <h3>Nigeria Operations</h3>
+                </div>
+                <div class="locations-grid">
+                  <div class="location-item">
+                    <div class="location-icon">
+                      <i class="fas fa-building"></i>
+                    </div>
+                    <div class="location-info">
+                      <h4>Kano</h4>
+                      <p>Northern Regional Hub</p>
+                    </div>
+                  </div>
+                  <div class="location-item">
+                    <div class="location-icon">
+                      <i class="fas fa-landmark"></i>
+                    </div>
+                    <div class="location-info">
+                      <h4>Abuja</h4>
+                      <p>Federal Capital Territory</p>
+                    </div>
+                  </div>
+                  <div class="location-item">
+                    <div class="location-icon">
+                      <i class="fas fa-city"></i>
+                    </div>
+                    <div class="location-info">
+                      <h4>Lagos</h4>
+                      <p>Commercial Center</p>
+                    </div>
+                  </div>
+                  <div class="location-item">
+                    <div class="location-icon">
+                      <i class="fas fa-industry"></i>
+                    </div>
+                    <div class="location-info">
+                      <h4>Kaduna</h4>
+                      <p>Industrial Hub</p>
+                    </div>
+                  </div>
+                  <div class="location-item">
+                    <div class="location-icon">
+                      <i class="fas fa-graduation-cap"></i>
+                    </div>
+                    <div class="location-info">
+                      <h4>Bauchi</h4>
+                      <p>Training Center</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="presence-region">
+                <div class="region-header">
+                  <i class="fas fa-globe"></i>
+                  <h3>International Partnerships</h3>
+                </div>
+                <div class="international-partners">
+                  <div class="partner-item">
+                    <div class="partner-flag qatar-flag"></div>
+                    <div class="partner-info">
+                      <h4>Qatar</h4>
+                      <p>Construction & Infrastructure</p>
+                    </div>
+                  </div>
+                  <div class="partner-item">
+                    <div class="partner-flag saudi-flag"></div>
+                    <div class="partner-info">
+                      <h4>Saudi Arabia</h4>
+                      <p>NEOM & Vision 2030 Projects</p>
+                    </div>
+                  </div>
+                  <div class="partner-item">
+                    <div class="partner-flag uae-flag"></div>
+                    <div class="partner-info">
+                      <h4>United Arab Emirates</h4>
+                      <p>Dubai & Abu Dhabi Operations</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Certification Program -->
+      <section id="certification" class="certification">
+        <div class="container">
+          <div class="certification-content">
+            <div class="certification-info">
+              <div class="section-badge">Certification Excellence</div>
+              <h2 class="section-title">Digital & Physical Certificates</h2>
+              <p class="section-description">
+                Our comprehensive certification program offers both digital and physical certificates 
+                that are internationally recognized, blockchain-verified, and designed to open doors 
+                to global career opportunities.
+              </p>
+              <div class="certification-features">
+                <div class="feature-item">
+                  <div class="feature-icon">
+                    <i class="fas fa-shield-alt"></i>
+                  </div>
+                  <div class="feature-content">
+                    <h4>Blockchain Verified</h4>
+                    <p>Tamper-proof digital certificates with blockchain verification</p>
+                  </div>
+                </div>
+                <div class="feature-item">
+                  <div class="feature-icon">
+                    <i class="fas fa-globe-americas"></i>
+                  </div>
+                  <div class="feature-content">
+                    <h4>Global Recognition</h4>
+                    <p>Accepted by employers and institutions worldwide</p>
+                  </div>
+                </div>
+                <div class="feature-item">
+                  <div class="feature-icon">
+                    <i class="fas fa-rocket"></i>
+                  </div>
+                  <div class="feature-content">
+                    <h4>Career Acceleration</h4>
+                    <p>Fast-track your career with industry-recognized credentials</p>
+                  </div>
+                </div>
+                <div class="feature-item">
+                  <div class="feature-icon">
+                    <i class="fas fa-users"></i>
+                  </div>
+                  <div class="feature-content">
+                    <h4>Job Matching</h4>
+                    <p>Direct connection to global job opportunities</p>
+                  </div>
+                </div>
+              </div>
+              <div class="certification-actions">
+                <a href="#contact" class="btn btn-primary">
+                  <span>Start Certification</span>
+                  <i class="fas fa-arrow-right"></i>
+                </a>
+                <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="btn btn-outline">
+                  <i class="fas fa-external-link-alt"></i>
+                  <span>Agent Portal</span>
+                </a>
+              </div>
+            </div>
+            <div class="certification-visual">
+              <div class="certificate-showcase">
+                <div class="certificate digital-cert">
+                  <div class="cert-header">
+                    <div class="cert-logo">
+                      <i class="fas fa-globe-americas"></i>
+                    </div>
+                    <div class="cert-title">Digital Certificate</div>
+                  </div>
+                  <div class="cert-content">
+                    <h4>Professional Certification</h4>
+                    <p>Construction & Engineering</p>
+                    <div class="cert-verification">
+                      <i class="fas fa-qrcode"></i>
+                      <span>Blockchain Verified</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="certificate physical-cert">
+                  <div class="cert-header">
+                    <div class="cert-logo">
+                      <i class="fas fa-award"></i>
+                    </div>
+                    <div class="cert-title">Physical Certificate</div>
+                  </div>
+                  <div class="cert-content">
+                    <h4>International Standard</h4>
+                    <p>Premium Quality Print</p>
+                    <div class="cert-seal">
+                      <i class="fas fa-stamp"></i>
+                      <span>Official Seal</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Partnership Section -->
+      <section id="partnership" class="partnership">
+        <div class="container">
+          <div class="section-header">
+            <div class="section-badge">Join Our Network</div>
+            <h2 class="section-title">Partnership & Collaboration</h2>
+            <p class="section-subtitle">
+              We're actively seeking strategic partners and collaborators to expand our global impact
+            </p>
+          </div>
+          <div class="partnership-content">
+            <div class="partnership-types">
+              <div class="partnership-card">
+                <div class="partnership-icon">
+                  <i class="fas fa-handshake"></i>
+                </div>
+                <h3>Strategic Partnerships</h3>
+                <p>Long-term collaborations with educational institutions, government agencies, and multinational corporations.</p>
+                <ul class="partnership-benefits">
+                  <li><i class="fas fa-check"></i> Revenue Sharing Models</li>
+                  <li><i class="fas fa-check"></i> Joint Program Development</li>
+                  <li><i class="fas fa-check"></i> Global Market Access</li>
+                </ul>
+              </div>
+              <div class="partnership-card">
+                <div class="partnership-icon">
+                  <i class="fas fa-user-tie"></i>
+                </div>
+                <h3>Agent Network</h3>
+                <p>Join our global network of certified agents and representatives to expand our reach in your region.</p>
+                <ul class="partnership-benefits">
+                  <li><i class="fas fa-check"></i> Competitive Commission Structure</li>
+                  <li><i class="fas fa-check"></i> Comprehensive Training</li>
+                  <li><i class="fas fa-check"></i> Marketing Support</li>
+                </ul>
+                <div class="partnership-action">
+                  <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="btn btn-primary">
+                    <i class="fas fa-user-plus"></i>
+                    <span>Register as Agent</span>
+                  </a>
+                </div>
+              </div>
+              <div class="partnership-card">
+                <div class="partnership-icon">
+                  <i class="fas fa-building"></i>
+                </div>
+                <h3>Institutional Collaboration</h3>
+                <p>Partner with us to establish training centers and certification programs in your region.</p>
+                <ul class="partnership-benefits">
+                  <li><i class="fas fa-check"></i> Franchise Opportunities</li>
+                  <li><i class="fas fa-check"></i> Curriculum Licensing</li>
+                  <li><i class="fas fa-check"></i> Brand Partnership</li>
+                </ul>
+              </div>
+            </div>
+            <div class="partnership-cta">
+              <div class="cta-content">
+                <h3>Ready to Partner With Us?</h3>
+                <p>Let's discuss how we can work together to create opportunities and empower workers globally.</p>
+                <div class="cta-actions">
+                  <a href="#contact" class="btn btn-primary">
+                    <span>Start Partnership Discussion</span>
+                    <i class="fas fa-arrow-right"></i>
+                  </a>
+                  <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="btn btn-outline">
+                    <i class="fas fa-external-link-alt"></i>
+                    <span>Agent Registration Portal</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Who We Help -->
+      <section id="who-we-help" class="who-we-help">
+        <div class="container">
+          <div class="section-header">
+            <div class="section-badge">Our Community</div>
+            <h2 class="section-title">Who We Empower</h2>
+            <p class="section-subtitle">
+              Serving diverse communities and stakeholders across the global workforce ecosystem
+            </p>
+          </div>
+          <div class="help-categories">
+            <div class="help-category">
+              <div class="category-icon">
+                <i class="fas fa-user-tie"></i>
+              </div>
+              <h3>Skilled Professionals</h3>
+              <p>Engineers, technicians, and specialists seeking international career opportunities and skill validation.</p>
+            </div>
+            <div class="help-category">
+              <div class="category-icon">
+                <i class="fas fa-tools"></i>
+              </div>
+              <h3>Artisans & Craftspeople</h3>
+              <p>Skilled workers looking to formalize their expertise and access global job markets.</p>
+            </div>
+            <div class="help-category">
+              <div class="category-icon">
+                <i class="fas fa-search"></i>
+              </div>
+              <h3>Job Seekers</h3>
+              <p>Individuals seeking employment opportunities both locally and internationally.</p>
+            </div>
+            <div class="help-category">
+              <div class="category-icon">
+                <i class="fas fa-briefcase"></i>
+              </div>
+              <h3>Employers</h3>
+              <p>Companies and organizations looking for qualified, certified professionals worldwide.</p>
+            </div>
+            <div class="help-category">
+              <div class="category-icon">
+                <i class="fas fa-university"></i>
+              </div>
+              <h3>Educational Institutions</h3>
+              <p>Schools, colleges, and training centers seeking partnerships and program development.</p>
+            </div>
+            <div class="help-category">
+              <div class="category-icon">
+                <i class="fas fa-hands-helping"></i>
+              </div>
+              <h3>NGOs & Government</h3>
+              <p>Organizations focused on workforce development and economic empowerment initiatives.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Contact Section -->
+      <section id="contact" class="contact">
+        <div class="container">
+          <div class="section-header">
+            <div class="section-badge">Get In Touch</div>
+            <h2 class="section-title">Contact Our Team</h2>
+            <p class="section-subtitle">
+              Ready to start your journey or explore partnership opportunities? We're here to help.
+            </p>
+          </div>
+          <div class="contact-content">
+            <div class="contact-info">
+              <div class="contact-methods">
+                <div class="contact-method">
+                  <div class="method-icon">
+                    <i class="fas fa-envelope"></i>
+                  </div>
+                  <div class="method-content">
+                    <h4>Email Us</h4>
+                    <p>s.mahiglobalservices@gmail.com</p>
+                    <span class="method-note">Response within 24 hours</span>
+                  </div>
+                </div>
+                <div class="contact-method">
+                  <div class="method-icon">
+                    <i class="fab fa-whatsapp"></i>
+                  </div>
+                  <div class="method-content">
+                    <h4>WhatsApp / Phone</h4>
+                    <p>+234 906 606 2541</p>
+                    <p>+234 905 237 3245</p>
+                    <span class="method-note">Available 24/7</span>
+                  </div>
+                </div>
+                <div class="contact-method">
+                  <div class="method-icon">
+                    <i class="fas fa-user-plus"></i>
+                  </div>
+                  <div class="method-content">
+                    <h4>Agent Registration</h4>
+                    <p>Join our global network</p>
+                    <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="method-link">
+                      Registration Portal <i class="fas fa-external-link-alt"></i>
+                    </a>
+                  </div>
+                </div>
+                <div class="contact-method">
+                  <div class="method-icon">
+                    <i class="fas fa-share-alt"></i>
+                  </div>
+                  <div class="method-content">
+                    <h4>Social Media</h4>
+                    <p>Google Business: Coming Soon</p>
+                    <p>LinkedIn: Coming Soon</p>
+                    <span class="method-note">Follow for updates</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="contact-form-container">
+              <form class="contact-form" id="contactForm">
+                <div class="form-header">
+                  <h3>Send us a Message</h3>
+                  <p>Fill out the form below and we'll get back to you shortly</p>
+                </div>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label for="name">Full Name *</label>
+                    <input type="text" id="name" name="name" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="email">Email Address *</label>
+                    <input type="email" id="email" name="email" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="phone">Phone Number</label>
+                    <input type="tel" id="phone" name="phone">
+                  </div>
+                  <div class="form-group">
+                    <label for="service">Interest Area</label>
+                    <select id="service" name="service">
+                      <option value="">Select your interest</option>
+                      <option value="construction">Construction & Engineering</option>
+                      <option value="education">Education & Training</option>
+                      <option value="certification">Professional Certification</option>
+                      <option value="workforce">Workforce Matching</option>
+                      <option value="partnership">Partnership Opportunities</option>
+                      <option value="agent">Agent Registration</option>
+                      <option value="institution">Institution Development</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group full-width">
+                  <label for="message">Message *</label>
+                  <textarea id="message" name="message" rows="5" required placeholder="Tell us about your needs or interests..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary form-submit">
+                  <span>Send Message</span>
+                  <i class="fas fa-paper-plane"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-main">
+            <div class="footer-logo">
+              <div class="logo-icon">
+                <i class="fas fa-globe-americas"></i>
+              </div>
+              <div class="logo-text">
+                <span class="logo-main">S MAHI</span>
+                <span class="logo-sub">Global Services</span>
+              </div>
+            </div>
+            <p class="footer-mission">
+              "To bridge the gap between skills and opportunities — making global impact through local empowerment."
+            </p>
+            <div class="footer-social">
+              <a href="#" class="social-link">
+                <i class="fab fa-linkedin"></i>
+              </a>
+              <a href="#" class="social-link">
+                <i class="fab fa-twitter"></i>
+              </a>
+              <a href="#" class="social-link">
+                <i class="fab fa-facebook"></i>
+              </a>
+              <a href="#" class="social-link">
+                <i class="fab fa-instagram"></i>
+              </a>
+            </div>
+          </div>
+          <div class="footer-links">
+            <div class="footer-section">
+              <h4>Services</h4>
+              <ul>
+                <li><a href="#services">Construction & Engineering</a></li>
+                <li><a href="#services">Education & Training</a></li>
+                <li><a href="#certification">Certification</a></li>
+                <li><a href="#services">Workforce Matching</a></li>
+              </ul>
+            </div>
+            <div class="footer-section">
+              <h4>Company</h4>
+              <ul>
+                <li><a href="#home">About Us</a></li>
+                <li><a href="#presence">Global Presence</a></li>
+                <li><a href="#partnership">Partnerships</a></li>
+                <li><a href="#contact">Contact</a></li>
+              </ul>
+            </div>
+            <div class="footer-section">
+              <h4>Resources</h4>
+              <ul>
+                <li><a href="https://smahiglobal.pythonanywhere.com/" target="_blank">Agent Portal</a></li>
+                <li><a href="#certification">Certification Guide</a></li>
+                <li><a href="#partnership">Partner With Us</a></li>
+                <li><a href="#contact">Support</a></li>
+              </ul>
+            </div>
+            <div class="footer-section">
+              <h4>Contact</h4>
+              <ul>
+                <li>s.mahiglobalservices@gmail.com</li>
+                <li>+234 906 606 2541</li>
+                <li>+234 905 237 3245</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <div class="footer-disclaimer">
+            <p>We do not support fraud, impersonation, or unlawful recruitment practices.</p>
+          </div>
+          <div class="footer-copyright">
+            <p>&copy; 2025 S MAHI Global Services. All rights reserved.</p>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/main.js"></script>
+  </body>
 </html>
