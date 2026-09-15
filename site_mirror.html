@@ -1,950 +1,1180 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>S MAHI Global Services - Innovating Skills, Empowering Workers</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  </head>
-  <body>
-    <!-- Preloader -->
-    <div class="preloader">
-      <div class="preloader-content">
-        <div class="logo-animation">
-          <i class="fas fa-globe-americas"></i>
-        </div>
-        <div class="loading-text">Loading Excellence...</div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Primary SEO -->
+  <title>S MAHI Global Services Ltd — Innovating Skills, Empowering Workers | DUNS 669827104 </title>
+  <meta name="description" content="S MAHI Global Services Ltd bridges skilled professionals with global opportunities through training, certification, and strategic job placement. RC 8681627 · DUNS 669827104." />
+  <meta name="keywords" content="S MAHI Global Services, skilled workforce Nigeria, professional certification, job placement, workforce matching, state coordinators, DUNS 669827104" />
+  <meta name="author" content="S MAHI Global Services Ltd" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#071a33" />
+
+  <!-- Open Graph / social -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="S MAHI Global Services Ltd — Innovating Skills, Empowering Workers" />
+  <meta property="og:description" content="Bridging skilled professionals with global opportunities. RC 8681627 · DUNS 669827104." />
+  <meta property="og:site_name" content="S MAHI Global Services Ltd" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="S MAHI Global Services Ltd" />
+  <meta name="twitter:description" content="Bridging skilled professionals with global opportunities worldwide." />
+
+  <!-- Inline SVG favicon (globe seal) -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23071a33'/%3E%3Ccircle cx='32' cy='32' r='16' fill='none' stroke='%23e0b83c' stroke-width='3'/%3E%3Cpath d='M16 32h32M32 16v32M20 22c8 6 16 6 24 0M20 42c8-6 16-6 24 0' fill='none' stroke='%23e0b83c' stroke-width='2'/%3E%3C/svg%3E" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Scroll animations -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" />
+
+  <!-- Site styles -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Structured data for search engines -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "S MAHI Global Services Ltd",
+    "description": "Bridging skilled professionals with global opportunities through training, certification, and strategic job placement.",
+    "identifier": "DUNS 669827104",
+    "sameAs": ["https://www.tiktok.com/@smahiglobalservices"],
+    "address": { "@type": "PostalAddress", "addressLocality": "Kano", "addressCountry": "NG" },
+    "contactPoint": [
+      { "@type": "ContactPoint", "contactType": "customer support", "telephone": "+2349066062541", "email": "customer@smahiglobalservices.com" },
+      { "@type": "ContactPoint", "contactType": "general inquiries", "email": "info@smahiglobalservices.com" }
+    ]
+  }
+  </script>
+
+  <!-- ===== S-MAHI App + Launch Flyer styles (added; self-contained) ===== -->
+  <style>
+    /* Namespaced so they don't affect the rest of the site.
+       Uses the site's navy/gold tokens with hardcoded fallbacks. */
+
+    /* ---- S-MAHI App body ---- */
+    .app-intro { display:grid; grid-template-columns:1.1fr .9fr; gap:2.5rem; align-items:center; margin-bottom:3rem; }
+    .app-lead { font-size:1.05rem; color:var(--slate-500,#5b6b82); line-height:1.7; margin-bottom:1.5rem; }
+    .app-assistant { display:flex; gap:1rem; padding:1.25rem; background:var(--white,#fff); border:1px solid var(--line,#dbe3ef);
+      border-left:4px solid var(--royal-600,#123f8f); border-radius:1rem; box-shadow:0 12px 30px rgba(7,26,51,.08); margin-bottom:1.5rem; }
+    .app-assistant__icon { width:52px; height:52px; flex-shrink:0; border-radius:14px; display:grid; place-items:center;
+      background:linear-gradient(135deg,#123f8f,#1d55b8); color:var(--gold-400,#e0b83c); font-size:1.35rem; }
+    .app-assistant h4 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-size:1.1rem; color:var(--ink-900,#071a33); margin:0 0 4px; }
+    .app-assistant p { color:var(--slate-500,#5b6b82); font-size:.95rem; margin:0; }
+    .app-examples { display:flex; flex-wrap:wrap; gap:.6rem; }
+    .app-chip { display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .9rem; background:var(--white,#fff);
+      border:1px solid var(--line,#dbe3ef); border-radius:999px; font-size:.85rem; font-weight:600; color:var(--royal-600,#123f8f); box-shadow:0 1px 2px rgba(7,26,51,.06); }
+    .app-chip i { font-size:.75rem; color:var(--gold-500,#c9a227); }
+
+    .app-phone { display:flex; justify-content:center; }
+    .app-phone__frame { position:relative; width:280px; background:var(--ink-900,#071a33); border-radius:40px; padding:14px; box-shadow:0 24px 60px rgba(7,26,51,.28); }
+    .app-phone__notch { position:absolute; top:14px; left:50%; transform:translateX(-50%); width:120px; height:22px; background:var(--ink-900,#071a33); border-radius:0 0 14px 14px; z-index:2; }
+    .app-phone__screen { background:linear-gradient(180deg,#eef2f9,#fff); border-radius:28px; padding:2rem 1rem 1.25rem; min-height:440px; display:flex; flex-direction:column; gap:.75rem; }
+    .app-phone__header { display:flex; align-items:center; justify-content:center; gap:6px; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; color:var(--royal-600,#123f8f); font-size:.9rem; margin-bottom:.5rem; }
+    .app-bubble { max-width:85%; padding:.55rem .9rem; border-radius:1rem; font-size:.85rem; line-height:1.45; }
+    .app-bubble.user { align-self:flex-end; background:linear-gradient(135deg,#123f8f,#1d55b8); color:#fff; border-bottom-right-radius:.4rem; }
+    .app-bubble.bot { align-self:flex-start; background:#fff; color:var(--slate-500,#5b6b82); border:1px solid var(--line,#dbe3ef); border-bottom-left-radius:.4rem; }
+    .app-bubble.bot i { color:var(--royal-600,#123f8f); margin-right:4px; }
+
+    .app-subhead { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:1.6rem; text-align:center; color:var(--ink-900,#071a33); margin-bottom:2rem; }
+
+    .app-steps { display:flex; flex-wrap:wrap; justify-content:center; gap:1.25rem; margin-bottom:3rem; }
+    .app-step { position:relative; flex:1 1 170px; max-width:210px; background:var(--white,#fff); border:1px solid var(--line,#dbe3ef); border-radius:1rem; padding:2rem 1.25rem; text-align:center; box-shadow:0 4px 14px rgba(7,26,51,.06); transition:transform .25s ease, box-shadow .25s ease; }
+    .app-step:hover { transform:translateY(-4px); box-shadow:0 12px 30px rgba(7,26,51,.10); }
+    .app-step__num { position:absolute; top:-14px; left:50%; transform:translateX(-50%); width:32px; height:32px; border-radius:50%; display:grid; place-items:center; background:linear-gradient(135deg,#c9a227,#e0b83c); color:#071a33; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; box-shadow:0 12px 28px rgba(201,162,39,.28); }
+    .app-step i { font-size:1.6rem; color:var(--royal-600,#123f8f); margin:.5rem 0 1rem; }
+    .app-step p { color:var(--slate-500,#5b6b82); font-size:.9rem; font-weight:600; margin:0; }
+
+    .app-features { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1.5rem; margin-bottom:3rem; }
+    .app-feature { background:var(--white,#fff); border:1px solid var(--line,#dbe3ef); border-radius:1.15rem; padding:2rem; box-shadow:0 1px 2px rgba(7,26,51,.06); transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .app-feature:hover { transform:translateY(-6px); box-shadow:0 12px 30px rgba(7,26,51,.10); border-color:#cfe0f7; }
+    .app-feature__icon { width:56px; height:56px; border-radius:14px; display:grid; place-items:center; background:linear-gradient(135deg,#071a33,#123f8f); color:var(--gold-400,#e0b83c); font-size:1.4rem; margin-bottom:1.25rem; box-shadow:0 4px 14px rgba(7,26,51,.08); }
+    .app-feature h4 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-size:1.15rem; color:var(--ink-900,#071a33); margin:0 0 .5rem; }
+    .app-feature p { color:var(--slate-500,#5b6b82); font-size:.925rem; line-height:1.6; margin:0; }
+
+    .app-audience { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:1.5rem; margin-bottom:3rem; }
+    .app-aud { text-align:center; background:linear-gradient(135deg,#eef2f9,#fff); border:1px solid var(--line,#dbe3ef); border-radius:1.5rem; padding:2.5rem 1.5rem; transition:transform .25s ease, box-shadow .25s ease; }
+    .app-aud:hover { transform:translateY(-4px); box-shadow:0 12px 30px rgba(7,26,51,.10); }
+    .app-aud__icon { width:72px; height:72px; margin:0 auto 1.25rem; border-radius:50%; display:grid; place-items:center; background:#fff; border:2px solid #cfe0f7; color:var(--royal-600,#123f8f); font-size:1.8rem; }
+    .app-aud h4 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-size:1.2rem; color:var(--ink-900,#071a33); margin:0 0 .5rem; }
+    .app-aud p { color:var(--slate-500,#5b6b82); line-height:1.6; margin:0; }
+
+    .app-reach { text-align:center; background:linear-gradient(135deg,#071a33,#123f8f); border-radius:1.5rem; padding:1.5rem; margin-bottom:2rem; }
+    .app-reach > span { display:block; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; color:#fff; font-size:1.05rem; margin-bottom:10px; }
+    .app-reach__steps { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px; }
+    .app-reach__steps > span { display:inline-flex; align-items:center; gap:6px; color:#fff; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:600; font-size:.98rem; }
+    .app-reach__steps > i { color:var(--gold-400,#e0b83c); }
+
+    .app-vision { max-width:820px; margin:0 auto; text-align:center; font-size:1.12rem; line-height:1.7; color:var(--slate-500,#5b6b82); font-style:italic; }
+    .app-vision i { color:var(--gold-500,#c9a227); font-size:1.4rem; margin-right:6px; }
+
+    /* ---- Launch flyer (pure CSS, no image) ---- */
+    .flyer { position:relative; max-width:1000px; margin:0 auto 3rem; padding:clamp(1.5rem,4vw,3rem); border-radius:1.5rem; overflow:hidden; color:#fff;
+      background:radial-gradient(circle at 85% 12%,rgba(29,85,184,.5),transparent 45%),radial-gradient(circle at 12% 92%,rgba(201,162,39,.28),transparent 45%),linear-gradient(135deg,#071a33 0%,#0d2b57 55%,#0a2140 100%);
+      box-shadow:0 24px 60px rgba(7,26,51,.28); border:1px solid rgba(255,255,255,.08); }
+    .flyer__glow { position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 72% 40%,rgba(224,184,60,.16),transparent 42%); }
+    .flyer > * { position:relative; z-index:1; }
+    .flyer__top { display:flex; flex-wrap:wrap; gap:1.5rem; align-items:center; justify-content:space-between; margin-bottom:1.25rem; }
+    .flyer__brand { display:flex; align-items:center; gap:1rem; }
+    .flyer__logo { width:60px; height:60px; flex-shrink:0; border-radius:50%; display:grid; place-items:center; font-size:1.7rem; color:var(--gold-400,#e0b83c); background:linear-gradient(135deg,#123f8f,#1d55b8); box-shadow:inset 0 0 0 2px rgba(224,184,60,.5); }
+    .flyer__brand-name { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:1.5rem; letter-spacing:.04em; display:block; line-height:1; }
+    .flyer__brand-sub { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; font-size:.95rem; letter-spacing:.18em; color:var(--gold-400,#e0b83c); display:block; }
+    .flyer__brand-tag { font-size:.72rem; color:#b9c9e4; margin-top:4px; max-width:250px; display:block; }
+    .flyer__headline { text-align:right; display:flex; flex-direction:column; align-items:flex-end; }
+    .flyer__h1 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; line-height:.95; font-size:clamp(1.8rem,6vw,3.4rem); }
+    .flyer__h1.accent { color:var(--gold-400,#e0b83c); }
+    .flyer__ribbon { margin-top:8px; padding:5px 14px; border-radius:6px; background:#071a33; color:#fff; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; font-size:.72rem; letter-spacing:.18em; border:1px solid rgba(224,184,60,.4); }
+    .flyer__lead { text-align:center; font-size:clamp(.95rem,2vw,1.15rem); color:#d6e2f5; margin-bottom:1.5rem; }
+    .flyer__lead .ng { color:#34d399; font-weight:800; }
+    .flyer__mid { display:flex; flex-wrap:wrap; gap:1.5rem; align-items:center; justify-content:space-between; margin-bottom:1.5rem; }
+    .flyer__kano { display:flex; align-items:center; gap:1rem; }
+    .flyer__pin { width:46px; height:46px; border-radius:50%; display:grid; place-items:center; background:linear-gradient(135deg,#c9a227,#e0b83c); color:#071a33; font-size:1.2rem; flex-shrink:0; box-shadow:0 0 0 4px rgba(224,184,60,.22); }
+    .flyer__kano h4 { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-size:1.3rem; margin:0; color:#fff; }
+    .flyer__kano p { color:#b9c9e4; font-size:.8rem; margin:0; }
+    .flyer__badge { display:grid; place-items:center; text-align:center; gap:2px; width:150px; height:150px; border-radius:50%; flex-shrink:0; padding:1rem; background:radial-gradient(circle,rgba(255,255,255,.06),rgba(255,255,255,.02)); border:2px solid var(--gold-500,#c9a227); font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; font-size:.72rem; letter-spacing:.04em; color:#ffe6a6; line-height:1.35; box-shadow:0 0 24px rgba(201,162,39,.22); }
+    .flyer__details { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:1rem; padding:1.25rem 1.75rem; margin-bottom:1.5rem; }
+    .flyer__details-label { display:inline-block; padding:4px 12px; border-radius:20px; background:linear-gradient(135deg,#c9a227,#e0b83c); color:#071a33; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:.7rem; letter-spacing:.06em; margin-bottom:10px; }
+    .flyer__details-place { font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:clamp(1.4rem,4vw,2.1rem); margin-bottom:1rem; }
+    .flyer__details-list { list-style:none; display:grid; gap:10px; padding:0; margin:0; }
+    .flyer__details-list li { display:flex; align-items:center; gap:10px; font-size:clamp(.95rem,2vw,1.15rem); }
+    .flyer__details-list i { color:var(--gold-400,#e0b83c); width:22px; text-align:center; }
+    .flyer__details-list span { color:#b9c9e4; }
+    .flyer__details-list strong { color:#ffe6a6; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); letter-spacing:.02em; }
+    .flyer__do { margin-bottom:1.5rem; }
+    .flyer__do h5 { text-align:center; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:1rem; letter-spacing:.08em; text-transform:uppercase; color:var(--gold-400,#e0b83c); margin:0 0 1.5rem; }
+    .flyer__do-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:1rem; }
+    .flyer__do-item { text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; }
+    .flyer__do-item i { width:52px; height:52px; border-radius:14px; display:grid; place-items:center; font-size:1.3rem; color:#fff; background:linear-gradient(135deg,rgba(29,85,184,.95),rgba(59,125,224,.75)); border:1px solid rgba(255,255,255,.15); }
+    .flyer__do-item span { font-size:.72rem; color:#d6e2f5; line-height:1.3; }
+    .flyer__reach { text-align:center; background:linear-gradient(135deg,#123f8f,#c9a227); border-radius:1rem; padding:1.25rem; }
+    .flyer__reach > span { display:block; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:800; font-size:1rem; margin-bottom:10px; }
+    .flyer__reach-steps { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px; }
+    .flyer__reach-steps > span { display:inline-flex; align-items:center; gap:6px; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif); font-weight:700; font-size:.95rem; }
+    .flyer__reach-steps > i { color:rgba(255,255,255,.8); }
+
+    @media (max-width:1024px){ .app-intro{ grid-template-columns:1fr; gap:2rem; } .app-phone{ order:-1; } }
+    @media (max-width:768px){
+      .flyer__top{ flex-direction:column; align-items:flex-start; }
+      .flyer__headline{ text-align:left; align-items:flex-start; }
+      .flyer__mid{ justify-content:center; }
+      .flyer__do-grid{ grid-template-columns:repeat(3,1fr); }
+      .flyer__reach-steps > i, .app-reach__steps > i { display:none; }
+    }
+    @media (max-width:480px){ .flyer__do-grid{ grid-template-columns:repeat(2,1fr); } }
+
+    /* ---- Coordinator count badge ---- */
+    .coord-card__no { display:inline-grid; place-items:center; min-width:26px; height:26px; padding:0 7px; border-radius:999px;
+      background:linear-gradient(135deg,#123f8f,#1d55b8); color:#fff; font-family:var(--font-display,'Plus Jakarta Sans',sans-serif);
+      font-weight:800; font-size:.78rem; margin-right:8px; box-shadow:0 4px 10px rgba(7,26,51,.18); flex-shrink:0; }
+  </style>
+</head>
+
+<body>
+  <a class="skip-link" href="#home">Skip to main content</a>
+
+  <!-- Preloader -->
+  <div class="preloader" id="preloader" aria-hidden="true">
+    <div class="preloader__ring"></div>
+    <div class="preloader__mark"><i class="fas fa-globe-americas"></i></div>
+  </div>
+
+  <!-- ============================ TOP BAR ============================ -->
+  <div class="topbar">
+    <div class="container topbar__inner">
+      <div class="topbar__creds">
+        <span class="topbar__cred"><i class="fas fa-building"></i> RC 8681627</span>
+        <span class="topbar__cred"><i class="fas fa-chart-line"></i> DUNS 669827104</span>
+        <span class="topbar__cred"><i class="fas fa-circle-check"></i> Verified Entity</span>
+      </div>
+      <div class="topbar__links">
+        <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i> Application Portal</a>
+        <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" rel="noopener"><i class="fab fa-tiktok"></i> TikTok</a>
       </div>
     </div>
+  </div>
 
-    <!-- Header -->
-    <header class="header">
-      <nav class="nav">
-        <div class="nav-container">
-          <div class="nav-logo">
-            <div class="logo-icon">
-              <i class="fas fa-globe-americas"></i>
-            </div>
-            <div class="logo-text">
-              <span class="logo-main">S MAHI</span>
-              <span class="logo-sub">Global Services</span>
-            </div>
-          </div>
-          <ul class="nav-menu">
-            <li><a href="#home" class="nav-link">Home</a></li>
-            <li><a href="#services" class="nav-link">Services</a></li>
-            <li><a href="#smahi-app" class="nav-link">S-MAHI App</a></li>  <!-- ADD -->
-            <li><a href="#presence" class="nav-link">Global Reach</a></li>
-            <li><a href="#certification" class="nav-link">Certification</a></li>
-            <li><a href="#partnership" class="nav-link">Partnership</a></li>
-            <li><a href="#contact" class="nav-link">Contact</a></li>
-          </ul>
-          <div class="nav-actions">
-            <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="btn-agent">
-              <i class="fas fa-user-plus"></i>
-              Agent Portal
-            </a>
-            <div class="nav-toggle">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-          </div>
+  <!-- ============================ HEADER ============================ -->
+  <header class="header" id="header">
+    <div class="container">
+      <nav class="nav" aria-label="Primary">
+        <a href="#home" class="brand" aria-label="S MAHI Global Services home">
+          <span class="brand__seal"><i class="fas fa-globe-americas"></i></span>
+          <span class="brand__text">
+            <span class="brand__name">S MAHI Global Services</span>
+            <span class="brand__sub">Innovating Skills · Empowering Workers</span>
+          </span>
+        </a>
+
+        <ul class="nav__menu" id="navMenu">
+          <li><a class="nav__link" href="#home">Home</a></li>
+          <li><a class="nav__link" href="#services">Services</a></li>
+          <li><a class="nav__link" href="#solutions">Solutions</a></li>
+          <li><a class="nav__link" href="#smahi-app">S-MAHI App</a></li>
+          <li><a class="nav__link" href="#coordinators">Coordinators</a></li>
+          <li><a class="nav__link" href="#presence">Presence</a></li>
+          <li><a class="nav__link" href="#certification">Certification</a></li>
+          <li><a class="nav__link" href="#contact">Contact</a></li>
+          <li class="nav__cta-mobile" style="margin-top:.5rem">
+            <a class="btn btn-primary btn-block" href="https://smahiglobal.pythonanywhere.com/" target="_blank" rel="noopener">Apply Now</a>
+          </li>
+        </ul>
+
+        <div class="nav__actions">
+          <a class="btn btn-primary nav__cta-desktop" href="https://smahiglobal.pythonanywhere.com/" target="_blank" rel="noopener">
+           
+          </a>
+          <button class="nav__toggle" id="navToggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="navMenu">
+            <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+          </button>
         </div>
       </nav>
-    </header>
-
-    <main>
-      <!-- Hero Section -->
-      <section id="home" class="hero">
-        <div class="hero-bg">
-          <div class="hero-particles"></div>
-          <div class="hero-gradient"></div>
-        </div>
-        <div class="hero-container">
-          <div class="hero-content">
-            <div class="hero-badge">
-              <i class="fas fa-star"></i>
-              <span>Leading Global Workforce Solutions</span>
-            </div>
-            <h1 class="hero-title">
-              <span class="title-line">Innovating Skills,</span>
-              <span class="title-line gradient-text">Empowering Workers</span>
-            </h1>
-            <p class="hero-subtitle">
-              Bridging the gap between skilled professionals and global opportunities through 
-              comprehensive training, certification, and strategic partnerships across continents.
-            </p>
-            <div class="hero-stats">
-              <div class="stat-item">
-                <div class="stat-number">5000+</div>
-                <div class="stat-label">Professionals Trained</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-number">50+</div>
-                <div class="stat-label">Global Partners</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-number">15+</div>
-                <div class="stat-label">Countries Reached</div>
-              </div>
-            </div>
-            <div class="hero-actions">
-              <a href="#certification" class="btn btn-primary">
-                <span>Get Certified</span>
-                <i class="fas fa-arrow-right"></i>
-              </a>
-              <a href="#partnership" class="btn btn-secondary">
-                <i class="fas fa-handshake"></i>
-                <span>Partner With Us</span>
-              </a>
-            </div>
-          </div>
-          <div class="hero-visual">
-            <div class="visual-container">
-              <div class="floating-card card-1">
-                <i class="fas fa-graduation-cap"></i>
-                <span>Education</span>
-              </div>
-              <div class="floating-card card-2">
-                <i class="fas fa-certificate"></i>
-                <span>Certification</span>
-              </div>
-              <div class="floating-card card-3">
-                <i class="fas fa-globe"></i>
-                <span>Global Reach</span>
-              </div>
-              <div class="central-orb">
-                <div class="orb-inner">
-                  <i class="fas fa-users"></i>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Services Section -->
-      <section id="services" class="services">
-        <div class="container">
-          <div class="section-header">
-            <div class="section-badge">Our Expertise</div>
-            <h2 class="section-title">Comprehensive Workforce Solutions</h2>
-            <p class="section-subtitle">
-              Delivering end-to-end services that transform careers and connect talent with global opportunities
-            </p>
-          </div>
-          <div class="services-grid">
-            <div class="service-card featured">
-              <div class="card-header">
-                <div class="service-icon">
-                  <i class="fas fa-hard-hat"></i>
-                </div>
-                <div class="service-badge">Most Popular</div>
-              </div>
-              <h3>Construction & Engineering</h3>
-              <p>Advanced training programs for construction professionals, engineers, and technical specialists with international standards.</p>
-              <ul class="service-features">
-                <li><i class="fas fa-check"></i> OSHA Certified Training</li>
-                <li><i class="fas fa-check"></i> Project Management</li>
-                <li><i class="fas fa-check"></i> Safety Protocols</li>
-              </ul>
-              <div class="service-action">
-                <a href="#contact" class="btn-service">Learn More</a>
-              </div>
-            </div>
-            
-            <div class="service-card">
-              <div class="card-header">
-                <div class="service-icon">
-                  <i class="fas fa-chalkboard-teacher"></i>
-                </div>
-              </div>
-              <h3>Education & Training</h3>
-              <p>Comprehensive educational programs designed to enhance skills and accelerate career advancement.</p>
-              <ul class="service-features">
-                <li><i class="fas fa-check"></i> Digital Learning Platform</li>
-                <li><i class="fas fa-check"></i> Expert Instructors</li>
-                <li><i class="fas fa-check"></i> Flexible Scheduling</li>
-              </ul>
-              <div class="service-action">
-                <a href="#contact" class="btn-service">Learn More</a>
-              </div>
-            </div>
-
-            <div class="service-card">
-              <div class="card-header">
-                <div class="service-icon">
-                  <i class="fas fa-certificate"></i>
-                </div>
-              </div>
-              <h3>Professional Certification</h3>
-              <p>Internationally recognized certifications that validate skills and open doors to global opportunities.</p>
-              <ul class="service-features">
-                <li><i class="fas fa-check"></i> ISO Compliant</li>
-                <li><i class="fas fa-check"></i> Digital Verification</li>
-                <li><i class="fas fa-check"></i> Lifetime Validity</li>
-              </ul>
-              <div class="service-action">
-                <a href="#contact" class="btn-service">Learn More</a>
-              </div>
-            </div>
-
-            <div class="service-card">
-              <div class="card-header">
-                <div class="service-icon">
-                  <i class="fas fa-users-cog"></i>
-                </div>
-              </div>
-              <h3>Workforce Matching</h3>
-              <p>Connecting skilled professionals with employers worldwide through our extensive global network.</p>
-              <ul class="service-features">
-                <li><i class="fas fa-check"></i> AI-Powered Matching</li>
-                <li><i class="fas fa-check"></i> Global Job Database</li>
-                <li><i class="fas fa-check"></i> Career Support</li>
-              </ul>
-              <div class="service-action">
-                <a href="#contact" class="btn-service">Learn More</a>
-              </div>
-            </div>
-
-            <div class="service-card">
-              <div class="card-header">
-                <div class="service-icon">
-                  <i class="fas fa-handshake"></i>
-                </div>
-              </div>
-              <h3>International Partnerships</h3>
-              <p>Building strategic alliances between local talent and global opportunities through trusted partnerships.</p>
-              <ul class="service-features">
-                <li><i class="fas fa-check"></i> Government Relations</li>
-                <li><i class="fas fa-check"></i> Corporate Partnerships</li>
-                <li><i class="fas fa-check"></i> Cross-Border Solutions</li>
-              </ul>
-              <div class="service-action">
-                <a href="#contact" class="btn-service">Learn More</a>
-              </div>
-            </div>
-
-            <div class="service-card">
-              <div class="card-header">
-                <div class="service-icon">
-                  <i class="fas fa-building"></i>
-                </div>
-              </div>
-              <h3>Institution Development</h3>
-              <p>Establishing and developing training centers and educational institutions to expand global reach.</p>
-              <ul class="service-features">
-                <li><i class="fas fa-check"></i> Infrastructure Setup</li>
-                <li><i class="fas fa-check"></i> Curriculum Development</li>
-                <li><i class="fas fa-check"></i> Quality Assurance</li>
-              </ul>
-              <div class="service-action">
-                <a href="#contact" class="btn-service">Learn More</a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      
-      <!-- ============================ S-MAHI APP ============================ -->
-<section id="smahi-app" class="smahi-app">
-  <div class="container">
-      <!-- National Launch banner image -->
-<a href="#contact" class="app-launch-banner" aria-label="S-MAHI National Launching — Kano State, 9 September 2026">
-  <img src="images/smahi-launch.jpg"
-       alt="S-MAHI App National Launching — Kano State, Nigeria. 9 September 2026, 10:00 AM, Central Hotel."
-       loading="lazy" width="1280" height="853" />
-</a>
-    <div class="section-header">
-      <div class="section-badge">Our Flagship Platform</div>
-      <h2 class="section-title">The S-MAHI App</h2>
-      <p class="section-subtitle">
-        One platform connecting people to trusted skills, services, businesses and
-        opportunities — locally and internationally.
-      </p>
     </div>
+  </header>
 
-    <!-- Intro + AI assistant + phone mockup -->
-    <div class="app-intro">
-      <div class="app-intro-text">
-        <p class="app-lead">
-          S-MAHI is a universal digital platform designed to connect people with trusted
-          professionals, skilled workers, businesses, services and opportunities wherever they are —
-          from a mechanic, electrician or plumber to a doctor, lawyer, hotel, hospital or company.
-        </p>
-
-        <div class="app-assistant">
-          <div class="app-assistant-icon"><i class="fas fa-microphone-lines"></i></div>
-          <div class="app-assistant-body">
-            <h4>Powered by the S-MAHI AI Assistant</h4>
-            <p>
-              Simply type or speak what you need. The assistant understands your request, asks for
-              your location when necessary, and guides you to the right businesses, professionals
-              and opportunities.
-            </p>
-          </div>
-        </div>
-
-        <div class="app-examples" role="list" aria-label="Example requests">
-          <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "I need a mechanic"</span>
-          <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "A doctor near me"</span>
-          <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "A hotel in Kano"</span>
-          <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "An electrician"</span>
-        </div>
-      </div>
-
-      <!-- Phone mockup showing the AI chat -->
-      <div class="app-phone" aria-hidden="true">
-        <div class="app-phone-frame">
-          <span class="app-phone-notch"></span>
-          <div class="app-phone-screen">
-            <div class="app-phone-header"><i class="fas fa-globe-americas"></i> S-MAHI Assistant</div>
-            <div class="app-bubble user">I need a plumber near me</div>
-            <div class="app-bubble bot"><i class="fas fa-robot"></i> Sure — please share your location so I can find plumbers close to you.</div>
-            <div class="app-bubble user">Kano, Nigeria</div>
-            <div class="app-bubble bot"><i class="fas fa-robot"></i> I found 5 trusted plumbers near you, with names, phone numbers and services.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- How it works -->
-    <h3 class="app-subhead">How S-MAHI works</h3>
-    <div class="app-steps">
-      <div class="app-step"><div class="app-step-num">1</div><i class="fas fa-comment-dots"></i><p>Tell S-MAHI what you need</p></div>
-      <div class="app-step"><div class="app-step-num">2</div><i class="fas fa-location-dot"></i><p>Select or provide your location</p></div>
-      <div class="app-step"><div class="app-step-num">3</div><i class="fas fa-list-check"></i><p>S-MAHI identifies relevant options</p></div>
-      <div class="app-step"><div class="app-step-num">4</div><i class="fas fa-circle-info"></i><p>View the available details</p></div>
-      <div class="app-step"><div class="app-step-num">5</div><i class="fas fa-handshake"></i><p>Connect with the provider</p></div>
-    </div>
-
-    <!-- Core features -->
-    <div class="app-features">
-      <div class="app-feature">
-        <div class="app-feature-icon"><i class="fas fa-robot"></i></div>
-        <h4>AI Assistant</h4>
-        <p>Interact by text or voice and get guidance based on exactly what you need.</p>
-      </div>
-      <div class="app-feature">
-        <div class="app-feature-icon"><i class="fas fa-language"></i></div>
-        <h4>Real-Time Translation</h4>
-        <p>Automatic translation helps you communicate across different languages, anywhere.</p>
-      </div>
-      <div class="app-feature">
-        <div class="app-feature-icon"><i class="fas fa-map-location-dot"></i></div>
-        <h4>GPS &amp; Location</h4>
-        <p>Location technology connects you to relevant services in the right area.</p>
-      </div>
-      <div class="app-feature">
-        <div class="app-feature-icon"><i class="fas fa-magnifying-glass-location"></i></div>
-        <h4>Smart Discovery</h4>
-        <p>Find providers by what you need — no need to know a specific name.</p>
-      </div>
-      <div class="app-feature">
-        <div class="app-feature-icon"><i class="fas fa-earth-africa"></i></div>
-        <h4>Local to Global</h4>
-        <p>Built to work across local, state, national and international levels.</p>
-      </div>
-      <div class="app-feature">
-        <div class="app-feature-icon"><i class="fas fa-layer-group"></i></div>
-        <h4>One Platform for Everyone</h4>
-        <p>Professionals, artisans, businesses, institutions and customers, together.</p>
-      </div>
-    </div>
-
-    <!-- Who it's for -->
-    <h3 class="app-subhead">Built for everyone</h3>
-    <div class="app-audience">
-      <div class="app-aud-card">
-        <div class="app-aud-icon"><i class="fas fa-user-gear"></i></div>
-        <h4>For Professionals</h4>
-        <p>Skilled workers create their presence and make their services discoverable to customers and opportunities.</p>
-      </div>
-      <div class="app-aud-card">
-        <div class="app-aud-icon"><i class="fas fa-store"></i></div>
-        <h4>For Businesses</h4>
-        <p>Businesses list their products and services to be found by nearby customers through relevant searches.</p>
-      </div>
-      <div class="app-aud-card">
-        <div class="app-aud-icon"><i class="fas fa-user"></i></div>
-        <h4>For Customers</h4>
-        <p>Describe what you need by text or voice, share your location, and discover relevant options instantly.</p>
-      </div>
-    </div>
-
-    <!-- Reach bar -->
-    <div class="app-reach">
-      <span><i class="fas fa-location-dot"></i> Local</span>
-      <i class="fas fa-arrow-right-long"></i>
-      <span><i class="fas fa-map"></i> State</span>
-      <i class="fas fa-arrow-right-long"></i>
-      <span><i class="fas fa-flag"></i> National</span>
-      <i class="fas fa-arrow-right-long"></i>
-      <span><i class="fas fa-globe"></i> International</span>
-    </div>
-
-    <!-- Vision -->
-    <p class="app-vision">
-      <i class="fas fa-quote-left"></i>
-      Our vision is to make it easier for people anywhere to find the skills, services, businesses
-      and opportunities they need — bringing people and opportunities closer together through one
-      connected digital ecosystem.
-    </p>
-  </div>
-</section>
-
-
-      <!-- Global Presence -->
-      <section id="presence" class="presence">
-        <div class="container">
-          <div class="section-header">
-            <div class="section-badge">Global Network</div>
-            <h2 class="section-title">Our Worldwide Presence</h2>
-            <p class="section-subtitle">
-              Strategically positioned across continents to serve our global community
-            </p>
-          </div>
-          <div class="presence-content">
-            <div class="presence-map">
-              <div class="map-container">
-                <div class="region africa">
-                  <div class="region-marker nigeria">
-                    <div class="marker-pulse"></div>
-                    <div class="marker-dot"></div>
-                    <div class="marker-label">Nigeria</div>
-                  </div>
-                </div>
-                <div class="region middle-east">
-                  <div class="region-marker qatar">
-                    <div class="marker-pulse"></div>
-                    <div class="marker-dot"></div>
-                    <div class="marker-label">Qatar</div>
-                  </div>
-                  <div class="region-marker saudi">
-                    <div class="marker-pulse"></div>
-                    <div class="marker-dot"></div>
-                    <div class="marker-label">Saudi Arabia</div>
-                  </div>
-                  <div class="region-marker uae">
-                    <div class="marker-pulse"></div>
-                    <div class="marker-dot"></div>
-                    <div class="marker-label">UAE</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="presence-details">
-              <div class="presence-region">
-                <div class="region-header">
-                  <i class="fas fa-map-marker-alt"></i>
-                  <h3>Nigeria Operations</h3>
-                </div>
-                <div class="locations-grid">
-                  <div class="location-item">
-                    <div class="location-icon">
-                      <i class="fas fa-building"></i>
-                    </div>
-                    <div class="location-info">
-                      <h4>Kano</h4>
-                      <p>Northern Regional Hub</p>
-                    </div>
-                  </div>
-                  <div class="location-item">
-                    <div class="location-icon">
-                      <i class="fas fa-landmark"></i>
-                    </div>
-                    <div class="location-info">
-                      <h4>Abuja</h4>
-                      <p>Federal Capital Territory</p>
-                    </div>
-                  </div>
-                  <div class="location-item">
-                    <div class="location-icon">
-                      <i class="fas fa-city"></i>
-                    </div>
-                    <div class="location-info">
-                      <h4>Lagos</h4>
-                      <p>Commercial Center</p>
-                    </div>
-                  </div>
-                  <div class="location-item">
-                    <div class="location-icon">
-                      <i class="fas fa-industry"></i>
-                    </div>
-                    <div class="location-info">
-                      <h4>Kaduna</h4>
-                      <p>Industrial Hub</p>
-                    </div>
-                  </div>
-                  <div class="location-item">
-                    <div class="location-icon">
-                      <i class="fas fa-graduation-cap"></i>
-                    </div>
-                    <div class="location-info">
-                      <h4>Bauchi</h4>
-                      <p>Training Center</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="presence-region">
-                <div class="region-header">
-                  <i class="fas fa-globe"></i>
-                  <h3>International Partnerships</h3>
-                </div>
-                <div class="international-partners">
-                  <div class="partner-item">
-                    <div class="partner-flag qatar-flag"></div>
-                    <div class="partner-info">
-                      <h4>Qatar</h4>
-                      <p>Construction & Infrastructure</p>
-                    </div>
-                  </div>
-                  <div class="partner-item">
-                    <div class="partner-flag saudi-flag"></div>
-                    <div class="partner-info">
-                      <h4>Saudi Arabia</h4>
-                      <p>NEOM & Vision 2030 Projects</p>
-                    </div>
-                  </div>
-                  <div class="partner-item">
-                    <div class="partner-flag uae-flag"></div>
-                    <div class="partner-info">
-                      <h4>United Arab Emirates</h4>
-                      <p>Dubai & Abu Dhabi Operations</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Certification Program -->
-      <section id="certification" class="certification">
-        <div class="container">
-          <div class="certification-content">
-            <div class="certification-info">
-              <div class="section-badge">Certification Excellence</div>
-              <h2 class="section-title">Digital & Physical Certificates</h2>
-              <p class="section-description">
-                Our comprehensive certification program offers both digital and physical certificates 
-                that are internationally recognized, blockchain-verified, and designed to open doors 
-                to global career opportunities.
-              </p>
-              <div class="certification-features">
-                <div class="feature-item">
-                  <div class="feature-icon">
-                    <i class="fas fa-shield-alt"></i>
-                  </div>
-                  <div class="feature-content">
-                    <h4>Blockchain Verified</h4>
-                    <p>Tamper-proof digital certificates with blockchain verification</p>
-                  </div>
-                </div>
-                <div class="feature-item">
-                  <div class="feature-icon">
-                    <i class="fas fa-globe-americas"></i>
-                  </div>
-                  <div class="feature-content">
-                    <h4>Global Recognition</h4>
-                    <p>Accepted by employers and institutions worldwide</p>
-                  </div>
-                </div>
-                <div class="feature-item">
-                  <div class="feature-icon">
-                    <i class="fas fa-rocket"></i>
-                  </div>
-                  <div class="feature-content">
-                    <h4>Career Acceleration</h4>
-                    <p>Fast-track your career with industry-recognized credentials</p>
-                  </div>
-                </div>
-                <div class="feature-item">
-                  <div class="feature-icon">
-                    <i class="fas fa-users"></i>
-                  </div>
-                  <div class="feature-content">
-                    <h4>Job Matching</h4>
-                    <p>Direct connection to global job opportunities</p>
-                  </div>
-                </div>
-              </div>
-              <div class="certification-actions">
-                <a href="#contact" class="btn btn-primary">
-                  <span>Start Certification</span>
-                  <i class="fas fa-arrow-right"></i>
-                </a>
-                <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="btn btn-outline">
-                  <i class="fas fa-external-link-alt"></i>
-                  <span>Agent Portal</span>
-                </a>
-              </div>
-            </div>
-            <div class="certification-visual">
-              <div class="certificate-showcase">
-                <div class="certificate digital-cert">
-                  <div class="cert-header">
-                    <div class="cert-logo">
-                      <i class="fas fa-globe-americas"></i>
-                    </div>
-                    <div class="cert-title">Digital Certificate</div>
-                  </div>
-                  <div class="cert-content">
-                    <h4>Professional Certification</h4>
-                    <p>Construction & Engineering</p>
-                    <div class="cert-verification">
-                      <i class="fas fa-qrcode"></i>
-                      <span>Blockchain Verified</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="certificate physical-cert">
-                  <div class="cert-header">
-                    <div class="cert-logo">
-                      <i class="fas fa-award"></i>
-                    </div>
-                    <div class="cert-title">Physical Certificate</div>
-                  </div>
-                  <div class="cert-content">
-                    <h4>International Standard</h4>
-                    <p>Premium Quality Print</p>
-                    <div class="cert-seal">
-                      <i class="fas fa-stamp"></i>
-                      <span>Official Seal</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Partnership Section -->
-      <section id="partnership" class="partnership">
-        <div class="container">
-          <div class="section-header">
-            <div class="section-badge">Join Our Network</div>
-            <h2 class="section-title">Partnership & Collaboration</h2>
-            <p class="section-subtitle">
-              We're actively seeking strategic partners and collaborators to expand our global impact
-            </p>
-          </div>
-          <div class="partnership-content">
-            <div class="partnership-types">
-              <div class="partnership-card">
-                <div class="partnership-icon">
-                  <i class="fas fa-handshake"></i>
-                </div>
-                <h3>Strategic Partnerships</h3>
-                <p>Long-term collaborations with educational institutions, government agencies, and multinational corporations.</p>
-                <ul class="partnership-benefits">
-                  <li><i class="fas fa-check"></i> Revenue Sharing Models</li>
-                  <li><i class="fas fa-check"></i> Joint Program Development</li>
-                  <li><i class="fas fa-check"></i> Global Market Access</li>
-                </ul>
-              </div>
-              <div class="partnership-card">
-                <div class="partnership-icon">
-                  <i class="fas fa-user-tie"></i>
-                </div>
-                <h3>Agent Network</h3>
-                <p>Join our global network of certified agents and representatives to expand our reach in your region.</p>
-                <ul class="partnership-benefits">
-                  <li><i class="fas fa-check"></i> Competitive Commission Structure</li>
-                  <li><i class="fas fa-check"></i> Comprehensive Training</li>
-                  <li><i class="fas fa-check"></i> Marketing Support</li>
-                </ul>
-                <div class="partnership-action">
-                  <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="btn btn-primary">
-                    <i class="fas fa-user-plus"></i>
-                    <span>Register as Agent</span>
-                  </a>
-                </div>
-              </div>
-              <div class="partnership-card">
-                <div class="partnership-icon">
-                  <i class="fas fa-building"></i>
-                </div>
-                <h3>Institutional Collaboration</h3>
-                <p>Partner with us to establish training centers and certification programs in your region.</p>
-                <ul class="partnership-benefits">
-                  <li><i class="fas fa-check"></i> Franchise Opportunities</li>
-                  <li><i class="fas fa-check"></i> Curriculum Licensing</li>
-                  <li><i class="fas fa-check"></i> Brand Partnership</li>
-                </ul>
-              </div>
-            </div>
-            <div class="partnership-cta">
-              <div class="cta-content">
-                <h3>Ready to Partner With Us?</h3>
-                <p>Let's discuss how we can work together to create opportunities and empower workers globally.</p>
-                <div class="cta-actions">
-                  <a href="#contact" class="btn btn-primary">
-                    <span>Start Partnership Discussion</span>
-                    <i class="fas fa-arrow-right"></i>
-                  </a>
-                  <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="btn btn-outline">
-                    <i class="fas fa-external-link-alt"></i>
-                    <span>Agent Registration Portal</span>
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Who We Help -->
-      <section id="who-we-help" class="who-we-help">
-        <div class="container">
-          <div class="section-header">
-            <div class="section-badge">Our Community</div>
-            <h2 class="section-title">Who We Empower</h2>
-            <p class="section-subtitle">
-              Serving diverse communities and stakeholders across the global workforce ecosystem
-            </p>
-          </div>
-          <div class="help-categories">
-            <div class="help-category">
-              <div class="category-icon">
-                <i class="fas fa-user-tie"></i>
-              </div>
-              <h3>Skilled Professionals</h3>
-              <p>Engineers, technicians, and specialists seeking international career opportunities and skill validation.</p>
-            </div>
-            <div class="help-category">
-              <div class="category-icon">
-                <i class="fas fa-tools"></i>
-              </div>
-              <h3>Artisans & Craftspeople</h3>
-              <p>Skilled workers looking to formalize their expertise and access global job markets.</p>
-            </div>
-            <div class="help-category">
-              <div class="category-icon">
-                <i class="fas fa-search"></i>
-              </div>
-              <h3>Job Seekers</h3>
-              <p>Individuals seeking employment opportunities both locally and internationally.</p>
-            </div>
-            <div class="help-category">
-              <div class="category-icon">
-                <i class="fas fa-briefcase"></i>
-              </div>
-              <h3>Employers</h3>
-              <p>Companies and organizations looking for qualified, certified professionals worldwide.</p>
-            </div>
-            <div class="help-category">
-              <div class="category-icon">
-                <i class="fas fa-university"></i>
-              </div>
-              <h3>Educational Institutions</h3>
-              <p>Schools, colleges, and training centers seeking partnerships and program development.</p>
-            </div>
-            <div class="help-category">
-              <div class="category-icon">
-                <i class="fas fa-hands-helping"></i>
-              </div>
-              <h3>NGOs & Government</h3>
-              <p>Organizations focused on workforce development and economic empowerment initiatives.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Contact Section -->
-      <section id="contact" class="contact">
-        <div class="container">
-          <div class="section-header">
-            <div class="section-badge">Get In Touch</div>
-            <h2 class="section-title">Contact Our Team</h2>
-            <p class="section-subtitle">
-              Ready to start your journey or explore partnership opportunities? We're here to help.
-            </p>
-          </div>
-          <div class="contact-content">
-            <div class="contact-info">
-              <div class="contact-methods">
-                <div class="contact-method">
-                  <div class="method-icon">
-                    <i class="fas fa-envelope"></i>
-                  </div>
-                  <div class="method-content">
-                    <h4>Email Us</h4>
-                    <p>s.mahiglobalservices@gmail.com</p>
-                    <span class="method-note">Response within 24 hours</span>
-                  </div>
-                </div>
-                <div class="contact-method">
-                  <div class="method-icon">
-                    <i class="fab fa-whatsapp"></i>
-                  </div>
-                  <div class="method-content">
-                    <h4>WhatsApp / Phone</h4>
-                    <p>+234 906 606 2541</p>
-                    <p>+234 905 237 3245</p>
-                    <span class="method-note">Available 24/7</span>
-                  </div>
-                </div>
-                <div class="contact-method">
-                  <div class="method-icon">
-                    <i class="fas fa-user-plus"></i>
-                  </div>
-                  <div class="method-content">
-                    <h4>Agent Registration</h4>
-                    <p>Join our global network</p>
-                    <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" class="method-link">
-                      Registration Portal <i class="fas fa-external-link-alt"></i>
-                    </a>
-                  </div>
-                </div>
-                <div class="contact-method">
-                  <div class="method-icon">
-                    <i class="fas fa-share-alt"></i>
-                  </div>
-                  <div class="method-content">
-                    <h4>Social Media</h4>
-                    <p>Google Business: Coming Soon</p>
-                    <p>LinkedIn: Coming Soon</p>
-                    <span class="method-note">Follow for updates</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="contact-form-container">
-              <form class="contact-form" id="contactForm">
-                <div class="form-header">
-                  <h3>Send us a Message</h3>
-                  <p>Fill out the form below and we'll get back to you shortly</p>
-                </div>
-                <div class="form-grid">
-                  <div class="form-group">
-                    <label for="name">Full Name *</label>
-                    <input type="text" id="name" name="name" required>
-                  </div>
-                  <div class="form-group">
-                    <label for="email">Email Address *</label>
-                    <input type="email" id="email" name="email" required>
-                  </div>
-                  <div class="form-group">
-                    <label for="phone">Phone Number</label>
-                    <input type="tel" id="phone" name="phone">
-                  </div>
-                  <div class="form-group">
-                    <label for="service">Interest Area</label>
-                    <select id="service" name="service">
-                      <option value="">Select your interest</option>
-                      <option value="construction">Construction & Engineering</option>
-                      <option value="education">Education & Training</option>
-                      <option value="certification">Professional Certification</option>
-                      <option value="workforce">Workforce Matching</option>
-                      <option value="partnership">Partnership Opportunities</option>
-                      <option value="agent">Agent Registration</option>
-                      <option value="institution">Institution Development</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="form-group full-width">
-                  <label for="message">Message *</label>
-                  <textarea id="message" name="message" rows="5" required placeholder="Tell us about your needs or interests..."></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary form-submit">
-                  <span>Send Message</span>
-                  <i class="fas fa-paper-plane"></i>
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <!-- Footer -->
-    <footer class="footer">
+  <main>
+    <!-- ============================ HERO ============================ -->
+    <section class="hero" id="home">
       <div class="container">
-        <div class="footer-content">
-          <div class="footer-main">
-            <div class="footer-logo">
-              <div class="logo-icon">
-                <i class="fas fa-globe-americas"></i>
-              </div>
-              <div class="logo-text">
-                <span class="logo-main">S MAHI</span>
-                <span class="logo-sub">Global Services</span>
-              </div>
-            </div>
-            <p class="footer-mission">
-              "To bridge the gap between skills and opportunities — making global impact through local empowerment."
+        <div class="hero__grid">
+          <div class="hero__content" data-aos="fade-right">
+            <span class="hero__ribbon"><i class="fas fa-handshake"></i> Now accepting partnership proposals worldwide</span>
+
+            <h1 class="hero__title">Innovating skills, <span class="accent">empowering workers</span> across the globe.</h1>
+
+            <p class="hero__subtitle">
+              S MAHI Global Services Ltd bridges the gap between skilled professionals and global opportunities
+              through comprehensive training, certification, and strategic job placement — a globally recognised,
+              DUNS-certified organisation (669827104).
             </p>
-            <div class="footer-social">
-              <a href="#" class="social-link">
-                <i class="fab fa-linkedin"></i>
-              </a>
-              <a href="#" class="social-link">
-                <i class="fab fa-twitter"></i>
-              </a>
-              <a href="#" class="social-link">
-                <i class="fab fa-facebook"></i>
-              </a>
-              <a href="#" class="social-link">
-                <i class="fab fa-instagram"></i>
+
+            <div class="hero__meta">
+              <span class="tag tag--rc"><i class="fas fa-building"></i> RC 8681627</span>
+              <span class="tag tag--duns"><i class="fas fa-chart-line"></i> DUNS 669827104</span>
+            </div>
+
+            <div class="hero__actions">
+              <a href="#certification" class="btn btn-gold"><i class="fas fa-certificate"></i> Get Certified</a>
+              <a href="#services" class="btn btn-ghost">Explore Services</a>
+              <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" rel="noopener" class="btn btn-dark"><i class="fab fa-tiktok"></i> Follow</a>
+            </div>
+
+            <!-- Job Portal announcement -->
+            <div class="announce" role="note">
+              <div class="announce__head"><i class="fas fa-bullhorn"></i> Application Portal is now live</div>
+              <p class="announce__body">
+                Qualified candidates can submit applications through our secure online platform.
+                <strong>S MAHI Global Services Ltd</strong> is DUNS-registered (669827104), ensuring global compliance and trust.
+              </p>
+              <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" rel="noopener" class="btn btn-primary announce__link">
+                <i class="fas fa-arrow-up-right-from-square"></i> Access Application Portal
               </a>
             </div>
           </div>
-          <div class="footer-links">
-            <div class="footer-section">
-              <h4>Services</h4>
-              <ul>
-                <li><a href="#services">Construction & Engineering</a></li>
-                <li><a href="#services">Education & Training</a></li>
-                <li><a href="#certification">Certification</a></li>
-                <li><a href="#services">Workforce Matching</a></li>
-              </ul>
+
+          <div class="hero__visual" data-aos="fade-left" data-aos-delay="150" aria-hidden="true">
+            <div class="hero__crest">
+              <div class="hero__crest-inner"><i class="fas fa-globe-americas"></i></div>
             </div>
-            <div class="footer-section">
-              <h4>Company</h4>
-              <ul>
-                <li><a href="#home">About Us</a></li>
-                <li><a href="#presence">Global Presence</a></li>
-                <li><a href="#partnership">Partnerships</a></li>
-                <li><a href="#contact">Contact</a></li>
-              </ul>
-            </div>
-            <div class="footer-section">
-              <h4>Resources</h4>
-              <ul>
-                <li><a href="https://smahiglobal.pythonanywhere.com/" target="_blank">Agent Portal</a></li>
-                <li><a href="#certification">Certification Guide</a></li>
-                <li><a href="#partnership">Partner With Us</a></li>
-                <li><a href="#contact">Support</a></li>
-              </ul>
-            </div>
-            <div class="footer-section">
-              <h4>Contact</h4>
-              <ul>
-                <li>s.mahiglobalservices@gmail.com</li>
-                <li>+234 906 606 2541</li>
-                <li>+234 905 237 3245</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-        <div class="footer-bottom">
-          <div class="footer-disclaimer">
-            <p>We do not support fraud, impersonation, or unlawful recruitment practices.</p>
-          </div>
-          <div class="footer-copyright">
-            <p>&copy; 2025 S MAHI Global Services. All rights reserved.</p>
+            <span class="float-card float-card--a"><i class="fas fa-graduation-cap"></i> Certified Training</span>
+            <span class="float-card float-card--b"><i class="fas fa-handshake"></i> Global Placement</span>
+            <span class="float-card float-card--c"><i class="fas fa-tools"></i> Skilled Experts</span>
           </div>
         </div>
       </div>
-    </footer>
+    </section>
 
-    <script type="module" src="/main.js"></script>
-  </body>
+    <!-- ============================ STATS ============================ -->
+    <section class="stats" aria-label="Key figures">
+      <div class="container">
+        <div class="stats__grid">
+          <div class="stat" data-aos="fade-up">
+            <div class="stat__num" data-count="195"><span class="suffix">+</span></div>
+            <div class="stat__label">Countries reachable</div>
+          </div>
+          <div class="stat" data-aos="fade-up" data-aos-delay="100">
+            <div class="stat__num" data-count="25"></div>
+            <div class="stat__label">State coordinators</div>
+          </div>
+          <div class="stat" data-aos="fade-up" data-aos-delay="200">
+            <div class="stat__num" data-count="6"></div>
+            <div class="stat__label">Agents per LGA</div>
+          </div>
+          <div class="stat" data-aos="fade-up" data-aos-delay="300">
+            <div class="stat__num" data-count="9"></div>
+            <div class="stat__label">Global locations</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ SERVICES ============================ -->
+    <section class="section" id="services">
+      <div class="container">
+        <div class="section-head section-head--center" data-aos="fade-up">
+          <span class="eyebrow">What we do</span>
+          <h2 class="section-title">Our services</h2>
+          <p class="section-lead">End-to-end workforce solutions — from skills training and certification to global placement and institutional partnerships.</p>
+        </div>
+
+        <div class="cards-grid">
+          <article class="card" data-aos="fade-up">
+            <div class="card__icon"><i class="fas fa-hard-hat"></i></div>
+            <h3 class="card__title">Construction &amp; Engineering</h3>
+            <p class="card__text">Professional training and certification programmes for construction workers, engineers, and technical specialists.</p>
+          </article>
+          <article class="card" data-aos="fade-up" data-aos-delay="80">
+            <div class="card__icon"><i class="fas fa-chalkboard-user"></i></div>
+            <h3 class="card__title">Education &amp; Training</h3>
+            <p class="card__text">Comprehensive educational programmes designed to enhance professional skills and career advancement opportunities.</p>
+          </article>
+          <article class="card" data-aos="fade-up" data-aos-delay="160">
+            <div class="card__icon"><i class="fas fa-certificate"></i></div>
+            <h3 class="card__title">Certification</h3>
+            <p class="card__text">Internationally recognised certifications that validate professional competencies and facilitate global mobility.</p>
+          </article>
+          <article class="card" data-aos="fade-up">
+            <div class="card__icon"><i class="fas fa-users"></i></div>
+            <h3 class="card__title">Workforce Matching</h3>
+            <p class="card__text">Strategic connections between qualified professionals and international employers through our extensive network.</p>
+          </article>
+          <article class="card" data-aos="fade-up" data-aos-delay="80">
+            <div class="card__icon"><i class="fas fa-globe"></i></div>
+            <h3 class="card__title">International Partnership</h3>
+            <p class="card__text">Building strategic alliances between local talent pools and global opportunities through collaborative partnerships.</p>
+          </article>
+          <article class="card" data-aos="fade-up" data-aos-delay="160">
+            <div class="card__icon"><i class="fas fa-building-columns"></i></div>
+            <h3 class="card__title">Institution Setup</h3>
+            <p class="card__text">Establishing accredited training centres and educational institutions to expand our service delivery and impact.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ SOLUTIONS (Exclusive) ============================ -->
+    <section class="section section--tint" id="solutions">
+      <div class="container">
+        <div class="section-head section-head--center" data-aos="fade-up">
+          <span class="eyebrow">What sets us apart</span>
+          <h2 class="section-title">Our exclusive solutions</h2>
+          <p class="section-lead">More than partnerships — a cutting-edge platform that streamlines the working lives of experts and employers worldwide.</p>
+        </div>
+
+        <div class="solutions-grid">
+          <article class="solution" data-aos="fade-up">
+            <div class="solution__head">
+              <span class="solution__icon"><i class="fas fa-mobile-screen-button"></i></span>
+              <h3 class="solution__title">Expert Search Application</h3>
+            </div>
+            <p class="solution__text">Our copyrighted application closes the gap between those seeking services and those offering them.</p>
+            <ul class="solution__list">
+              <li><i class="fas fa-check"></i><span><strong>Automatic translation</strong> makes it easy to understand different languages during communication and transactions.</span></li>
+              <li><i class="fas fa-check"></i><span><strong>Instant service search</strong> for any manual labour or skill you are looking for.</span></li>
+              <li><i class="fas fa-check"></i><span><strong>Easy search</strong> shows the expert closest to your location.</span></li>
+              <li><i class="fas fa-check"></i><span><strong>Full details</strong> — phone number, type of expertise, and guarantee status.</span></li>
+            </ul>
+            <p class="note-box"><strong>Our goal:</strong> simplify finding the right expert in your vicinity, quickly and reliably.</p>
+          </article>
+
+          <article class="solution" data-aos="fade-up" data-aos-delay="80">
+            <div class="solution__head">
+              <span class="solution__icon"><i class="fas fa-landmark"></i></span>
+              <h3 class="solution__title">Strategic Alliances with Embassies</h3>
+            </div>
+            <p class="solution__text">We maintain special relationships with embassies of every country.</p>
+            <ul class="solution__list">
+              <li><i class="fas fa-check"></i><span><strong>Embassy partnerships</strong> let us facilitate the movement of workers and simplify recruiting professionals from one country to another.</span></li>
+            </ul>
+          </article>
+
+          <article class="solution" data-aos="fade-up" data-aos-delay="160">
+            <div class="solution__head">
+              <span class="solution__icon"><i class="fas fa-robot"></i></span>
+              <h3 class="solution__title">AI-Powered Verification</h3>
+            </div>
+            <p class="solution__text">Our application leverages Artificial Intelligence to protect quality and trust.</p>
+            <ul class="solution__list">
+              <li><i class="fas fa-check"></i><span><strong>Vetting:</strong> analyse and verify every individual to confirm the accuracy of their data and expertise.</span></li>
+              <li><i class="fas fa-check"></i><span><strong>Security:</strong> ensure our professionals meet all quality and professional standards.</span></li>
+            </ul>
+          </article>
+
+          <article class="solution" data-aos="fade-up">
+            <div class="solution__head">
+              <span class="solution__icon"><i class="fas fa-user-group"></i></span>
+              <h3 class="solution__title">Agents &amp; Coordinators</h3>
+            </div>
+            <p class="solution__text">A unique on-the-ground structure for reliable, person-to-person service.</p>
+            <ul class="solution__list">
+              <li><i class="fas fa-check"></i><span><strong>Six agents per LGA</strong> in every Local Government Area across Nigeria.</span></li>
+              <li><i class="fas fa-check"></i><span><strong>Problem resolution:</strong> agents resolve issues, mediate conflicts, and receive complaints directly.</span></li>
+              <li><i class="fas fa-check"></i><span><strong>State coordinators</strong> supervise and manage all agents within their state.</span></li>
+            </ul>
+            <p class="note-box"><strong>Goal:</strong> expand this system of six agents per LGA, managed by a state coordinator, across the entire globe.</p>
+          </article>
+
+          <article class="solution" data-aos="fade-up" data-aos-delay="80">
+            <div class="solution__head">
+              <span class="solution__icon"><i class="fas fa-wallet"></i></span>
+              <h3 class="solution__title">S MAHI Token Wallet</h3>
+            </div>
+            <p class="solution__text">A dedicated payment system to simplify transactions worldwide.</p>
+            <ul class="solution__list">
+              <li><i class="fas fa-check"></i><span><strong>Easy payroll:</strong> pay workers easily and seamlessly in any country globally.</span></li>
+            </ul>
+          </article>
+
+          <article class="solution" data-aos="fade-up" data-aos-delay="160">
+            <div class="solution__head">
+              <span class="solution__icon"><i class="fas fa-graduation-cap"></i></span>
+              <h3 class="solution__title">Training &amp; Government Connections</h3>
+            </div>
+            <p class="solution__text">Skills development and access to essential institutions.</p>
+            <ul class="solution__list">
+              <li><i class="fas fa-check"></i><span><strong>Vocational training</strong> helps unskilled individuals become certified professionals.</span></li>
+              <li><i class="fas fa-check"></i><span><strong>Institutional search</strong> locates the nearest government authorities, security agencies, hospitals, or schools with contact numbers.</span></li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ S-MAHI APP ============================ -->
+    <section class="section section--tint" id="smahi-app">
+      <div class="container">
+
+        <!-- National Launch flyer — drawn with HTML/CSS, no image needed -->
+        <div class="flyer" role="img" aria-label="S-MAHI App National Launching. Kano State, Nigeria. 9 September 2026, 10:00 AM, Central Hotel." data-aos="fade-up">
+          <div class="flyer__glow"></div>
+
+          <div class="flyer__top">
+            <div class="flyer__brand">
+              <div class="flyer__logo"><i class="fas fa-globe-americas"></i></div>
+              <div>
+                <span class="flyer__brand-name">S. MAHI</span>
+                <span class="flyer__brand-sub">GLOBAL SERVICES</span>
+                <span class="flyer__brand-tag">Connecting People, Skills, Services &amp; Opportunities</span>
+              </div>
+            </div>
+            <div class="flyer__headline">
+              <span class="flyer__h1">NATIONAL</span>
+              <span class="flyer__h1 accent">LAUNCHING</span>
+              <span class="flyer__ribbon">BEFORE GLOBAL LAUNCH</span>
+            </div>
+          </div>
+
+          <p class="flyer__lead">A big step toward a global digital future — <strong>starting from <span class="ng">Nigeria</span></strong></p>
+
+          <div class="flyer__mid">
+            <div class="flyer__kano">
+              <div class="flyer__pin"><i class="fas fa-location-dot"></i></div>
+              <div>
+                <h4>KANO STATE</h4>
+                <p>The commercial hub of Northern Nigeria</p>
+              </div>
+            </div>
+            <div class="flyer__badge">
+              <span>ONE PLATFORM.</span>
+              <span>ENDLESS OPPORTUNITIES.</span>
+              <span>LIMITLESS POSSIBILITIES.</span>
+            </div>
+          </div>
+
+          <div class="flyer__details">
+            <div class="flyer__details-label">Launching Location (National Launch)</div>
+            <div class="flyer__details-place">KANO STATE, NIGERIA</div>
+            <ul class="flyer__details-list">
+              <li><i class="fas fa-calendar-days"></i> <span>Date:</span> <strong>09 September 2026</strong></li>
+              <li><i class="fas fa-clock"></i> <span>Time:</span> <strong>10:00 AM</strong></li>
+              <li><i class="fas fa-building"></i> <span>Venue:</span> <strong>Central Hotel</strong></li>
+            </ul>
+          </div>
+
+          <div class="flyer__do">
+            <h5>What you can do on the S-MAHI App</h5>
+            <div class="flyer__do-grid">
+              <div class="flyer__do-item"><i class="fas fa-magnifying-glass"></i><span>Find Professionals &amp; Artisans</span></div>
+              <div class="flyer__do-item"><i class="fas fa-store"></i><span>Find Businesses &amp; Services</span></div>
+              <div class="flyer__do-item"><i class="fas fa-location-dot"></i><span>Nearby Services by Location</span></div>
+              <div class="flyer__do-item"><i class="fas fa-comments"></i><span>Communicate Easily</span></div>
+              <div class="flyer__do-item"><i class="fas fa-robot"></i><span>Help from S-MAHI AI Assistant</span></div>
+              <div class="flyer__do-item"><i class="fas fa-globe"></i><span>Local &amp; International Opportunities</span></div>
+            </div>
+          </div>
+
+          <div class="flyer__reach">
+            <span>From local communities to the world</span>
+            <div class="flyer__reach-steps">
+              <span><i class="fas fa-location-dot"></i> Local</span><i class="fas fa-arrow-right-long"></i>
+              <span><i class="fas fa-map"></i> State</span><i class="fas fa-arrow-right-long"></i>
+              <span><i class="fas fa-flag"></i> National</span><i class="fas fa-arrow-right-long"></i>
+              <span><i class="fas fa-globe"></i> International</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-head section-head--center" data-aos="fade-up">
+          <span class="eyebrow">Our flagship platform</span>
+          <h2 class="section-title">The S-MAHI App</h2>
+          <p class="section-lead">One platform connecting people to trusted skills, services, businesses and opportunities — locally and internationally.</p>
+        </div>
+
+        <div class="app-intro">
+          <div>
+            <p class="app-lead">
+              S-MAHI is a universal digital platform designed to connect people with trusted professionals,
+              skilled workers, businesses, services and opportunities wherever they are — from a mechanic,
+              electrician or plumber to a doctor, lawyer, hotel, hospital or company.
+            </p>
+
+            <div class="app-assistant">
+              <div class="app-assistant__icon"><i class="fas fa-microphone-lines"></i></div>
+              <div>
+                <h4>Powered by the S-MAHI AI Assistant</h4>
+                <p>Simply type or speak what you need. The assistant understands your request, asks for your location when necessary, and guides you to the right businesses, professionals and opportunities.</p>
+              </div>
+            </div>
+
+            <div class="app-examples" role="list" aria-label="Example requests">
+              <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "I need a mechanic"</span>
+              <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "A doctor near me"</span>
+              <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "A hotel in Kano"</span>
+              <span class="app-chip" role="listitem"><i class="fas fa-magnifying-glass"></i> "An electrician"</span>
+            </div>
+          </div>
+
+          <div class="app-phone" aria-hidden="true">
+            <div class="app-phone__frame">
+              <span class="app-phone__notch"></span>
+              <div class="app-phone__screen">
+                <div class="app-phone__header"><i class="fas fa-globe-americas"></i> S-MAHI Assistant</div>
+                <div class="app-bubble user">I need a plumber near me</div>
+                <div class="app-bubble bot"><i class="fas fa-robot"></i> Sure — please share your location so I can find plumbers close to you.</div>
+                <div class="app-bubble user">Kano, Nigeria</div>
+                <div class="app-bubble bot"><i class="fas fa-robot"></i> I found 5 trusted plumbers near you, with names, phone numbers and services.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="app-subhead">How S-MAHI works</h3>
+        <div class="app-steps" data-aos="fade-up">
+          <div class="app-step"><div class="app-step__num">1</div><i class="fas fa-comment-dots"></i><p>Tell S-MAHI what you need</p></div>
+          <div class="app-step"><div class="app-step__num">2</div><i class="fas fa-location-dot"></i><p>Select or provide your location</p></div>
+          <div class="app-step"><div class="app-step__num">3</div><i class="fas fa-list-check"></i><p>S-MAHI identifies relevant options</p></div>
+          <div class="app-step"><div class="app-step__num">4</div><i class="fas fa-circle-info"></i><p>View the available details</p></div>
+          <div class="app-step"><div class="app-step__num">5</div><i class="fas fa-handshake"></i><p>Connect with the provider</p></div>
+        </div>
+
+        <div class="app-features">
+          <div class="app-feature" data-aos="fade-up"><div class="app-feature__icon"><i class="fas fa-robot"></i></div><h4>AI Assistant</h4><p>Interact by text or voice and get guidance based on exactly what you need.</p></div>
+          <div class="app-feature" data-aos="fade-up" data-aos-delay="60"><div class="app-feature__icon"><i class="fas fa-language"></i></div><h4>Real-Time Translation</h4><p>Automatic translation helps you communicate across different languages, anywhere.</p></div>
+          <div class="app-feature" data-aos="fade-up" data-aos-delay="120"><div class="app-feature__icon"><i class="fas fa-map-location-dot"></i></div><h4>GPS &amp; Location</h4><p>Location technology connects you to relevant services in the right area.</p></div>
+          <div class="app-feature" data-aos="fade-up"><div class="app-feature__icon"><i class="fas fa-magnifying-glass-location"></i></div><h4>Smart Discovery</h4><p>Find providers by what you need — no need to know a specific name.</p></div>
+          <div class="app-feature" data-aos="fade-up" data-aos-delay="60"><div class="app-feature__icon"><i class="fas fa-earth-africa"></i></div><h4>Local to Global</h4><p>Built to work across local, state, national and international levels.</p></div>
+          <div class="app-feature" data-aos="fade-up" data-aos-delay="120"><div class="app-feature__icon"><i class="fas fa-layer-group"></i></div><h4>One Platform for Everyone</h4><p>Professionals, artisans, businesses, institutions and customers, together.</p></div>
+        </div>
+
+        <h3 class="app-subhead">Built for everyone</h3>
+        <div class="app-audience">
+          <div class="app-aud" data-aos="fade-up"><div class="app-aud__icon"><i class="fas fa-user-gear"></i></div><h4>For Professionals</h4><p>Skilled workers create their presence and make their services discoverable to customers and opportunities.</p></div>
+          <div class="app-aud" data-aos="fade-up" data-aos-delay="60"><div class="app-aud__icon"><i class="fas fa-store"></i></div><h4>For Businesses</h4><p>Businesses list their products and services to be found by nearby customers through relevant searches.</p></div>
+          <div class="app-aud" data-aos="fade-up" data-aos-delay="120"><div class="app-aud__icon"><i class="fas fa-user"></i></div><h4>For Customers</h4><p>Describe what you need by text or voice, share your location, and discover relevant options instantly.</p></div>
+        </div>
+
+        <div class="app-reach" data-aos="fade-up">
+          <span>From local communities to the world</span>
+          <div class="app-reach__steps">
+            <span><i class="fas fa-location-dot"></i> Local</span><i class="fas fa-arrow-right-long"></i>
+            <span><i class="fas fa-map"></i> State</span><i class="fas fa-arrow-right-long"></i>
+            <span><i class="fas fa-flag"></i> National</span><i class="fas fa-arrow-right-long"></i>
+            <span><i class="fas fa-globe"></i> International</span>
+          </div>
+        </div>
+
+        <p class="app-vision" data-aos="fade-up">
+          <i class="fas fa-quote-left"></i>
+          Our vision is to make it easier for people anywhere to find the skills, services, businesses and
+          opportunities they need — bringing people and opportunities closer together through one connected digital ecosystem.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================ STATE COORDINATORS (NEW) ============================ -->
+    <section class="section" id="coordinators">
+      <div class="container">
+        <div class="section-head section-head--center" data-aos="fade-up">
+          <span class="eyebrow">On-the-ground support</span>
+          <h2 class="section-title">State coordinators</h2>
+          <p class="section-lead">One dedicated coordinator supervises our agents in each state. Reach the coordinator nearest you directly.</p>
+        </div>
+
+        <div class="coord-toolbar" data-aos="fade-up">
+          <label class="coord-search">
+            <i class="fas fa-magnifying-glass"></i>
+            <input type="search" id="coordSearch" placeholder="Search by state or coordinator name…" aria-label="Search coordinators" />
+          </label>
+          <div class="coord-filters" role="group" aria-label="Filter by zone">
+            <button class="chip active" data-zone="all">All zones</button>
+            <button class="chip" data-zone="north">Northern</button>
+            <button class="chip" data-zone="south">Southern</button>
+          </div>
+        </div>
+
+        <div class="coord-grid" id="coordGrid">
+          <article class="coord-card" data-zone="north" data-state="adamawa" data-name="hannatu bitrus" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">1</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Adamawa</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Hannatu Bitrus</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0912 120 5294</p>
+            <a class="coord-card__call" href="tel:+2349121205294"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="bauchi" data-name="grace maina waziri" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">2</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Bauchi</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Grace Maina Waziri</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 615 9903</p>
+            <a class="coord-card__call" href="tel:+2348036159903"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="plateau" data-name="joshua ayuba" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">3</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Plateau</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Joshua Ayuba</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0816 673 0466</p>
+            <a class="coord-card__call" href="tel:+2348166730466"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="benue" data-name="abah brandan" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">4</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Benue</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Abah Brandan</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0812 285 7169</p>
+            <a class="coord-card__call" href="tel:+2348122857169"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="borno" data-name="stephen ayuba" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">5</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Borno</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Stephen Ayuba</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0813 197 1884</p>
+            <a class="coord-card__call" href="tel:+2348131971884"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="ondo" data-name="ahmad shariff" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">6</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Ondo</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Ahmad Shariff</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0906 178 5848</p>
+            <a class="coord-card__call" href="tel:+2349061785848"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="nasarawa" data-name="halima bashir liman" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">7</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Nasarawa</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Halima Bashir Liman</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0814 723 1134</p>
+            <a class="coord-card__call" href="tel:+2348147231134"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="katsina" data-name="salisu musa" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">8</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Katsina</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Salisu Musa</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 063 8288</p>
+            <a class="coord-card__call" href="tel:+2348030638288"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kebbi" data-name="abubakar jibrin" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">9</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kebbi</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Abubakar Jibrin</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 333 4647</p>
+            <a class="coord-card__call" href="tel:+2348033334647"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="abia" data-name="morgan ugonna justice" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">10</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Abia</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Morgan Ugonna Justice</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0816 099 9988</p>
+            <a class="coord-card__call" href="tel:+2348160999988"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kaduna" data-name="salisu adamu" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">11</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kaduna</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Salisu Adamu</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0806 277 0063</p>
+            <a class="coord-card__call" href="tel:+2348062770063"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kaduna" data-name="victor moses" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">12</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kaduna</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Victor Moses</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0816 556 3434</p>
+            <a class="coord-card__call" href="tel:+2348165563434"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="abubakar idriss yusuf" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">13</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Abubakar Idriss Yusuf</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 972 7342</p>
+            <a class="coord-card__call" href="tel:+2348039727342"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="kassim m. baba" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">14</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Kassim M. Baba</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 458 0148</p>
+            <a class="coord-card__call" href="tel:+2348034580148"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="engr. habila umar" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">15</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Engr. Habila Umar</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0810 636 8801 / 0706 921 5055</p>
+            <a class="coord-card__call" href="tel:+2348106368801"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="shu&#39;aibu ibrahim sa&#39;ad" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">16</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Shu&#39;aibu Ibrahim Sa&#39;ad</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 245 3144</p>
+            <a class="coord-card__call" href="tel:+2348032453144"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="kano" data-name="balarabe ibrahim" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">17</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Kano</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Balarabe Ibrahim</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 469 7040</p>
+            <a class="coord-card__call" href="tel:+2348034697040"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="lagos" data-name="murjanatu abubakar" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">18</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Lagos</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Murjanatu Abubakar</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0708 324 4890</p>
+            <a class="coord-card__call" href="tel:+2347083244890"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="rivers" data-name="eze past. osima antony" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">19</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Rivers</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Eze Past. Osima Antony</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0803 751 9883</p>
+            <a class="coord-card__call" href="tel:+2348037519883"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="ebonyi" data-name="engr. ijaga okechukwu" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">20</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Ebonyi</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Engr. Ijaga Okechukwu</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0902 811 8797</p>
+            <a class="coord-card__call" href="tel:+2349028118797"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="south" data-state="enugu" data-name="odoh solomon agamede" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">21</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Enugu</span>
+              <span class="coord-card__zone">South</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Odoh Solomon Agamede</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0816 634 0802</p>
+            <a class="coord-card__call" href="tel:+2348166340802"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="jigawa" data-name="auwalu saleh" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">22</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Jigawa</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Auwalu Saleh</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0706 681 1964</p>
+            <a class="coord-card__call" href="tel:+2347066811964"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="yobe" data-name="ali mohammed sale" data-aos="fade-up" data-aos-delay="60">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">23</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Yobe</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Ali Mohammed Sale</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0706 898 5863</p>
+            <a class="coord-card__call" href="tel:+2347068985863"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="fct abuja" data-name="abdulhamid mahmud adam" data-aos="fade-up" data-aos-delay="120">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">24</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>FCT Abuja</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Abdulhamid Mahmud Adam</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0813 759 4890</p>
+            <a class="coord-card__call" href="tel:+2348137594890"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+          <article class="coord-card" data-zone="north" data-state="gombe" data-name="dahiru abdullahi abokinkure" data-aos="fade-up">
+            <div class="coord-card__top">
+              <span class="coord-card__state"><span class="coord-card__no">25</span><span class="coord-card__pin"><i class="fas fa-location-dot"></i></span>Gombe</span>
+              <span class="coord-card__zone">North</span>
+            </div>
+            <p class="coord-card__person"><i class="fas fa-user-tie"></i> Dahiru Abdullahi AbokinKure</p>
+            <p class="coord-card__phone"><i class="fas fa-phone"></i> 0903 958 4040</p>
+            <a class="coord-card__call" href="tel:+2349039584040"><i class="fas fa-phone-volume"></i> Call now</a>
+          </article>
+        </div>
+
+        <div class="coord-empty" id="coordEmpty">
+          <div><i class="fas fa-magnifying-glass"></i></div>
+          <p>No coordinators match your search. Try another state or zone.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ PRESENCE ============================ -->
+    <section class="section section--ink" id="presence">
+      <div class="container">
+        <div class="section-head section-head--center" data-aos="fade-up">
+          <span class="eyebrow">Where we operate</span>
+          <h2 class="section-title">Our global presence</h2>
+          <p class="section-lead">Rooted in Nigeria, connected to the world through active operations across the Middle East.</p>
+        </div>
+
+        <div class="presence-grid">
+          <div class="presence-col" data-aos="fade-up">
+            <h3><i class="fas fa-map-location-dot"></i> Nigeria</h3>
+            <div class="presence-chips">
+              <span class="presence-chip"><i class="fas fa-location-dot"></i> Kano</span>
+              <span class="presence-chip"><i class="fas fa-location-dot"></i> Abuja</span>
+              <span class="presence-chip"><i class="fas fa-location-dot"></i> Lagos</span>
+              <span class="presence-chip"><i class="fas fa-location-dot"></i> Kaduna</span>
+              <span class="presence-chip"><i class="fas fa-location-dot"></i> Bauchi</span>
+              <span class="presence-chip"><i class="fas fa-location-dot"></i> Yobe</span>
+            </div>
+          </div>
+          <div class="presence-col" data-aos="fade-up" data-aos-delay="120">
+            <h3><i class="fas fa-earth-africa"></i> International Operations</h3>
+            <div class="presence-chips">
+              <span class="presence-chip"><i class="fas fa-globe"></i> Qatar</span>
+              <span class="presence-chip"><i class="fas fa-globe"></i> Saudi Arabia</span>
+              <span class="presence-chip"><i class="fas fa-globe"></i> UAE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ CLIENTELE ============================ -->
+    <section class="section" id="clientele">
+      <div class="container">
+        <div class="section-head section-head--center" data-aos="fade-up">
+          <span class="eyebrow">Who we help</span>
+          <h2 class="section-title">Our clientele</h2>
+          <p class="section-lead">We serve professionals, employers, and institutions building a stronger, certified workforce.</p>
+        </div>
+
+        <div class="clientele-grid">
+          <article class="client-card" data-aos="fade-up">
+            <div class="client-card__icon"><i class="fas fa-user-tie"></i></div>
+            <h3>Skilled Professionals</h3><p>Engineers, technicians, and specialists pursuing international career opportunities.</p>
+          </article>
+          <article class="client-card" data-aos="fade-up" data-aos-delay="60">
+            <div class="client-card__icon"><i class="fas fa-hammer"></i></div>
+            <h3>Artisans</h3><p>Craftspeople and skilled workers seeking to formalise and certify their expertise.</p>
+          </article>
+          <article class="client-card" data-aos="fade-up" data-aos-delay="120">
+            <div class="client-card__icon"><i class="fas fa-magnifying-glass"></i></div>
+            <h3>Job Seekers</h3><p>Individuals pursuing employment opportunities in domestic and international markets.</p>
+          </article>
+          <article class="client-card" data-aos="fade-up">
+            <div class="client-card__icon"><i class="fas fa-briefcase"></i></div>
+            <h3>Employers</h3><p>Organisations seeking qualified, certified professionals for their workforce needs.</p>
+          </article>
+          <article class="client-card" data-aos="fade-up" data-aos-delay="60">
+            <div class="client-card__icon"><i class="fas fa-school"></i></div>
+            <h3>Institutions</h3><p>Educational and training institutions pursuing strategic partnerships and development.</p>
+          </article>
+          <article class="client-card" data-aos="fade-up" data-aos-delay="120">
+            <div class="client-card__icon"><i class="fas fa-hands-helping"></i></div>
+            <h3>NGOs</h3><p>Non-governmental organisations focused on skills development and workforce empowerment.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ CERTIFICATION ============================ -->
+    <section class="section section--tint" id="certification">
+      <div class="container">
+        <div class="cert-grid">
+          <div class="cert-info" data-aos="fade-right">
+            <span class="eyebrow">Credentials</span>
+            <h2 class="section-title">Certification programme</h2>
+            <p class="section-lead">
+              Both digital and physical credentials, internationally recognised and professionally verified.
+              These certifications validate professional competencies and open access to global employment —
+              backed by our DUNS-certified status (669827104) for global compliance and trust.
+            </p>
+            <div class="cert-benefits">
+              <span class="cert-benefit"><i class="fas fa-circle-check"></i> Verified skills recognition</span>
+              <span class="cert-benefit"><i class="fas fa-circle-check"></i> Global job matching</span>
+              <span class="cert-benefit"><i class="fas fa-circle-check"></i> International standards</span>
+              <span class="cert-benefit"><i class="fas fa-circle-check"></i> Career advancement</span>
+            </div>
+          </div>
+
+          <div class="cert-visual" data-aos="fade-left" data-aos-delay="120">
+            <div class="cert-card">
+              <div class="cert-card__seal"><i class="fas fa-award"></i></div>
+              <h4>Professional Certificate</h4>
+              <p>Internationally recognised</p>
+              <small><i class="fas fa-chart-line"></i> DUNS 669827104</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ PARTNERSHIP CTA ============================ -->
+    <section class="section section--ink cta-band" id="partnership">
+      <div class="container">
+        <div class="cta-band__inner">
+          <div data-aos="fade-right">
+            <span class="eyebrow">Partnership</span>
+            <h2 class="section-title">Now accepting partnership proposals</h2>
+            <p>
+              We actively seek strategic partnerships with individuals, investors, and organisations of all sizes worldwide.
+              Our platform serves clients across all 195 countries, connecting skilled professionals with global opportunities.
+              If your organisation operates in business development, professional services, or workforce solutions,
+              we invite you to explore collaboration with our global network.
+            </p>
+          </div>
+          <div class="cta-band__actions" data-aos="fade-left" data-aos-delay="120">
+            <a href="#contact" class="btn btn-gold"><i class="fas fa-handshake"></i> Discuss partnership</a>
+            <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" rel="noopener" class="btn btn-dark"><i class="fab fa-tiktok"></i> Follow on TikTok</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ CONTACT ============================ -->
+    <section class="section" id="contact">
+      <div class="container">
+        <div class="section-head section-head--center" data-aos="fade-up">
+          <span class="eyebrow">Get in touch</span>
+          <h2 class="section-title">Contact us</h2>
+          <p class="section-lead">Ready to begin your journey with S MAHI Global Services? Reach out and our team will respond promptly.</p>
+        </div>
+
+        <div class="contact-grid">
+          <div class="contact-info" data-aos="fade-right">
+            <div class="contact-list">
+              <div class="contact-item">
+                <span class="contact-item__icon"><i class="fas fa-envelope"></i></span>
+                <div>
+                  <h4>Email</h4>
+                  <div class="contact-sub">
+                    <a href="mailto:ceo@smahiglobalservices.com"><strong>CEO:</strong> ceo@smahiglobalservices.com</a>
+                    <a href="mailto:info@smahiglobalservices.com"><strong>Inquiries:</strong> info@smahiglobalservices.com</a>
+                    <a href="mailto:customer@smahiglobalservices.com"><strong>Support:</strong> customer@smahiglobalservices.com</a>
+                  </div>
+                </div>
+              </div>
+
+              <div class="contact-item">
+                <span class="contact-item__icon"><i class="fas fa-phone"></i></span>
+                <div>
+                  <h4>Phone / WhatsApp</h4>
+                  <div class="contact-sub">
+                    <a href="tel:+2349066062541">+234 906 606 2541</a>
+                    <a href="tel:+2349052373245">+234 905 237 3245</a>
+                  </div>
+                </div>
+              </div>
+
+              <div class="contact-item">
+                <span class="contact-item__icon"><i class="fas fa-location-dot"></i></span>
+                <div>
+                  <h4>Head Office</h4>
+                  <p>Kano, Nigeria — serving clients across all 195 countries.</p>
+                </div>
+              </div>
+
+              <div class="contact-item">
+                <span class="contact-item__icon"><i class="fas fa-share-nodes"></i></span>
+                <div>
+                  <h4>Social Media</h4>
+                  <div class="contact-sub">
+                    <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" rel="noopener"><i class="fab fa-tiktok"></i> TikTok: @smahiglobalservices</a>
+                    <p>Google Business &amp; LinkedIn: Coming soon</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="contact-actions">
+              <a href="https://wa.me/2349066062541" target="_blank" rel="noopener" class="btn btn-dark" style="background:#25d366;border-color:#25d366">
+                <i class="fab fa-whatsapp"></i> Chat on WhatsApp
+              </a>
+              <a href="https://smahiglobal.pythonanywhere.com/" target="_blank" rel="noopener" class="btn btn-ghost">
+                <i class="fas fa-arrow-up-right-from-square"></i> Application Portal
+              </a>
+            </div>
+
+            <div class="map-embed" aria-label="Map showing Kano, Nigeria">
+              <iframe title="S MAHI Global Services — Kano, Nigeria" src="https://www.google.com/maps?q=Kano,Nigeria&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            </div>
+          </div>
+
+          <div class="form-card" data-aos="fade-left" data-aos-delay="120">
+            <form class="form-grid" id="contactForm" novalidate>
+              <div class="form-row">
+                <div class="field">
+                  <label for="name">Full name</label>
+                  <input type="text" id="name" name="name" autocomplete="name" required />
+                </div>
+                <div class="field">
+                  <label for="email">Email address</label>
+                  <input type="email" id="email" name="email" autocomplete="email" required />
+                </div>
+              </div>
+              <div class="field">
+                <label for="phone">Phone number</label>
+                <input type="tel" id="phone" name="phone" autocomplete="tel" />
+              </div>
+              <div class="field">
+                <label for="service">Service of interest</label>
+                <select id="service" name="service">
+                  <option value="">Select a service</option>
+                  <option>Construction &amp; Engineering</option>
+                  <option>Education &amp; Training</option>
+                  <option>Certification</option>
+                  <option>Workforce Matching</option>
+                  <option>International Partnership</option>
+                  <option>Institution Setup</option>
+                  <option>Expert Search Application</option>
+                  <option>AI Verification</option>
+                  <option>S MAHI Token Wallet</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="message">Message</label>
+                <textarea id="message" name="message" rows="5" required></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-paper-plane"></i> Send message
+              </button>
+              <p class="form-note" id="formNote" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================ FOOTER ============================ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__grid">
+        <div class="footer__brand">
+          <a href="#home" class="brand">
+            <span class="brand__seal"><i class="fas fa-globe-americas"></i></span>
+            <span class="brand__text">
+              <span class="brand__name">S MAHI Global Services</span>
+              <span class="brand__sub">Innovating Skills · Empowering Workers</span>
+            </span>
+          </a>
+          <p class="footer__mission">“To bridge the gap between skills and opportunities — making global impact through local empowerment.”</p>
+          <div class="footer__creds">
+            <span class="footer__cred"><i class="fas fa-building"></i> RC 8681627</span>
+            <span class="footer__cred"><i class="fas fa-chart-line"></i> DUNS 669827104</span>
+          </div>
+          <div class="footer__social">
+            <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" rel="noopener" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+            <a href="https://wa.me/2349066062541" target="_blank" rel="noopener" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+            <a href="mailto:info@smahiglobalservices.com" aria-label="Email"><i class="fas fa-envelope"></i></a>
+          </div>
+        </div>
+
+        <div class="footer__col">
+          <h4>Quick Links</h4>
+          <ul>
+            <li><a href="#home">Home</a></li>
+            <li><a href="#services">Services</a></li>
+            <li><a href="#solutions">Solutions</a></li>
+            <li><a href="#presence">Presence</a></li>
+            <li><a href="#certification">Certification</a></li>
+          </ul>
+        </div>
+
+        <div class="footer__col">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#smahi-app">S-MAHI App</a></li>
+            <li><a href="#coordinators">State Coordinators</a></li>
+            <li><a href="#clientele">Who We Help</a></li>
+            <li><a href="#partnership">Partnership</a></li>
+            <li><a href="#contact">Contact</a></li>
+            <li><a href="https://smahiglobal.pythonanywhere.com/" target="_blank" rel="noopener">Application Portal</a></li>
+          </ul>
+        </div>
+
+        <div class="footer__col">
+          <h4>Contact Info</h4>
+          <ul class="footer__contact">
+            <li><i class="fas fa-envelope"></i> <a href="mailto:info@smahiglobalservices.com">info@smahiglobalservices.com</a></li>
+            <li><i class="fas fa-headset"></i> <a href="mailto:customer@smahiglobalservices.com">customer@smahiglobalservices.com</a></li>
+            <li><i class="fas fa-phone"></i> <a href="tel:+2349066062541">+234 906 606 2541</a></li>
+            <li><i class="fas fa-phone"></i> <a href="tel:+2349052373245">+234 905 237 3245</a></li>
+            <li><i class="fas fa-location-dot"></i> Kano, Nigeria</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer__bottom">
+        <p class="footer__disclaimer">We do not support fraud, impersonation, or unlawful recruitment. DUNS 669827104 · RC 8681627.</p>
+        <p>© <span id="year">2026</span> S MAHI Global Services Ltd. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Floating controls -->
+  <a class="whatsapp-float" href="https://wa.me/2349066062541" target="_blank" rel="noopener" aria-label="Chat with us on WhatsApp"><i class="fab fa-whatsapp"></i></a>
+  <button class="to-top" id="toTop" aria-label="Back to top"><i class="fas fa-arrow-up"></i></button>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
+  <script src="main.js" defer></script>
+</body>
 </html>
