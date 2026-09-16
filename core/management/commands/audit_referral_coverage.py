@@ -1,10 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from core.models import ArtisanProfile, BusinessProfile
+from core.models import ActivityLog, ArtisanProfile, BusinessProfile
 from core.referrals import effective_coordinator
 
 User = get_user_model()
+
+VERIFY_ACTIONS = {'artisan': 'artisan_verified', 'business': 'business_verified'}
 
 
 class Command(BaseCommand):
@@ -27,17 +29,45 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
-        for label, Model in (('Artisans', ArtisanProfile), ('Businesses', BusinessProfile)):
+        for label, kind, Model in (
+            ('Artisans', 'artisan', ArtisanProfile), ('Businesses', 'business', BusinessProfile),
+        ):
             self.stdout.write(self.style.MIGRATE_HEADING(f"\n=== {label} ==="))
             total = Model.objects.count()
             self.stdout.write(f"Total {label.lower()}: {total}")
 
-            self_registered = Model.objects.filter(registered_by__isnull=True).count()
+            self_registered_qs = Model.objects.filter(registered_by__isnull=True)
+            self_registered = self_registered_qs.count()
             self.stdout.write(self.style.WARNING(
-                f"  Self-registered (registered_by is None) — PERMANENTLY "
-                f"invisible to every agent after deploy, no backfill "
-                f"possible (there's no registering agent to attribute them "
-                f"to): {self_registered}"
+                f"  Self-registered (registered_by is None): {self_registered}"
+            ))
+
+            # registered_by is only who clicked "register" — but an agent
+            # verifying someone's ID in person (AgentVerifyArtisanView/
+            # AgentVerifyBusinessView) is arguably an even stronger "who
+            # actually oversees this person" signal, and it applies
+            # regardless of how they originally signed up. Every approval
+            # is logged in ActivityLog (actor=reviewer, target_user=them)
+            # even when there's no registered_by at all.
+            recoverable_via_verification = 0
+            no_verification_history = 0
+            action = VERIFY_ACTIONS[kind]
+            for profile in self_registered_qs.select_related('user'):
+                reviewer_id = ActivityLog.objects.filter(
+                    action=action, target_user=profile.user,
+                ).order_by('-created_at').values_list('actor_id', flat=True).first()
+                if reviewer_id:
+                    recoverable_via_verification += 1
+                else:
+                    no_verification_history += 1
+            self.stdout.write(self.style.SUCCESS(
+                f"    Of those, verified in person by a real agent/coordinator "
+                f"at some point (recoverable via that reviewer instead — see "
+                f"below): {recoverable_via_verification}"
+            ))
+            self.stdout.write(self.style.ERROR(
+                f"    Never verified by anyone — PERMANENTLY unattributable, "
+                f"no signal exists for who oversees them: {no_verification_history}"
             ))
 
             agent_registered = Model.objects.filter(registered_by__isnull=False)
@@ -75,21 +105,35 @@ class Command(BaseCommand):
                 f"active/suspended coordinator at all): {orphaned}"
             ))
 
-        self.stdout.write(self.style.MIGRATE_HEADING("\n=== Per-agent artisan-list size change ==="))
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "\n=== Per-agent artisan-list size change "
+            "(old LGA-wide -> new registered_by-only -> +verified-by-them) ==="
+        ))
         agents = User.objects.filter(role='agent', account_status='active').select_related('lga')
         shrink_rows = []
         for agent in agents:
             if not agent.lga_id:
                 continue
             old_count = ArtisanProfile.objects.filter(user__lga_id=agent.lga_id).count()
-            new_count = ArtisanProfile.objects.filter(registered_by_id=agent.id).count()
+            registered_ids = set(
+                ArtisanProfile.objects.filter(registered_by_id=agent.id).values_list('user_id', flat=True)
+            )
+            verified_user_ids = set(
+                ActivityLog.objects.filter(action='artisan_verified', actor_id=agent.id)
+                .values_list('target_user_id', flat=True)
+            )
+            with_verification_count = len(registered_ids | verified_user_ids)
+            new_count = len(registered_ids)
             if old_count != new_count:
-                shrink_rows.append((agent.email, agent.lga.name if agent.lga else '?', old_count, new_count))
+                shrink_rows.append((
+                    agent.email, agent.lga.name if agent.lga else '?',
+                    old_count, new_count, with_verification_count,
+                ))
 
         if shrink_rows:
             shrink_rows.sort(key=lambda r: r[2] - r[3], reverse=True)
-            for email, lga_name, old_count, new_count in shrink_rows[:30]:
-                self.stdout.write(f"  {email} ({lga_name}): {old_count} -> {new_count}")
+            for email, lga_name, old_count, new_count, with_verification_count in shrink_rows[:30]:
+                self.stdout.write(f"  {email} ({lga_name}): {old_count} -> {new_count} -> {with_verification_count}")
             if len(shrink_rows) > 30:
                 self.stdout.write(f"  ... and {len(shrink_rows) - 30} more active agents affected")
         else:
