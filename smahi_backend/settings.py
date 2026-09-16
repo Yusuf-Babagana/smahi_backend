@@ -104,6 +104,15 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Storage for identity/verification documents (national IDs, proof of trade).
+# Deliberately OUTSIDE MEDIA_ROOT and never wired to a URL/static mapping —
+# these files must only ever be reachable through the authenticated,
+# ownership-checked view in core.views.serve_verification_document, never
+# via a raw MEDIA_URL path or a host static-file mapping (e.g. PythonAnywhere's
+# "Static files" tab, which serves MEDIA_ROOT directly with no permission
+# check at all).
+PRIVATE_MEDIA_ROOT = BASE_DIR / 'private_media'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.User'

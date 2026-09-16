@@ -2,13 +2,31 @@ from rest_framework import permissions
 
 
 class IsArtisan(permissions.BasePermission):
+    """An artisan who has actually paid the registration fee — mirrors
+    IsAgent's account_status gate. A freshly agent/self-registered artisan
+    already has role='artisan' the moment the account is created, well
+    before the ₦2,500 fee is paid (account_status stays 'inactive' /
+    registration_fee_paid=False until then — see AgentRegisterArtisanView/
+    accounts.register_view). Without this gate, role alone let an unpaid
+    artisan use their own profile exactly like a paid one; login and the
+    payment endpoints themselves are deliberately NOT gated by this, so an
+    unpaid artisan can still log in and pay."""
+
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role == 'artisan'
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role == 'artisan' and request.user.account_status == 'active'
+        )
 
 
 class IsBusiness(permissions.BasePermission):
+    """Same fee-paid gate as IsArtisan, for a business account."""
+
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role == 'business'
+        return (
+            request.user and request.user.is_authenticated
+            and request.user.role == 'business' and request.user.account_status == 'active'
+        )
 
 
 class IsClient(permissions.BasePermission):

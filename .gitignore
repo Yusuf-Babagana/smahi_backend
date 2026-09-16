@@ -19,6 +19,7 @@ Thumbs.db
 
 # Uploads
 media/
+private_media/
 
 # Static files
 staticfiles/

@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
 from locations.models import Country, State, LGA
+from core.storage import private_media_storage
 
 User = get_user_model()
 
@@ -286,9 +287,13 @@ class VerificationRequest(models.Model):
         related_name='verification_requests',
         limit_choices_to={'role': 'artisan'}
     )
-    document_image_1 = models.ImageField(upload_to='verification_documents/')
-    document_image_2 = models.ImageField(upload_to='verification_documents/', blank=True, null=True)
-    document_image_3 = models.ImageField(upload_to='verification_documents/', blank=True, null=True)
+    # Stored in core.storage.private_media_storage (outside MEDIA_ROOT, no
+    # public URL) — these are national ID / proof-of-trade documents and
+    # must only be reachable through the authenticated
+    # serve_verification_document view, never a direct/static file URL.
+    document_image_1 = models.ImageField(upload_to='verification_documents/', storage=private_media_storage)
+    document_image_2 = models.ImageField(upload_to='verification_documents/', storage=private_media_storage, blank=True, null=True)
+    document_image_3 = models.ImageField(upload_to='verification_documents/', storage=private_media_storage, blank=True, null=True)
     additional_info = models.TextField(blank=True)
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')

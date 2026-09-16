@@ -212,16 +212,49 @@ class VerificationRequestSerializer(serializers.ModelSerializer):
     artisan_details = UserSerializer(source='artisan', read_only=True)
     reviewed_by_details = UserSerializer(source='reviewed_by', read_only=True)
 
+    # document_image_1/2/3 are write-only (upload only) — they live in
+    # core.storage.private_media_storage, which has no public URL, so
+    # DRF's default ImageField.to_representation() (which calls .url)
+    # must never run on them. Reads go through these *_url fields instead,
+    # which point at the authenticated, ownership-checked
+    # serve_verification_document view.
+    document_image_1_url = serializers.SerializerMethodField()
+    document_image_2_url = serializers.SerializerMethodField()
+    document_image_3_url = serializers.SerializerMethodField()
+
     class Meta:
         model = VerificationRequest
         fields = [
             'id', 'artisan', 'artisan_details',
             'document_image_1', 'document_image_2', 'document_image_3',
+            'document_image_1_url', 'document_image_2_url', 'document_image_3_url',
             'additional_info', 'status', 'rejection_reason',
             'reviewed_by', 'reviewed_by_details', 'reviewed_at',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['artisan', 'status', 'reviewed_by', 'reviewed_at']
+        extra_kwargs = {
+            'document_image_1': {'write_only': True},
+            'document_image_2': {'write_only': True},
+            'document_image_3': {'write_only': True},
+        }
+
+    def _document_url(self, obj, field_file, slot):
+        if not field_file:
+            return None
+        from django.urls import reverse
+        path = reverse('verification-document', kwargs={'pk': obj.pk, 'slot': slot})
+        request = self.context.get('request')
+        return request.build_absolute_uri(path) if request else path
+
+    def get_document_image_1_url(self, obj):
+        return self._document_url(obj, obj.document_image_1, 1)
+
+    def get_document_image_2_url(self, obj):
+        return self._document_url(obj, obj.document_image_2, 2)
+
+    def get_document_image_3_url(self, obj):
+        return self._document_url(obj, obj.document_image_3, 3)
 
 
 class VerificationProcessSerializer(serializers.Serializer):

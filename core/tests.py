@@ -1438,31 +1438,76 @@ class CoordinatorLGAOverviewTests(CoordinatorDashboardTestBase):
 
 
 class AgentLGAScopingTests(CoordinatorDashboardTestBase):
-    """Each agent is entitled to only their own LGA — a plain agent must
-    not see or touch artisans/verifications outside it, even though a
-    state_coordinator (sharing the same IsStateAgent permission) legitimately
-    oversees the whole state. self.kano_agent (base fixture) is in
-    kano_lga_a; every test here proves a kano_lga_b fixture stays
-    invisible/unreachable to them while remaining visible to the
-    coordinator."""
+    """Artisan/business dashboard visibility is ownership-based (who
+    registered them), not LGA/state-based — see AgentArtisanListView. A
+    plain agent sees only what they personally registered, even from a
+    colleague agent covering the exact same LGA; a state_coordinator sees
+    their own direct registrations plus everything registered by their
+    own agents (never a colleague coordinator's network, even in the same
+    state).
+
+    Client visibility (AgentClientListView) and the verify-artisan/
+    verification-request LGA/state scoping below are UNCHANGED by that
+    fix and still behave the old, territory-based way — self.kano_agent
+    (base fixture) is in kano_lga_a; those tests still prove a
+    kano_lga_b fixture stays invisible/unreachable to them while
+    remaining visible to the coordinator."""
 
     def setUp(self):
         super().setUp()
         from .models import ArtisanProfile, VerificationRequest
 
+        # kano_agent is claimed by kano_coordinator here (the base fixture
+        # itself leaves it unclaimed) so the artisans below chain up to a
+        # coordinator the same way AgentRegisterArtisanView really sets
+        # sponsor_coordinator from the registering agent's own.
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+
+        # A second agent covering the SAME LGA as kano_agent — proves the
+        # ownership-based scoping below isn't secretly still LGA-based.
+        self.kano_agent_colleague = User.objects.create_user(
+            email='kano_agent_colleague@test.com', password='pass12345',
+            first_name='Colleague', last_name='Agent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_coordinator=self.kano_coordinator,
+        )
+
         self.lga_a_artisan = User.objects.create_user(
             email='lga_a_artisan@test.com', password='pass12345',
             first_name='LgaA', last_name='Artisan', role='artisan',
             country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_coordinator=self.kano_coordinator,
         )
-        ArtisanProfile.objects.create(user=self.lga_a_artisan, verification_status='approved')
+        ArtisanProfile.objects.create(
+            user=self.lga_a_artisan, verification_status='approved', registered_by=self.kano_agent,
+        )
 
+        # Registered by the COLLEAGUE agent, same LGA as lga_a_artisan —
+        # must stay invisible to kano_agent despite sharing an LGA.
+        self.colleague_registered_artisan = User.objects.create_user(
+            email='colleague_registered_artisan@test.com', password='pass12345',
+            first_name='Colleague', last_name='Registered', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_coordinator=self.kano_coordinator,
+        )
+        ArtisanProfile.objects.create(
+            user=self.colleague_registered_artisan, verification_status='pending',
+            registered_by=self.kano_agent_colleague,
+        )
+
+        # Different LGA, registered directly by the coordinator (skipping
+        # the agent level) — still used below by the verify-artisan/
+        # verification-request tests, which remain LGA/state-scoped.
         self.lga_b_artisan = User.objects.create_user(
             email='lga_b_artisan@test.com', password='pass12345',
             first_name='LgaB', last_name='Artisan', role='artisan',
             country=self.country, state=self.kano, lga=self.kano_lga_b,
+            sponsor_coordinator=self.kano_coordinator,
         )
-        ArtisanProfile.objects.create(user=self.lga_b_artisan, verification_status='pending')
+        ArtisanProfile.objects.create(
+            user=self.lga_b_artisan, verification_status='pending', registered_by=self.kano_coordinator,
+        )
         self.lga_b_verification_request = VerificationRequest.objects.create(
             artisan=self.lga_b_artisan, document_image_1='verification_documents/fake.jpg',
         )
@@ -1493,7 +1538,7 @@ class AgentLGAScopingTests(CoordinatorDashboardTestBase):
         self.assertIn('scoping_lga_a_client@test.com', emails)
         self.assertIn('scoping_lga_b_client@test.com', emails)
 
-    def test_agent_artisan_list_excludes_other_lgas_in_the_same_state(self):
+    def test_agent_artisan_list_shows_only_what_they_personally_registered(self):
         self.client.force_authenticate(user=self.kano_agent)
         response = self.client.get('/api/agent/artisans/')
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -1501,28 +1546,49 @@ class AgentLGAScopingTests(CoordinatorDashboardTestBase):
         self.assertIn('lga_a_artisan@test.com', emails)
         self.assertNotIn('lga_b_artisan@test.com', emails)
 
-    def test_coordinator_artisan_list_still_sees_the_whole_state(self):
-        """Regression guard: only 'agent' narrows to LGA — a coordinator
-        must be completely unaffected."""
+    def test_agent_artisan_list_excludes_a_colleague_agent_in_the_same_lga(self):
+        """The core of the fix: two agents can share an LGA, but one must
+        never see the other's registrations because of that shared LGA."""
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/artisans/')
+        emails = [a['user_details']['email'] for a in response.data['results']]
+        self.assertNotIn('colleague_registered_artisan@test.com', emails)
+
+    def test_coordinator_artisan_list_covers_their_whole_network(self):
+        """A coordinator sees everything registered under their own
+        network — both kano_agent and kano_agent_colleague's registrations
+        — but this is ownership (sponsor_coordinator chain), not a raw
+        state-wide filter; a colleague coordinator's own claimed agents
+        would not appear here (see
+        CoordinatorAgentListTests.test_coordinator_cannot_see_another_same_state_coordinators_claimed_agent
+        for the equivalent proof on the agent list itself)."""
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get('/api/agent/artisans/')
         emails = [a['user_details']['email'] for a in response.data['results']]
         self.assertIn('lga_a_artisan@test.com', emails)
+        self.assertIn('colleague_registered_artisan@test.com', emails)
         self.assertIn('lga_b_artisan@test.com', emails)
 
-    def test_agent_dashboard_stats_scoped_to_own_lga(self):
+    def test_agent_dashboard_stats_scoped_to_own_registrations(self):
         self.client.force_authenticate(user=self.kano_agent)
         response = self.client.get('/api/agent/dashboard-stats/')
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        # Only lga_a_artisan/lga_a_client are in this agent's own LGA.
+        # Only lga_a_artisan was registered by kano_agent themselves —
+        # colleague_registered_artisan shares their LGA but not their
+        # registrant, so it must not count here.
         self.assertEqual(response.data['total_artisans'], 1)
         self.assertEqual(response.data['verified_artisans'], 1)
+        # total_clients stays LGA-scoped (unchanged) — only lga_a_client
+        # is in this agent's own LGA.
         self.assertEqual(response.data['total_clients'], 1)
 
-    def test_coordinator_dashboard_stats_still_state_wide(self):
+    def test_coordinator_dashboard_stats_cover_their_whole_network(self):
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get('/api/agent/dashboard-stats/')
-        self.assertEqual(response.data['total_artisans'], 2)
+        # All three artisans (lga_a_artisan, colleague_registered_artisan,
+        # lga_b_artisan) trace back to kano_coordinator's own network.
+        self.assertEqual(response.data['total_artisans'], 3)
+        # total_clients stays state-wide (unchanged).
         self.assertEqual(response.data['total_clients'], 2)
 
     def test_agent_cannot_verify_an_artisan_outside_their_lga(self):
@@ -2301,8 +2367,9 @@ class AgentServiceRequestsTests(CoordinatorDashboardTestBase):
 class AgentBusinessOversightTests(CoordinatorDashboardTestBase):
     """Artisan/Business -> Coordinator Dashboard Connection (item 9): a
     business's registration and verification status become visible (and
-    actionable) the same way an artisan's already is — same LGA/state
-    scoping, same shared services.py verification functions."""
+    actionable) the same way an artisan's already is — same
+    ownership-based scoping (who registered it), same shared services.py
+    verification functions."""
     BUSINESSES_URL = '/api/agent/businesses/'
 
     def verify_url(self, user_id):
@@ -2312,20 +2379,30 @@ class AgentBusinessOversightTests(CoordinatorDashboardTestBase):
         super().setUp()
         from .models import BusinessProfile
 
+        # kano_agent is claimed by kano_coordinator (base fixture leaves it
+        # unclaimed) so lga_a_business's registration chains up correctly.
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+
         self.lga_a_business = User.objects.create_user(
             email='lga_a_business@test.com', password='pass12345',
             first_name='LgaA', last_name='Business', role='business',
             country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_coordinator=self.kano_coordinator,
         )
-        BusinessProfile.objects.create(user=self.lga_a_business, business_name='LgaA Store')
+        BusinessProfile.objects.create(user=self.lga_a_business, business_name='LgaA Store', registered_by=self.kano_agent)
+        # Registered directly by the coordinator (skipping the agent level)
+        # so it stays reachable to kano_coordinator under ownership scoping
+        # while remaining out of kano_agent's reach — same as before.
         self.lga_b_business = User.objects.create_user(
             email='lga_b_business@test.com', password='pass12345',
             first_name='LgaB', last_name='Business', role='business',
             country=self.country, state=self.kano, lga=self.kano_lga_b,
+            sponsor_coordinator=self.kano_coordinator,
         )
-        BusinessProfile.objects.create(user=self.lga_b_business, business_name='LgaB Store')
+        BusinessProfile.objects.create(user=self.lga_b_business, business_name='LgaB Store', registered_by=self.kano_coordinator)
 
-    def test_agent_sees_only_businesses_in_their_own_lga(self):
+    def test_agent_sees_only_businesses_they_personally_registered(self):
         self.client.force_authenticate(user=self.kano_agent)
         response = self.client.get(self.BUSINESSES_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -2333,7 +2410,7 @@ class AgentBusinessOversightTests(CoordinatorDashboardTestBase):
         self.assertIn('LgaA Store', names)
         self.assertNotIn('LgaB Store', names)
 
-    def test_coordinator_sees_every_business_in_their_state(self):
+    def test_coordinator_sees_every_business_in_their_network(self):
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get(self.BUSINESSES_URL)
         names = [b['business_name'] for b in response.data['results']]
@@ -3034,7 +3111,11 @@ class PublicDirectoryPIITests(CoordinatorDashboardTestBase):
             country=self.country, state=self.kano, lga=self.kano_lga_a,
             phone_number='08011112222', latitude='12.000000', longitude='8.500000',
         )
-        self.artisan_profile = ArtisanProfile.objects.create(user=self.pii_artisan)
+        # registered_by=kano_agent — AgentArtisanListView/AgentBusinessListView
+        # are ownership-scoped, not territory-scoped, so the oversight-view
+        # regression guards below need this fixture to actually belong to
+        # the agent authenticating against them.
+        self.artisan_profile = ArtisanProfile.objects.create(user=self.pii_artisan, registered_by=self.kano_agent)
 
         category = Category.objects.create(name='Hotel', category_type='business')
         self.pii_business_owner = User.objects.create_user(
@@ -3044,7 +3125,7 @@ class PublicDirectoryPIITests(CoordinatorDashboardTestBase):
             phone_number='08033334444',
         )
         self.business_profile = BusinessProfile.objects.create(
-            user=self.pii_business_owner, business_name='Pii Hotel', category=category,
+            user=self.pii_business_owner, business_name='Pii Hotel', category=category, registered_by=self.kano_agent,
         )
 
     def test_public_artisan_detail_never_leaks_pii(self):
@@ -3081,7 +3162,7 @@ class PublicDirectoryPIITests(CoordinatorDashboardTestBase):
 
     def test_agent_oversight_view_still_sees_the_fuller_artisan_detail(self):
         """Regression guard — AgentArtisanListView is a different,
-        authenticated, LGA-scoped relationship and must be unaffected."""
+        authenticated, ownership-scoped relationship and must be unaffected."""
         self.client.force_authenticate(user=self.kano_agent)
         response = self.client.get('/api/agent/artisans/')
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)

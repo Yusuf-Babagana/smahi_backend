@@ -29,6 +29,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_control
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
+from django.http import FileResponse, Http404
 from django.db.models import Q, F, Count, Sum, Exists, OuterRef
 from .models import Category, ServiceTaxonomy, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite, ActivityLog
 from notifications.models import DeviceToken
@@ -51,6 +52,7 @@ from .services import (
 from .referrals import (
     coordinator_directory_entry, effective_coordinator, generate_referral_code,
     recent_network_activity, referral_stats, referee_summary, resolve_referral_code,
+    _coordinator_visible_agents, _recruited_query,
 )
 from .permissions import IsArtisan, IsBusiness, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
 from accounts.serializers import UserSerializer, AdminUserSerializer, AdminUserUpdateSerializer, CoordinatorRegisteredUserUpdateSerializer
@@ -339,11 +341,13 @@ class AgentArtisanListView(generics.ListAPIView):
     verification status — unlike the public ArtisanViewSet list, which
     hides offline/unavailable artisans.
 
-    Scope differs by role: a state_coordinator oversees every artisan in
-    the whole state, but a plain agent is entitled to only their own LGA
-    (each agent covers exactly one LGA — see User.lga — and an LGA
-    normally has several agents, not the other way round) and must not
-    see artisans registered/living outside it."""
+    Scope is ownership-based, not territory-based: a plain agent sees only
+    the artisans they personally registered; a state_coordinator sees their
+    own direct registrations plus everything registered under their agents
+    (same chain CoordinatorAgentListView/_recruited_query already use) —
+    never a colleague coordinator's or a colleague agent's registrations,
+    even when they cover the same LGA/state (an LGA normally has several
+    agents, not the other way round)."""
     serializer_class = ArtisanProfileSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     filterset_fields = ['category', 'verification_status']
@@ -351,15 +355,11 @@ class AgentArtisanListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        base = ArtisanProfile.objects.select_related('user', 'category')
-        if user.role == 'agent':
-            if not user.lga_id:
-                return ArtisanProfile.objects.none()
-            qs = base.filter(user__lga_id=user.lga_id).distinct()
-        elif not user.state_id:
+        if user.role == 'agent' and not user.lga_id:
             return ArtisanProfile.objects.none()
-        else:
-            qs = base.filter(user__state_id=user.state_id).distinct()
+        if user.role == 'state_coordinator' and not user.state_id:
+            return ArtisanProfile.objects.none()
+        qs = _recruited_query(user, ArtisanProfile).select_related('user', 'category')
 
         payment_status = self.request.query_params.get('payment_status')
         if payment_status == 'paid':
@@ -395,8 +395,9 @@ class AgentBusinessListView(generics.ListAPIView):
     Dashboard Connection (item 9): a business's registration and
     verification status become visible here automatically, the same way
     AgentArtisanListView already does for artisans, without anyone having
-    to open Django Admin or a separate system. Scoped identically: whole
-    state for a state_coordinator, own LGA only for a plain agent."""
+    to open Django Admin or a separate system. Scoped identically and for
+    the same reason: ownership (who registered this business), not
+    territory — see AgentArtisanListView's docstring."""
     serializer_class = BusinessProfileSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     filterset_fields = ['category', 'verification_status']
@@ -404,15 +405,11 @@ class AgentBusinessListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        base = BusinessProfile.objects.select_related('user', 'category')
-        if user.role == 'agent':
-            if not user.lga_id:
-                return BusinessProfile.objects.none()
-            qs = base.filter(user__lga_id=user.lga_id).distinct()
-        elif not user.state_id:
+        if user.role == 'agent' and not user.lga_id:
             return BusinessProfile.objects.none()
-        else:
-            qs = base.filter(user__state_id=user.state_id).distinct()
+        if user.role == 'state_coordinator' and not user.state_id:
+            return BusinessProfile.objects.none()
+        qs = _recruited_query(user, BusinessProfile).select_related('user', 'category')
 
         payment_status = self.request.query_params.get('payment_status')
         if payment_status == 'paid':
@@ -455,10 +452,14 @@ class AgentServiceRequestsView(generics.ListAPIView):
 
 class AgentDashboardStatsView(APIView):
     """Summary counts for the agent/state-coordinator dashboard. A
-    state_coordinator's counts are state-wide; a plain agent's are scoped
-    to their own LGA only, for every count here — an agent is entitled to
-    work in only their one LGA, never the whole state (see
-    AgentArtisanListView/AgentClientListView, which this mirrors)."""
+    state_coordinator's artisan/agent/business counts cover their own
+    referral network only (same ownership rule as AgentArtisanListView/
+    CoordinatorAgentListView — never a colleague coordinator's network,
+    even in the same state); a plain agent's artisan count covers only
+    what they personally registered. total_clients/pending_service_requests
+    remain territory-scoped (own LGA for an agent, whole state for a
+    coordinator) — clients aren't "registered" by anyone, so there's no
+    ownership relationship to scope them by."""
     permission_classes = [IsAuthenticated, IsStateAgent]
 
     def get(self, request):
@@ -472,13 +473,12 @@ class AgentDashboardStatsView(APIView):
                 'pending_service_requests': 0,
             })
 
+        artisans = _recruited_query(request.user, ArtisanProfile)
         if request.user.role == 'agent':
             lga_id = request.user.lga_id
-            artisans = ArtisanProfile.objects.filter(user__lga_id=lga_id) if lga_id else ArtisanProfile.objects.none()
             clients = User.objects.filter(role='client', lga_id=lga_id) if lga_id else User.objects.none()
             requests_qs = Booking.objects.filter(lga_id=lga_id) if lga_id else Booking.objects.none()
         else:
-            artisans = ArtisanProfile.objects.filter(user__state_id=state_id)
             clients = User.objects.filter(role='client', state_id=state_id)
             requests_qs = Booking.objects.filter(state_id=state_id)
 
@@ -498,12 +498,12 @@ class AgentDashboardStatsView(APIView):
         # concern, not an agent one (agents don't register businesses the
         # way they register artisans).
         if request.user.role == 'state_coordinator':
-            agents = User.objects.filter(role='agent', state_id=state_id)
+            agents = _coordinator_visible_agents(request.user)
             data['total_agents'] = agents.count()
             data['active_agents'] = agents.filter(account_status='active').count()
             data['pending_agents'] = agents.filter(account_status='pending_approval').count()
 
-            businesses = BusinessProfile.objects.filter(user__state_id=state_id)
+            businesses = _recruited_query(request.user, BusinessProfile)
             data['total_businesses'] = businesses.count()
             data['verified_businesses'] = businesses.filter(verification_status='approved').count()
             data['pending_business_verification'] = businesses.filter(verification_status='pending').count()
@@ -1034,25 +1034,6 @@ def _agents_with_registration_counts(queryset):
     )
 
 
-def _coordinator_visible_agents(coordinator):
-    """Which agents a state coordinator can see and manage, now that a
-    state holds many coordinators (the one-per-state rule is gone —
-    accounts/0018): the coordinator's OWN agents (permanent
-    sponsor_coordinator link), plus legacy agents in the same state that
-    were never claimed by anyone (registered before the referral network
-    or while the state had no standing coordinator). Strictly-claimed
-    agents of a DIFFERENT coordinator in the same state are excluded —
-    agents partition among their sponsors, so no coordinator can touch a
-    colleague's team. In a single-coordinator state this reduces to
-    exactly the old state-wide filter, so existing behavior is unchanged.
-    """
-    return User.objects.filter(
-        role='agent', state_id=coordinator.state_id,
-    ).filter(
-        Q(sponsor_coordinator_id=coordinator.id) | Q(sponsor_coordinator__isnull=True)
-    )
-
-
 class CoordinatorAgentListView(generics.ListAPIView):
     """Agents belonging to the requesting state coordinator — their own
     recruits (the permanent sponsor_coordinator link + unclaimed legacy
@@ -1134,9 +1115,8 @@ class CoordinatorCreateAgentView(APIView):
 
         phone_number = (request.data.get('phone_number') or request.data.get('phone') or '').strip()
 
-        # Generate a clean, human-friendly default password (e.g. Smahi@4821)
-        import random
-        pin = f"{random.randint(1000, 9999)}"
+        # Generate a clean, human-friendly default password (e.g. Smahi@48213821)
+        pin = f"{secrets.randbelow(10**8):08d}"
         generated_password = f"Smahi@{pin}"
 
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
@@ -1411,21 +1391,27 @@ class CoordinatorReportsView(generics.ListAPIView):
 
 
 class CoordinatorActivityLogView(generics.ListAPIView):
-    """Coordinator Dashboard's Recent Activities / Activity Log — a
-    state-wide, actor-centric audit trail (see core.models.ActivityLog and
-    core.services.log_activity). Read-only: entries are only ever written
-    as a side effect of the real actions elsewhere in this file/services.py,
-    never through this endpoint."""
+    """Coordinator Dashboard's Recent Activities / Activity Log — an
+    actor-centric audit trail scoped to the coordinator's own network
+    (themselves + their own agents, same ownership rule as
+    CoordinatorAgentListView/_coordinator_visible_agents — never a
+    colleague coordinator's agents, even in the same state). See
+    core.models.ActivityLog and core.services.log_activity. Read-only:
+    entries are only ever written as a side effect of the real actions
+    elsewhere in this file/services.py, never through this endpoint."""
     serializer_class = ActivityLogSerializer
     permission_classes = [IsAuthenticated, IsStateCoordinator]
     filterset_fields = ['action', 'lga']
     search_fields = ['target_repr']
 
     def get_queryset(self):
-        state_id = self.request.user.state_id
-        if not state_id:
+        user = self.request.user
+        if not user.state_id:
             return ActivityLog.objects.none()
-        return ActivityLog.objects.filter(state_id=state_id).select_related('actor', 'lga')
+        agent_ids = _coordinator_visible_agents(user).values_list('id', flat=True)
+        return ActivityLog.objects.filter(
+            Q(actor_id=user.id) | Q(actor_id__in=agent_ids)
+        ).select_related('actor', 'lga')
 
 
 class CoordinatorLGAOverviewView(APIView):
@@ -2040,31 +2026,38 @@ class AdminCoordinatorStatusView(APIView):
         })
 
 
+def _verification_requests_visible_to(user):
+    """Shared scoping used by both VerificationRequestViewSet and
+    serve_verification_document — keep these two in sync, since the latter
+    is the only thing standing between an ID document and the open
+    internet."""
+    if user.role == 'artisan':
+        return VerificationRequest.objects.filter(artisan=user)
+    elif user.role == 'agent':
+        # An agent is entitled to only their own LGA — same reasoning
+        # as AgentArtisanListView/AgentVerifyArtisanView.
+        if not user.lga_id:
+            return VerificationRequest.objects.none()
+        return VerificationRequest.objects.filter(
+            status='pending', artisan__lga_id=user.lga_id
+        )
+    elif user.role == 'state_coordinator':
+        # Scoped to the caller's own state, consistent with the
+        # IsStateAgent pattern used for artisans/clients/dashboard-stats.
+        if not user.state_id:
+            return VerificationRequest.objects.none()
+        return VerificationRequest.objects.filter(
+            status='pending', artisan__state_id=user.state_id
+        )
+    return VerificationRequest.objects.none()
+
+
 class VerificationRequestViewSet(viewsets.ModelViewSet):
     serializer_class = VerificationRequestSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        if user.role == 'artisan':
-            return VerificationRequest.objects.filter(artisan=user)
-        elif user.role == 'agent':
-            # An agent is entitled to only their own LGA — same reasoning
-            # as AgentArtisanListView/AgentVerifyArtisanView.
-            if not user.lga_id:
-                return VerificationRequest.objects.none()
-            return VerificationRequest.objects.filter(
-                status='pending', artisan__lga_id=user.lga_id
-            )
-        elif user.role == 'state_coordinator':
-            # Scoped to the caller's own state, consistent with the
-            # IsStateAgent pattern used for artisans/clients/dashboard-stats.
-            if not user.state_id:
-                return VerificationRequest.objects.none()
-            return VerificationRequest.objects.filter(
-                status='pending', artisan__state_id=user.state_id
-            )
-        return VerificationRequest.objects.none()
+        return _verification_requests_visible_to(self.request.user)
 
     def perform_create(self, serializer):
         serializer.save(artisan=self.request.user)
@@ -2095,6 +2088,30 @@ class VerificationRequestViewSet(viewsets.ModelViewSet):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def serve_verification_document(request, pk, slot):
+    """Streams a single identity/verification document image, after
+    checking the exact same ownership/role scoping VerificationRequestViewSet
+    uses. This is the ONLY sanctioned way to fetch these files — they're
+    stored under core.storage.private_media_storage, which has no public
+    URL/static mapping, specifically so this check can never be bypassed by
+    hitting the file directly."""
+    verification_request = _verification_requests_visible_to(request.user).filter(pk=pk).first()
+    if verification_request is None:
+        raise Http404
+
+    field_file = {
+        1: verification_request.document_image_1,
+        2: verification_request.document_image_2,
+        3: verification_request.document_image_3,
+    }.get(slot)
+    if not field_file:
+        raise Http404
+
+    return FileResponse(field_file.open('rb'))
 
 
 class BookingViewSet(viewsets.ModelViewSet):

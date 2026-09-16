@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, ArtisanViewSet, ArtisanProfileView, BusinessProfileViewSet, BusinessProfileView,
-    VerificationRequestViewSet, BookingViewSet, ReviewViewSet,
+    VerificationRequestViewSet, serve_verification_document, BookingViewSet, ReviewViewSet,
     AIChatView, AIIntentClassifierView, TranscribeView, AgentArtisanListView, AgentClientListView,
     AgentDashboardStatsView, AgentRegisterArtisanView, AgentVerifyArtisanView,
     AgentServiceRequestsView, AgentBusinessListView, AgentVerifyBusinessView,
@@ -21,6 +21,10 @@ router.register(r'reviews', ReviewViewSet, basename='review')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path(
+        'verification-documents/<int:pk>/<int:slot>/',
+        serve_verification_document, name='verification-document',
+    ),
     path('artisan/profile/', ArtisanProfileView.as_view(), name='artisan-profile'),
     path('business/profile/', BusinessProfileView.as_view(), name='business-profile'),
     path('agent/artisans/', AgentArtisanListView.as_view(), name='agent-artisans'),

@@ -184,6 +184,29 @@ def referee_summary(owner):
     }
 
 
+def _coordinator_visible_agents(coordinator):
+    """Which agents a state coordinator can see and manage, now that a
+    state holds many coordinators (the one-per-state rule is gone —
+    accounts/0018): the coordinator's OWN agents (permanent
+    sponsor_coordinator link), plus legacy agents in the same state that
+    were never claimed by anyone (registered before the referral network
+    or while the state had no standing coordinator). Strictly-claimed
+    agents of a DIFFERENT coordinator in the same state are excluded —
+    agents partition among their sponsors, so no coordinator can touch a
+    colleague's team. In a single-coordinator state this reduces to
+    exactly the old state-wide filter, so existing behavior is unchanged.
+
+    Lives here (not core.views) so referral_stats()/recent_network_activity()
+    below can share the exact same ownership rule as
+    CoordinatorAgentListView/CoordinatorAgentStatusView — a dashboard
+    summary must never disagree with the list it's summarizing."""
+    return _user_model().objects.filter(
+        role='agent', state_id=coordinator.state_id,
+    ).filter(
+        Q(sponsor_coordinator_id=coordinator.id) | Q(sponsor_coordinator__isnull=True)
+    )
+
+
 def _recruited_query(owner, provider_model):
     """All Service Providers whose registration chain bottoms out at
     ``owner``. For a Coordinator: anyone they registered directly, and
@@ -201,20 +224,20 @@ def _recruited_query(owner, provider_model):
 
 def referral_stats(user):
     """Counts for the logged-in user's referral dashboard. Never counts
-    outside the user's own recruitment network — a Coordinator sees Agents
-    and Service Providers under their own state/chain only; an Agent sees
-    only what they personally registered."""
-    arts = ArtisanProfile.objects
-    bizes = BusinessProfile.objects
+    outside the user's own recruitment network — a Coordinator sees only
+    their own agents (_coordinator_visible_agents — the same ownership
+    rule CoordinatorAgentListView uses, never a colleague coordinator's
+    agents in the same state) and Service Providers under their own
+    state/chain; an Agent sees only what they personally registered."""
     if user.role == 'state_coordinator':
-        agents_in_state = _user_model().objects.filter(role='agent', state_id=user.state_id)
+        agents_in_network = _coordinator_visible_agents(user)
         a = _recruited_query(user, ArtisanProfile).count()
         b = _recruited_query(user, BusinessProfile).count()
         return {
             'role': 'state_coordinator',
-            'total_agents': agents_in_state.count(),
-            'active_agents': agents_in_state.filter(account_status='active').count(),
-            'pending_agents': agents_in_state.filter(account_status='pending_approval').count(),
+            'total_agents': agents_in_network.count(),
+            'active_agents': agents_in_network.filter(account_status='active').count(),
+            'pending_agents': agents_in_network.filter(account_status='pending_approval').count(),
             'total_service_providers_recorded': a + b,
             'total_artisans': a,
             'total_businesses': b,
@@ -234,11 +257,13 @@ def referral_stats(user):
 def recent_network_activity(user, limit=5):
     """Most recent creation/registration events inside ``user``'s network
     for the referral dashboard's 'recent activity' strip. A Coordinator
-    sees their whole state's agent/provider activity; an Agent only their
-    own registrations."""
+    sees activity performed by themselves or by their own agents only
+    (never a colleague coordinator's agents, even in the same state); an
+    Agent only their own registrations."""
     actions = ('agent_created', 'artisan_registered', 'business_registered')
     if user.role == 'state_coordinator':
-        log = ActivityLog.objects.filter(state_id=user.state_id)
+        agent_ids = _coordinator_visible_agents(user).values_list('id', flat=True)
+        log = ActivityLog.objects.filter(Q(actor_id=user.id) | Q(actor_id__in=agent_ids))
     else:
         log = ActivityLog.objects.filter(actor_id=user.id)
     log = log.filter(action__in=actions).order_by('-created_at')[:limit]
