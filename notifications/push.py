@@ -33,6 +33,15 @@ def send_push_to_user(user, title, body, data=None):
         _cleanup_invalid_tokens(tokens, response.json().get('data', []))
     except requests.RequestException:
         logger.exception('Push notification send failed for user %s', user.email)
+    except Exception:
+        # A 200 with an unexpected body (non-JSON, or a shape
+        # _cleanup_invalid_tokens doesn't expect) isn't a RequestException,
+        # but this function's whole contract — and every emit() caller
+        # (booking/review/verification views, none of which wrap emit() in
+        # their own try/except) — depends on it never raising. A push
+        # provider hiccup must never turn an already-successful DB write
+        # into a 500 for the caller.
+        logger.exception('Push notification send failed unexpectedly for user %s', user.email)
 
 
 def _cleanup_invalid_tokens(tokens, tickets):

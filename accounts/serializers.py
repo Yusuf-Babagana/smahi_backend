@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
 # 👇 Import ArtisanProfile at the top
@@ -158,6 +159,19 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if attrs.get('role') == 'business' and not attrs.get('business_name', '').strip():
             raise serializers.ValidationError({"business_name": "A business name is required."})
 
+        # Unlike country/state/lga (real FKs DRF auto-validates), category_id
+        # is a plain IntegerField so a custom_category_name can share the
+        # same field slot — so it needs its own existence check. Without
+        # this, a stale/mistyped category_id reached create() unchecked and
+        # blew up on the ArtisanProfile/BusinessProfile insert's FK
+        # constraint *after* the User row was already committed, permanently
+        # bricking that email address (retries fail on "already exists" but
+        # the account has no profile). See create()'s transaction.atomic()
+        # for the belt-and-braces half of this fix.
+        category_id = attrs.get('category_id')
+        if category_id is not None and not Category.objects.filter(id=category_id).exists():
+            raise serializers.ValidationError({'category_id': 'Not a valid category.'})
+
         # Optional referral code — resolves to its owner and stores the
         # resolved owner for create() to attach as the new account's
         # permanent sponsor. Runs in validate() (not in a per-field
@@ -212,7 +226,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             return category_obj.id
         return None
 
+    @transaction.atomic
     def create(self, validated_data):
+        # Wrapped in a transaction so that ANY failure creating the
+        # ArtisanProfile/BusinessProfile (an unexpected FK issue, a future
+        # bug, etc.) rolls back the User row too, instead of leaving a
+        # committed, profile-less account that permanently claims its email
+        # address (retries would fail on "already exists" with no way to
+        # ever complete the registration). category_id itself is now
+        # validated above, but this is the belt-and-braces half of that fix.
+
         # 1. Pull category/business data out before creating the user
         category_id = validated_data.pop('category_id', None)
         custom_category_name = validated_data.pop('custom_category_name', '').strip()

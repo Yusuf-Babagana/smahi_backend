@@ -3242,7 +3242,11 @@ class AIChatView(APIView):
 
     def post(self, request):
         messages = request.data.get("messages")
-        user_text = request.data.get("text", "").strip()
+        # `.get(key, default)` only falls back when the key is absent — an
+        # explicit `"text": null` (a realistic client bug) still returns
+        # None here, and None.strip() would crash with an unhandled 500
+        # instead of the clean "No text provided" response just below.
+        user_text = (request.data.get("text") or "").strip()
 
         # Live GPS from the client (app/chat/ai.tsx, when location permission
         # is granted) takes priority; an authenticated user's saved profile

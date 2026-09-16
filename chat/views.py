@@ -3,10 +3,13 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
 from core.translation import translation_service
+
+User = get_user_model()
 
 class ConversationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -28,6 +31,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         if recipient_id == request.user.id:
             return Response({'error': 'You cannot start a conversation with yourself'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # participants.add() below is a bare FK insert into the M2M
+        # through-table — an id with no matching User row raises an
+        # unhandled IntegrityError instead of a clean error response.
+        if not User.objects.filter(id=recipient_id).exists():
+            return Response({'error': 'Recipient not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         # Check if conversation already exists
         conversation = Conversation.objects.filter(participants=request.user).filter(participants__id=recipient_id).first()
