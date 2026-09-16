@@ -52,7 +52,7 @@ from .services import (
 from .referrals import (
     coordinator_directory_entry, effective_coordinator, generate_referral_code,
     recent_network_activity, referral_stats, referee_summary, resolve_referral_code,
-    _coordinator_visible_agents,
+    _coordinator_visible_agents, _recruited_query,
 )
 from .permissions import IsArtisan, IsBusiness, IsAgent, IsClient, IsProfileOwner, IsStateAgent, IsAdmin, IsStateCoordinator
 from accounts.serializers import UserSerializer, AdminUserSerializer, AdminUserUpdateSerializer, CoordinatorRegisteredUserUpdateSerializer
@@ -341,24 +341,13 @@ class AgentArtisanListView(generics.ListAPIView):
     verification status — unlike the public ArtisanViewSet list, which
     hides offline/unavailable artisans.
 
-    Scope differs by role: a state_coordinator oversees every artisan in
-    the whole state, but a plain agent is entitled to only their own LGA
-    (each agent covers exactly one LGA — see User.lga — and an LGA
-    normally has several agents, not the other way round) and must not
-    see artisans registered/living outside it.
-
-    Deliberately TERRITORY-based, not ownership-based (registered_by) —
-    tried the ownership version and reverted it after checking real
-    production data: 75-87% of artisans/businesses are self-registered
-    (no registering agent at all — see accounts.serializers, register_view),
-    and every agent sharing an LGA was found to rely on seeing the WHOLE
-    LGA's roster, not just what they personally registered (confirmed via
-    core.management.commands.audit_referral_coverage against live data —
-    every one of 19 Kumbotso agents was showing the identical 65-artisan
-    list). Coordinator->Agent oversight (CoordinatorAgentListView) doesn't
-    have this problem, since every Agent has a clear creator (Coordinator-
-    created only, no public self-registration path) — that fix stays
-    ownership-scoped; this one doesn't."""
+    Scope is ownership-based, not territory-based: a plain agent sees only
+    the artisans they personally registered; a state_coordinator sees their
+    own direct registrations plus everything registered under their agents
+    (same chain CoordinatorAgentListView/_recruited_query already use) —
+    never a colleague coordinator's or a colleague agent's registrations,
+    even when they cover the same LGA/state (an LGA normally has several
+    agents, not the other way round)."""
     serializer_class = ArtisanProfileSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     filterset_fields = ['category', 'verification_status']
@@ -366,15 +355,11 @@ class AgentArtisanListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        base = ArtisanProfile.objects.select_related('user', 'category')
-        if user.role == 'agent':
-            if not user.lga_id:
-                return ArtisanProfile.objects.none()
-            qs = base.filter(user__lga_id=user.lga_id).distinct()
-        elif not user.state_id:
+        if user.role == 'agent' and not user.lga_id:
             return ArtisanProfile.objects.none()
-        else:
-            qs = base.filter(user__state_id=user.state_id).distinct()
+        if user.role == 'state_coordinator' and not user.state_id:
+            return ArtisanProfile.objects.none()
+        qs = _recruited_query(user, ArtisanProfile).select_related('user', 'category')
 
         payment_status = self.request.query_params.get('payment_status')
         if payment_status == 'paid':
@@ -411,10 +396,8 @@ class AgentBusinessListView(generics.ListAPIView):
     verification status become visible here automatically, the same way
     AgentArtisanListView already does for artisans, without anyone having
     to open Django Admin or a separate system. Scoped identically and for
-    the same reason — territory (LGA for an agent, state for a
-    coordinator), not ownership: see AgentArtisanListView's docstring for
-    why (the real-data check that led to reverting the ownership-scoped
-    version applies identically to businesses — 87% self-registered)."""
+    the same reason: ownership (who registered this business), not
+    territory — see AgentArtisanListView's docstring."""
     serializer_class = BusinessProfileSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     filterset_fields = ['category', 'verification_status']
@@ -422,15 +405,11 @@ class AgentBusinessListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        base = BusinessProfile.objects.select_related('user', 'category')
-        if user.role == 'agent':
-            if not user.lga_id:
-                return BusinessProfile.objects.none()
-            qs = base.filter(user__lga_id=user.lga_id).distinct()
-        elif not user.state_id:
+        if user.role == 'agent' and not user.lga_id:
             return BusinessProfile.objects.none()
-        else:
-            qs = base.filter(user__state_id=user.state_id).distinct()
+        if user.role == 'state_coordinator' and not user.state_id:
+            return BusinessProfile.objects.none()
+        qs = _recruited_query(user, BusinessProfile).select_related('user', 'category')
 
         payment_status = self.request.query_params.get('payment_status')
         if payment_status == 'paid':
@@ -472,17 +451,15 @@ class AgentServiceRequestsView(generics.ListAPIView):
 
 
 class AgentDashboardStatsView(APIView):
-    """Summary counts for the agent/state-coordinator dashboard.
-    Artisan/business/client/service-request counts are territory-scoped
-    (own LGA for an agent, whole state for a coordinator) — tried an
-    ownership-based (registered_by) version and reverted it after
-    checking real production data: 75-87% of artisans/businesses are
-    self-registered with no registering agent at all, so ownership
-    scoping there would collapse to near-zero for almost every agent (see
-    AgentArtisanListView's docstring). Agent counts (coordinator branch
-    only) ARE ownership-scoped via _coordinator_visible_agents — Agents
-    don't have that self-registration blind spot, since every Agent has a
-    clear creator (Coordinator-created only)."""
+    """Summary counts for the agent/state-coordinator dashboard. A
+    state_coordinator's artisan/agent/business counts cover their own
+    referral network only (same ownership rule as AgentArtisanListView/
+    CoordinatorAgentListView — never a colleague coordinator's network,
+    even in the same state); a plain agent's artisan count covers only
+    what they personally registered. total_clients/pending_service_requests
+    remain territory-scoped (own LGA for an agent, whole state for a
+    coordinator) — clients aren't "registered" by anyone, so there's no
+    ownership relationship to scope them by."""
     permission_classes = [IsAuthenticated, IsStateAgent]
 
     def get(self, request):
@@ -496,13 +473,12 @@ class AgentDashboardStatsView(APIView):
                 'pending_service_requests': 0,
             })
 
+        artisans = _recruited_query(request.user, ArtisanProfile)
         if request.user.role == 'agent':
             lga_id = request.user.lga_id
-            artisans = ArtisanProfile.objects.filter(user__lga_id=lga_id) if lga_id else ArtisanProfile.objects.none()
             clients = User.objects.filter(role='client', lga_id=lga_id) if lga_id else User.objects.none()
             requests_qs = Booking.objects.filter(lga_id=lga_id) if lga_id else Booking.objects.none()
         else:
-            artisans = ArtisanProfile.objects.filter(user__state_id=state_id)
             clients = User.objects.filter(role='client', state_id=state_id)
             requests_qs = Booking.objects.filter(state_id=state_id)
 
@@ -527,7 +503,7 @@ class AgentDashboardStatsView(APIView):
             data['active_agents'] = agents.filter(account_status='active').count()
             data['pending_agents'] = agents.filter(account_status='pending_approval').count()
 
-            businesses = BusinessProfile.objects.filter(user__state_id=state_id)
+            businesses = _recruited_query(request.user, BusinessProfile)
             data['total_businesses'] = businesses.count()
             data['verified_businesses'] = businesses.filter(verification_status='approved').count()
             data['pending_business_verification'] = businesses.filter(verification_status='pending').count()
