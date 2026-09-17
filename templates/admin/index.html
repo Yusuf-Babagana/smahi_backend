@@ -9,10 +9,15 @@
 {% endblock %}
 
 {% block content %}
+    <div class="mb-6">
+        {% component "unfold/components/title.html" %}Dashboard{% endcomponent %}
+        {% component "unfold/components/text.html" with class="text-font-subtle-light dark:text-font-subtle-dark" %}Overview of your S-MAHII platform{% endcomponent %}
+    </div>
+
     {% if kpi_cards %}
     <div class="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 mb-6">
         {% for card in kpi_cards %}
-        {% component "unfold/components/card.html" with icon=card.icon %}
+        {% component "unfold/components/card.html" with icon=card.icon href=card.href %}
             <div class="font-medium text-font-subtle-light text-sm dark:text-font-subtle-dark">{{ card.label }}</div>
             <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark">{{ card.value }}</div>
             {% if card.sub %}<div class="mt-1 text-font-subtle-light text-xs dark:text-font-subtle-dark">{{ card.sub }}</div>{% endif %}
@@ -21,10 +26,41 @@
     </div>
     {% endif %}
 
-    {% if bookings_chart %}
+    <div class="grid gap-4 grid-cols-1 md:grid-cols-2 mb-6">
+        <div>
+            {% component "unfold/components/card.html" with title="Bookings — last 7 days" %}
+                {% if bookings_chart_empty %}
+                <div class="flex flex-col items-center justify-center py-16 text-center">
+                    <span class="material-symbols-outlined text-4xl text-base-300 dark:text-base-600 mb-2">event_busy</span>
+                    <p class="text-font-subtle-light text-sm dark:text-font-subtle-dark">No bookings in the last 7 days yet</p>
+                </div>
+                {% else %}
+                {% component "unfold/components/chart/line.html" with data=bookings_chart height="220" %}{% endcomponent %}
+                {% endif %}
+            {% endcomponent %}
+        </div>
+        <div>
+            {% component "unfold/components/card.html" with title="New users — last 7 days" %}
+                {% if users_chart_empty %}
+                <div class="flex flex-col items-center justify-center py-16 text-center">
+                    <span class="material-symbols-outlined text-4xl text-base-300 dark:text-base-600 mb-2">person_off</span>
+                    <p class="text-font-subtle-light text-sm dark:text-font-subtle-dark">No new users in the last 7 days yet</p>
+                </div>
+                {% else %}
+                {% component "unfold/components/chart/line.html" with data=users_chart height="220" %}{% endcomponent %}
+                {% endif %}
+            {% endcomponent %}
+        </div>
+    </div>
+
+    {% if quick_actions %}
     <div class="mb-6">
-        {% component "unfold/components/card.html" with title="Bookings — last 7 days" %}
-            {% component "unfold/components/chart/line.html" with data=bookings_chart height="220" %}{% endcomponent %}
+        {% component "unfold/components/card.html" with title="Quick actions" %}
+            <div class="flex flex-wrap gap-2">
+                {% for action in quick_actions %}
+                {% component "unfold/components/button.html" with href=action.href icon=action.icon variant="default" size="sm" %}{{ action.label }}{% endcomponent %}
+                {% endfor %}
+            </div>
         {% endcomponent %}
     </div>
     {% endif %}

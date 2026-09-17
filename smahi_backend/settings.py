@@ -252,6 +252,16 @@ UNFOLD = {
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
     "DASHBOARD_CALLBACK": "core.dashboard.dashboard_callback",
+    # Built-in Cmd/Ctrl+K search across every registered model — reuses
+    # each ModelAdmin's own already-permission-checked get_queryset() /
+    # search_fields (see unfold.sites.AdminSite._search_models), so it can
+    # never surface anything a user couldn't already reach via the normal
+    # changelist search box. SIDEBAR.show_search/command_search are what
+    # actually render the search box + Ctrl+K modal at all (confirmed in
+    # unfold/templates/unfold/helpers/search.html) — COMMAND.search_models
+    # alone enables the backend but leaves it with no visible entry point.
+    "COMMAND": {"search_models": True, "show_history": True},
+    "SIDEBAR": {"show_search": True, "command_search": True},
     # A smooth ramp interpolated from the app's own three brand anchors
     # (constants/theme.ts: brand100/brand600/brand900) rather than eyeballed
     # per-step — the previous version literally duplicated brand600 into
