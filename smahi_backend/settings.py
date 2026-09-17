@@ -10,6 +10,11 @@ SECRET_KEY = config('SECRET_KEY')  # no insecure fallback — fail loudly if uns
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 INSTALLED_APPS = [
+    # unfold (and its contrib apps) must be listed before
+    # django.contrib.admin — it overrides the built-in admin templates.
+    'unfold',
+    'unfold.contrib.filters',
+    'unfold.contrib.forms',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -227,3 +232,27 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
 ARTISAN_REGISTRATION_FEE = 2500  # Naira
+
+# django-unfold — purely cosmetic theming for the admin site (mounted at
+# the site root, see smahi_backend/urls.py). Every model's CRUD/list/
+# filter/search behavior is unchanged; this only restyles it. Colors
+# match the mobile app's own brand900/brand600 tokens
+# (constants/theme.ts in the app repo) so the two feel like one product.
+UNFOLD = {
+    "SITE_TITLE": "S-MAHII Admin",
+    "SITE_HEADER": "S-MAHII",
+    "SITE_SUBHEADER": "Platform Administration",
+    # This backend is API-only — '/' itself renders nothing, so "View
+    # site" points at the actual public website instead.
+    "SITE_URL": "https://www.smahiglobalservices.com",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
+    "COLORS": {
+        "primary": {
+            "50": "239 246 255", "100": "219 234 254", "200": "191 219 254",
+            "300": "147 197 253", "400": "96 165 250", "500": "27 95 217",
+            "600": "27 95 217", "700": "29 78 178", "800": "30 64 145",
+            "900": "11 46 91", "950": "8 33 66",
+        },
+    },
+}
