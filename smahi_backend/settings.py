@@ -57,7 +57,11 @@ ROOT_URLCONF = 'smahi_backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # Must win over unfold's own admin/index.html via app_directories
+        # (unfold is listed before our local apps in INSTALLED_APPS, so
+        # without an explicit DIRS override its template would always be
+        # found first) — see templates/admin/index.html.
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -247,6 +251,7 @@ UNFOLD = {
     "SITE_URL": "https://www.smahiglobalservices.com",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
+    "DASHBOARD_CALLBACK": "core.dashboard.dashboard_callback",
     "COLORS": {
         "primary": {
             "50": "239 246 255", "100": "219 234 254", "200": "191 219 254",
