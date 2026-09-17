@@ -222,6 +222,40 @@ def _recruited_query(owner, provider_model):
     return provider_model.objects.filter(registered_by_id=owner.id)
 
 
+def reassign_provider_owner(profile, new_owner):
+    """Change who currently oversees a Service Provider (ArtisanProfile or
+    BusinessProfile) — the admin's "reassign to a different Agent/
+    Coordinator" action. Keeps user.sponsor_coordinator in sync with the
+    new owner so state-coordinator dashboard rollups (_recruited_query's
+    sponsor_coordinator_id branch) never go stale — the exact same sync
+    rule core.management.commands.grandfather_self_registered_providers
+    already established for this same field, reused rather than
+    re-derived. sponsor_coordinator/sponsor_agent are never touched beyond
+    that sync — they stay permanent referral-credit history, same as
+    everywhere else in this module.
+
+    Raises ValueError if new_owner isn't a same-state, currently-active
+    Agent or Coordinator — the same territory boundary this codebase
+    already enforces everywhere an Agent/Coordinator is assigned
+    responsibility (e.g. CoordinatorCreateAgentView)."""
+    if new_owner.role not in ('agent', 'state_coordinator'):
+        raise ValueError('New owner must be an Agent or a State Coordinator.')
+    if new_owner.account_status not in ACTIVE_STATUSES:
+        raise ValueError(f'{new_owner.email} is not an active seat holder.')
+    if new_owner.state_id != profile.user.state_id:
+        raise ValueError(
+            f'{new_owner.email} is not in the same state as {profile.user.email}.'
+        )
+
+    profile.registered_by = new_owner
+    profile.save(update_fields=['registered_by'])
+
+    coord = new_owner if new_owner.role == 'state_coordinator' else effective_coordinator(new_owner)
+    if coord is not None and profile.user.sponsor_coordinator_id != coord.id:
+        profile.user.sponsor_coordinator = coord
+        profile.user.save(update_fields=['sponsor_coordinator'])
+
+
 def referral_stats(user):
     """Counts for the logged-in user's referral dashboard. Never counts
     outside the user's own recruitment network — a Coordinator sees only

@@ -1,11 +1,76 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.auth import get_user_model
 from django.shortcuts import redirect
+from django.template.response import TemplateResponse
 from django.utils import timezone
 from .models import (
-    Category, ServiceTaxonomy, ArtisanProfile, VerificationRequest, Booking, BookingPhoto, Review,
-    RegistrationPayment, PlatformSettings, DisputeReport, Favorite, ActivityLog,
+    Category, ServiceTaxonomy, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto,
+    Review, RegistrationPayment, PlatformSettings, DisputeReport, Favorite, ActivityLog,
 )
+from .referrals import ACTIVE_STATUSES
 from notifications.events import emit
+
+User = get_user_model()
+
+
+class ReassignableOwnerAdminMixin:
+    """Adds a 'Reassign to a different Agent/Coordinator' bulk action to
+    ArtisanProfileAdmin/BusinessProfileAdmin, and routes registered_by
+    edits on the change form through reassign_provider_owner() instead of
+    a blind save — so both entry points enforce the same-state rule and
+    keep user.sponsor_coordinator in sync (see core.referrals for why)."""
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'registered_by':
+            kwargs['queryset'] = User.objects.filter(
+                role__in=['agent', 'state_coordinator'], account_status__in=ACTIVE_STATUSES,
+            ).order_by('email')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if change and 'registered_by' in form.changed_data and obj.registered_by:
+            from .referrals import reassign_provider_owner
+            try:
+                reassign_provider_owner(obj, obj.registered_by)
+            except ValueError as e:
+                self.message_user(request, str(e), level=messages.ERROR)
+                return
+            return  # reassign_provider_owner already saved it
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description='Reassign to a different Agent/Coordinator')
+    def reassign_to_owner(self, request, queryset):
+        from .referrals import reassign_provider_owner
+
+        if 'apply' in request.POST:
+            new_owner = User.objects.filter(pk=request.POST.get('new_owner')).first()
+            if not new_owner:
+                self.message_user(request, 'Pick a valid Agent/Coordinator.', level=messages.ERROR)
+                return
+            moved, errors = 0, []
+            for profile in queryset.select_related('user'):
+                try:
+                    reassign_provider_owner(profile, new_owner)
+                    moved += 1
+                except ValueError as e:
+                    errors.append(str(e))
+            if moved:
+                self.message_user(request, f'{moved} reassigned to {new_owner.email}.')
+            for err in errors:
+                self.message_user(request, err, level=messages.WARNING)
+            return
+
+        eligible = User.objects.filter(
+            role__in=['agent', 'state_coordinator'], account_status__in=ACTIVE_STATUSES,
+        ).order_by('email')
+        return TemplateResponse(request, 'admin/reassign_owner_confirmation.html', {
+            **self.admin_site.each_context(request),
+            'queryset': queryset,
+            'eligible': eligible,
+            'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
+            'opts': self.model._meta,
+            'title': 'Reassign to a different Agent/Coordinator',
+        })
 
 
 @admin.register(PlatformSettings)
@@ -76,13 +141,14 @@ class ServiceTaxonomyAdmin(admin.ModelAdmin):
 
 
 @admin.register(ArtisanProfile)
-class ArtisanProfileAdmin(admin.ModelAdmin):
-    list_display = ['user', 'category', 'verification_status', 'rating', 'total_reviews', 'hourly_rate', 'created_at']
+class ArtisanProfileAdmin(ReassignableOwnerAdminMixin, admin.ModelAdmin):
+    list_display = ['user', 'category', 'registered_by', 'verification_status', 'rating', 'total_reviews', 'hourly_rate', 'created_at']
     list_filter = ['verification_status', 'category', 'created_at']
     search_fields = ['user__email', 'user__first_name', 'user__last_name', 'bio']
     filter_horizontal = ['service_countries', 'service_states', 'service_lgas']
+    autocomplete_fields = ['category', 'registered_by']
     readonly_fields = ['rating', 'total_reviews', 'total_bookings']
-    actions = ['approve_verification', 'reject_verification']
+    actions = ['approve_verification', 'reject_verification', 'reassign_to_owner']
 
     @admin.action(description='Approve verification (also sets is_verified on the user)')
     def approve_verification(self, request, queryset):
@@ -103,6 +169,37 @@ class ArtisanProfileAdmin(admin.ModelAdmin):
                 reason='Your verification documents did not meet our requirements. Please contact support.'
             )
         self.message_user(request, f'{queryset.count()} artisan(s) rejected.')
+
+
+@admin.register(BusinessProfile)
+class BusinessProfileAdmin(ReassignableOwnerAdminMixin, admin.ModelAdmin):
+    """First admin registration for BusinessProfile — until now a business
+    owner's profile (verification, registered_by) had no admin interface
+    at all. Mirrors ArtisanProfileAdmin's shape, including reusing
+    approve_business_verification/reject_business_verification, which
+    existed in core.services but were unreachable from anywhere."""
+    list_display = ['user', 'business_name', 'category', 'registered_by', 'verification_status', 'created_at']
+    list_filter = ['verification_status', 'category', 'created_at']
+    search_fields = ['user__email', 'user__first_name', 'user__last_name', 'business_name', 'description']
+    autocomplete_fields = ['category', 'registered_by']
+    actions = ['approve_verification', 'reject_verification', 'reassign_to_owner']
+
+    @admin.action(description='Approve verification (also sets is_verified on the user)')
+    def approve_verification(self, request, queryset):
+        from .services import approve_business_verification
+        for profile in queryset:
+            approve_business_verification(profile.user, reviewed_by=request.user)
+        self.message_user(request, f'{queryset.count()} business(es) verified.')
+
+    @admin.action(description='Reject verification')
+    def reject_verification(self, request, queryset):
+        from .services import reject_business_verification
+        for profile in queryset:
+            reject_business_verification(
+                profile.user, reviewed_by=request.user,
+                reason='Your verification documents did not meet our requirements. Please contact support.'
+            )
+        self.message_user(request, f'{queryset.count()} business(es) rejected.')
 
 
 @admin.register(VerificationRequest)

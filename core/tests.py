@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import ArtisanProfile, Booking, Category, ServiceTaxonomy
+from .models import ArtisanProfile, BusinessProfile, Booking, Category, ServiceTaxonomy
 from .views import AIChatView, AIIntentClassifierView
 
 User = get_user_model()
@@ -4556,3 +4556,93 @@ class ReferralApiTests(CoordinatorDashboardTestBase):
         self.assertEqual(artisan.sponsor_coordinator_id, self.kano_coordinator.id)
         self.assertEqual(artisan.artisan_profile.registered_by_id, self.kano_coordinator.id,
                          "registered_by stays the physical registrar while sponsorship follows the code")
+
+
+class ReassignProviderOwnerTests(CoordinatorDashboardTestBase):
+    """core.referrals.reassign_provider_owner — the Django Admin action
+    that moves an artisan/business to a different Agent/Coordinator's
+    roster (see core/admin.py's ReassignableOwnerAdminMixin). Reuses
+    CoordinatorDashboardTestBase's two-state fixtures so state-boundary
+    enforcement is proven, not assumed."""
+
+    def setUp(self):
+        super().setUp()
+        self.kano_agent_2 = User.objects.create_user(
+            email='kano_agent_2@test.com', password='pass12345',
+            first_name='Second', last_name='KanoAgent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        self.kano_artisan = User.objects.create_user(
+            email='kano_artisan@test.com', password='pass12345',
+            first_name='Kano', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        self.artisan_profile = ArtisanProfile.objects.create(
+            user=self.kano_artisan, registered_by=self.kano_agent,
+        )
+        self.kano_business_owner = User.objects.create_user(
+            email='kano_business@test.com', password='pass12345',
+            first_name='Kano', last_name='Business', role='business',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        self.business_profile = BusinessProfile.objects.create(
+            user=self.kano_business_owner, business_name='Kano Store', registered_by=self.kano_agent,
+        )
+
+    def test_reassign_to_same_state_agent_updates_sponsor_coordinator(self):
+        from .referrals import effective_coordinator, reassign_provider_owner
+        self.kano_agent_2.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent_2.save(update_fields=['sponsor_coordinator'])
+
+        reassign_provider_owner(self.artisan_profile, self.kano_agent_2)
+
+        self.artisan_profile.refresh_from_db()
+        self.kano_artisan.refresh_from_db()
+        self.assertEqual(self.artisan_profile.registered_by_id, self.kano_agent_2.id)
+        self.assertEqual(
+            self.kano_artisan.sponsor_coordinator_id,
+            effective_coordinator(self.kano_agent_2).id,
+        )
+
+    def test_reassign_directly_to_a_coordinator_sets_sponsor_coordinator_to_them(self):
+        from .referrals import reassign_provider_owner
+        reassign_provider_owner(self.business_profile, self.kano_coordinator)
+
+        self.business_profile.refresh_from_db()
+        self.kano_business_owner.refresh_from_db()
+        self.assertEqual(self.business_profile.registered_by_id, self.kano_coordinator.id)
+        self.assertEqual(self.kano_business_owner.sponsor_coordinator_id, self.kano_coordinator.id)
+
+    def test_reassign_across_states_is_rejected(self):
+        from .referrals import reassign_provider_owner
+        with self.assertRaises(ValueError):
+            reassign_provider_owner(self.artisan_profile, self.lagos_agent)
+        self.artisan_profile.refresh_from_db()
+        self.assertEqual(self.artisan_profile.registered_by_id, self.kano_agent.id,
+                         "a rejected reassignment must leave the existing owner untouched")
+
+    def test_reassign_to_a_non_agent_non_coordinator_is_rejected(self):
+        from .referrals import reassign_provider_owner
+        with self.assertRaises(ValueError):
+            reassign_provider_owner(self.artisan_profile, self.kano_artisan)
+
+    def test_reassign_to_a_dismissed_agent_is_rejected(self):
+        from .referrals import reassign_provider_owner
+        self.kano_agent_2.account_status = 'dismissed'
+        self.kano_agent_2.save(update_fields=['account_status'])
+        with self.assertRaises(ValueError):
+            reassign_provider_owner(self.artisan_profile, self.kano_agent_2)
+
+    def test_reassignment_moves_visibility_between_agent_rosters(self):
+        """After reassigning, AgentArtisanListView's own scoping query
+        (_recruited_query) must show the artisan under the new agent and
+        stop showing them under the old one — the whole point of this
+        feature."""
+        from .referrals import _recruited_query, reassign_provider_owner
+        self.assertIn(self.artisan_profile, _recruited_query(self.kano_agent, ArtisanProfile))
+        self.assertNotIn(self.artisan_profile, _recruited_query(self.kano_agent_2, ArtisanProfile))
+
+        reassign_provider_owner(self.artisan_profile, self.kano_agent_2)
+
+        self.assertNotIn(self.artisan_profile, _recruited_query(self.kano_agent, ArtisanProfile))
+        self.assertIn(self.artisan_profile, _recruited_query(self.kano_agent_2, ArtisanProfile))
