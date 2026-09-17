@@ -252,12 +252,17 @@ UNFOLD = {
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
     "DASHBOARD_CALLBACK": "core.dashboard.dashboard_callback",
+    # A smooth ramp interpolated from the app's own three brand anchors
+    # (constants/theme.ts: brand100/brand600/brand900) rather than eyeballed
+    # per-step — the previous version literally duplicated brand600 into
+    # both "500" and "600" (copy-paste), which made hover/active states on
+    # buttons and the sidebar indistinguishable from their resting color.
     "COLORS": {
         "primary": {
-            "50": "239 246 255", "100": "219 234 254", "200": "191 219 254",
-            "300": "147 197 253", "400": "96 165 250", "500": "27 95 217",
-            "600": "27 95 217", "700": "29 78 178", "800": "30 64 145",
-            "900": "11 46 91", "950": "8 33 66",
+            "50": "246 249 254", "100": "234 241 253", "200": "188 209 245",
+            "300": "147 180 238", "400": "106 150 231", "500": "64 121 223",
+            "600": "27 95 217", "700": "21 78 173", "800": "16 62 131",
+            "900": "11 46 91", "950": "7 30 59",
         },
     },
 }
