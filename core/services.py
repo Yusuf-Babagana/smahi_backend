@@ -149,6 +149,78 @@ def reject_business_verification(business_user, reviewed_by, reason=''):
     return business_profile
 
 
+# --- Agent/Coordinator status transitions ---
+#
+# Shared by core.views.CoordinatorAgentStatusView/AdminCoordinatorStatusView
+# (the API) and accounts.admin.AgentAdmin/CoordinatorAdmin (Django Admin's
+# dedicated management pages) — same reasoning as every other function in
+# this file: both entry points must always agree on what "approved" or
+# "reactivated" means. Only Django Admin passes
+# allow_reactivate_from_terminal=True — a dismissed/rejected seat being
+# reversible "only from Django Admin" is this codebase's own documented
+# intent (see CoordinatorAgentStatusView's original docstring), not a new
+# rule invented here.
+
+def set_agent_status(agent, new_status, actor, *, allow_reactivate_from_terminal=False):
+    """Move an Agent to active/suspended/dismissed/rejected. Mints their
+    referral code on first activation (idempotent — never overwrites one
+    that already exists). Raises ValueError (never saves anything) if the
+    agent is currently dismissed/rejected and allow_reactivate_from_terminal
+    is False."""
+    if not allow_reactivate_from_terminal and agent.account_status in ('dismissed', 'rejected'):
+        raise ValueError(f'This agent has been {agent.account_status} and cannot be reactivated here.')
+
+    from core.referrals import generate_referral_code
+
+    previous_status = agent.account_status
+    agent.is_active = (new_status == 'active')
+    agent.account_status = new_status
+    update_fields = ['is_active', 'account_status']
+
+    if new_status == 'active' and not agent.referral_code:
+        agent.referral_code = generate_referral_code('AG')
+        update_fields.append('referral_code')
+    agent.save(update_fields=update_fields)
+
+    if new_status == 'active':
+        action = 'agent_approved' if previous_status == 'pending_approval' else 'agent_reactivated'
+    else:
+        action = f'agent_{new_status}'  # 'agent_suspended' / 'agent_dismissed' / 'agent_rejected'
+    log_activity(actor, action, target_user=agent, activity_status=new_status)
+    return agent
+
+
+def set_coordinator_status(coordinator, new_status, actor, *, allow_reactivate_from_terminal=False):
+    """Move a State Coordinator to active/suspended/dismissed. Same shape
+    as set_agent_status, one level up — no pending_approval step, since a
+    coordinator is active immediately on creation."""
+    if not allow_reactivate_from_terminal and coordinator.account_status == 'dismissed':
+        raise ValueError('This coordinator has been dismissed and cannot be reactivated here.')
+
+    from core.referrals import generate_referral_code
+
+    coordinator.is_active = (new_status == 'active')
+    coordinator.account_status = new_status
+    update_fields = ['is_active', 'account_status']
+
+    if new_status == 'active' and not coordinator.referral_code:
+        state_code = (
+            (coordinator.state.state_code or coordinator.state.name[:3].upper())
+            if coordinator.state else 'ST'
+        )
+        coordinator.referral_code = generate_referral_code(state_code)
+        update_fields.append('referral_code')
+    coordinator.save(update_fields=update_fields)
+
+    action = {
+        'active': 'coordinator_reactivated',
+        'suspended': 'coordinator_suspended',
+        'dismissed': 'coordinator_dismissed',
+    }[new_status]
+    log_activity(actor, action, target_user=coordinator, activity_status=new_status)
+    return coordinator
+
+
 # --- Agent Search API (audit-trail spec item 7: "AI access strictly
 # limited to Agent information") ---
 #

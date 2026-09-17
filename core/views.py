@@ -1273,36 +1273,14 @@ class CoordinatorAgentStatusView(APIView):
         # dismissal; "never approved in the first place" for rejection) —
         # not something this same endpoint can casually undo the way a
         # suspension is reactivated. Re-hiring/re-applying is deliberately
-        # out of this endpoint's scope (Django Admin only).
-        if agent.account_status in ('dismissed', 'rejected'):
-            return Response(
-                {'error': f'This agent has been {agent.account_status} and cannot be reactivated here.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # is_active is what login_view actually gates on (accounts/views.py) —
-        # account_status alone is display-only. Set both together, same as
-        # the equivalent Django Admin bulk actions (accounts/admin.py), or a
-        # "suspended"/"dismissed" agent could still log in and keep working.
-        previous_status = agent.account_status
-        agent.is_active = (new_status == 'active')
-        agent.account_status = new_status
-        update_fields = ['is_active', 'account_status']
-
-        # Mint the agent's own referral code the moment they become active
-        # (idempotent — never overwrites an existing code). This is what
-        # turns "agent approved" into "agent with a shareable code", per the
-        # agreed design (code minted on approval/activation, not at signup).
-        if new_status == 'active' and not agent.referral_code:
-            agent.referral_code = generate_referral_code('AG')
-            update_fields.append('referral_code')
-        agent.save(update_fields=update_fields)
-
-        if new_status == 'active':
-            action = 'agent_approved' if previous_status == 'pending_approval' else 'agent_reactivated'
-        else:
-            action = f'agent_{new_status}'  # 'agent_suspended' / 'agent_dismissed' / 'agent_rejected'
-        log_activity(request.user, action, target_user=agent, activity_status=new_status)
+        # out of this endpoint's scope (Django Admin only — see
+        # accounts.admin.AgentAdmin, which calls set_agent_status with
+        # allow_reactivate_from_terminal=True).
+        from .services import set_agent_status
+        try:
+            set_agent_status(agent, new_status, request.user)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({
             'message': f'Agent account set to {new_status}.',
@@ -1991,31 +1969,15 @@ class AdminCoordinatorStatusView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'Coordinator not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if coordinator.account_status == 'dismissed':
-            return Response(
-                {'error': 'This coordinator has been dismissed and cannot be reactivated here.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        coordinator.is_active = (new_status == 'active')
-        coordinator.account_status = new_status
-        update_fields = ['is_active', 'account_status']
-
-        # Safety net for a coordinator who somehow has no code yet (e.g. a
-        # legacy account created before referrals existed, being reactivated
-        # for the first time). Idempotent — an existing code is never
-        # overwritten.
-        if new_status == 'active' and not coordinator.referral_code:
-            state_code = (coordinator.state.state_code or coordinator.state.name[:3].upper()) if coordinator.state else 'ST'
-            coordinator.referral_code = generate_referral_code(state_code)
-            update_fields.append('referral_code')
-        coordinator.save(update_fields=update_fields)
-
-        # No 'coordinator_approved' — unlike an agent, a coordinator has no
-        # pending_approval step, so 'active' from this endpoint only ever
-        # means reactivating a previously-suspended one.
-        action = {'active': 'coordinator_reactivated', 'suspended': 'coordinator_suspended', 'dismissed': 'coordinator_dismissed'}[new_status]
-        log_activity(request.user, action, target_user=coordinator, activity_status=new_status)
+        # Dismissal is final here too — reversible "only from Django Admin"
+        # (accounts.admin.CoordinatorAdmin, via set_coordinator_status with
+        # allow_reactivate_from_terminal=True), same reasoning as
+        # CoordinatorAgentStatusView.
+        from .services import set_coordinator_status
+        try:
+            set_coordinator_status(coordinator, new_status, request.user)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({
             'message': f'Coordinator account set to {new_status}.',

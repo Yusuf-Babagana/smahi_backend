@@ -162,3 +162,32 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.email} ({self.get_role_display()})"
+
+
+# Proxy models — same table, same rows as User, purely so each role gets
+# its own Django Admin section (list/search/actions scoped to that role)
+# instead of everyone having to filter the generic Users list by role
+# every time. No new columns, no behavior change on User itself; each
+# proxy's ModelAdmin (accounts/admin.py) filters get_queryset() to the
+# matching role and adds that role's real lifecycle rules (state/LGA
+# validation, serial numbers, referral-code minting — see
+# core.services.set_agent_status/set_coordinator_status).
+class Coordinator(User):
+    class Meta:
+        proxy = True
+        verbose_name = 'Coordinator'
+        verbose_name_plural = 'Coordinators'
+
+
+class Agent(User):
+    class Meta:
+        proxy = True
+        verbose_name = 'Agent'
+        verbose_name_plural = 'Agents'
+
+
+class BusinessOwner(User):
+    class Meta:
+        proxy = True
+        verbose_name = 'Business Owner'
+        verbose_name_plural = 'Business Owners'
