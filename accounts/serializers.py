@@ -195,12 +195,28 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             # Agent being created (whose sponsor is always a Coordinator).
             if attrs.get('role') == 'agent' and owner.role != 'state_coordinator':
                 raise serializers.ValidationError({'referral_code': 'Only a Coordinator referral code can sponsor an agent.'})
-            # Keep the network territory-coherent: a new account in State A
-            # must not be planted under a sponsor operating in State B.
-            new_state = attrs.get('state')
-            new_state_id = getattr(new_state, 'id', None)
-            if new_state_id and owner.state_id and owner.state_id != new_state_id:
-                raise serializers.ValidationError({'referral_code': 'This referral code belongs to a different state.'})
+            # Keep the network territory-coherent by PLANTING the new
+            # account in its sponsor's own state/country, rather than
+            # rejecting whatever the registrant separately picked in the
+            # location step. Rejecting on a mismatch (the old behavior)
+            # was the actual cause behind reports of referral codes "not
+            # being accepted" — a registrant had no way to know they had
+            # to hand-pick their sponsor's exact state first for a code
+            # to work at all.
+            if owner.state_id and getattr(attrs.get('state'), 'id', None) != owner.state_id:
+                attrs['state'] = owner.state
+                attrs['country'] = owner.country
+                # The registrant's picked LGA belonged to the old, now-
+                # overridden state — keeping it would leave a
+                # geographically-inconsistent state/LGA pair. An Agent's
+                # own LGA is the best available guess (their recruits are
+                # typically local to them); a Coordinator has no single
+                # LGA, so it's left blank for the registrant to fill in
+                # from their profile later. A same-state code (the
+                # common case) never reaches this branch, so a
+                # registrant's own LGA choice is preserved whenever it
+                # actually agrees with their sponsor's state.
+                attrs['lga'] = owner.lga if owner.role == 'agent' else None
             self._resolved_referrer = owner
 
         return attrs

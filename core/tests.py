@@ -4658,17 +4658,52 @@ class ReferralApiTests(CoordinatorDashboardTestBase):
         self.assertIn('referral_code', response.data)
         self.assertFalse(User.objects.filter(email='referral_reg@test.com').exists())
 
-    def test_registration_with_a_cross_state_referral_code_is_rejected(self):
-        """A registrant picking Kano must not be planted under a Lagos
-        coordinator's network — the territory stays coherent."""
+    def test_registration_with_a_cross_state_referral_code_plants_the_registrant_in_the_sponsors_state(self):
+        """A registrant who picked Kano but used a Lagos coordinator's code
+        is planted in Lagos (the sponsor's own state) instead of being
+        rejected — the old reject-on-mismatch behavior was the actual
+        cause behind reports of referral codes 'not being accepted'."""
         self.lagos_coordinator.referral_code = 'SMAHI-LA-TEST1'
         self.lagos_coordinator.save(update_fields=['referral_code'])
         response = self.client.post('/api/auth/register/', self.register_payload(
             referral_code='SMAHI-LA-TEST1',
         ))
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-        self.assertIn('referral_code', response.data)
-        self.assertFalse(User.objects.filter(email='referral_reg@test.com').exists())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        registrant = User.objects.get(email='referral_reg@test.com')
+        self.assertEqual(registrant.state_id, self.lagos.id, "planted in the sponsor's state, not the one picked at registration")
+        self.assertEqual(registrant.sponsor_coordinator_id, self.lagos_coordinator.id)
+        # The picked LGA (Kano) no longer belongs to the overridden state
+        # (Lagos) — a Coordinator has no single LGA of their own, so it's
+        # cleared rather than left geographically inconsistent.
+        self.assertIsNone(registrant.lga_id)
+
+    def test_a_same_state_referral_code_keeps_the_registrants_own_lga(self):
+        """The common case: a Kano coordinator's code with a Kano
+        registrant never touches LGA — it's only overridden on an actual
+        cross-state mismatch."""
+        self.kano_coordinator.referral_code = 'SMAHI-KN-TEST1'
+        self.kano_coordinator.save(update_fields=['referral_code'])
+        response = self.client.post('/api/auth/register/', self.register_payload(
+            referral_code='SMAHI-KN-TEST1',
+        ))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        registrant = User.objects.get(email='referral_reg@test.com')
+        self.assertEqual(registrant.state_id, self.kano.id)
+        self.assertEqual(registrant.lga_id, self.kano_lga_a.id)
+
+    def test_a_cross_state_agent_referral_code_plants_the_registrant_at_the_agents_own_lga(self):
+        """An Agent (unlike a Coordinator) has a specific LGA — used as
+        the best available guess when their code crosses state lines."""
+        self.lagos_agent.referral_code = 'SMAHI-LA-AGT1'
+        self.lagos_agent.save(update_fields=['referral_code'])
+        response = self.client.post('/api/auth/register/', self.register_payload(
+            referral_code='SMAHI-LA-AGT1',
+        ))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        registrant = User.objects.get(email='referral_reg@test.com')
+        self.assertEqual(registrant.state_id, self.lagos.id)
+        self.assertEqual(registrant.lga_id, self.lagos_agent.lga_id)
+        self.assertEqual(registrant.sponsor_agent_id, self.lagos_agent.id)
 
     def test_the_claimed_artisan_counts_in_the_coordinators_referral_dashboard(self):
         self.kano_coordinator.referral_code = 'SMAHI-KN-TEST1'
