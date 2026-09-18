@@ -53,29 +53,44 @@ def dashboard_callback(request, context):
     revenue_kobo = RegistrationPayment.objects.filter(status='success').aggregate(total=Sum('amount'))['total'] or 0
     open_disputes = DisputeReport.objects.exclude(status__in=['resolved', 'dismissed']).count()
 
+    # Only 4 hues are actually present in Unfold's pre-compiled Tailwind
+    # bundle (verified against unfold/static/unfold/css/styles.css — every
+    # other named color, and any dark: variant not already used by
+    # Unfold's own templates, is silently a no-op). These exact
+    # light/dark pairs are lifted from unfold/templates/unfold/helpers/
+    # label.html (its info/danger/warning/success variants), so they're
+    # guaranteed compiled and already validated for both color modes.
+    TONE_BLUE = {'icon_bg': 'bg-blue-100 dark:bg-blue-500/20', 'icon_fg': 'text-blue-700 dark:text-blue-400'}
+    TONE_GREEN = {'icon_bg': 'bg-green-100 dark:bg-green-500/20', 'icon_fg': 'text-green-700 dark:text-green-400'}
+    TONE_ORANGE = {'icon_bg': 'bg-orange-100 dark:bg-orange-500/20', 'icon_fg': 'text-orange-700 dark:text-orange-400'}
+    TONE_RED = {'icon_bg': 'bg-red-100 dark:bg-red-500/20', 'icon_fg': 'text-red-700 dark:text-red-400'}
+
     context['kpi_cards'] = [
         {
             'label': 'Total Users', 'value': f'{total_users:,}', 'icon': 'group',
-            'href': reverse('admin:accounts_user_changelist'),
+            'href': reverse('admin:accounts_user_changelist'), **TONE_BLUE,
         },
         {
             'label': 'Active Artisans', 'value': f'{active_artisans:,}', 'icon': 'verified',
             'sub': 'Verification approved',
             'href': reverse('admin:core_artisanprofile_changelist') + '?verification_status__exact=approved',
+            **TONE_GREEN,
         },
         {
             'label': 'Pending Verifications', 'value': f'{pending_verifications:,}', 'icon': 'pending_actions',
             'sub': 'Awaiting review',
             'href': reverse('admin:core_verificationrequest_changelist') + '?status__exact=pending',
+            **TONE_ORANGE,
         },
         {
             'label': 'Total Bookings', 'value': f'{total_bookings:,}', 'icon': 'event_available',
-            'href': reverse('admin:core_booking_changelist'),
+            'href': reverse('admin:core_booking_changelist'), **TONE_BLUE,
         },
         {
             'label': 'Registration Revenue', 'value': f'₦{revenue_kobo / 100:,.0f}', 'icon': 'payments',
             'sub': 'Lifetime, successful payments',
             'href': reverse('admin:core_registrationpayment_changelist') + '?status__exact=success',
+            **TONE_GREEN,
         },
         {
             # "Open" here means open + investigating, which isn't a single
@@ -83,7 +98,7 @@ def dashboard_callback(request, context):
             # a filtered link would misrepresent what's actually shown.
             'label': 'Open Disputes', 'value': f'{open_disputes:,}', 'icon': 'report',
             'sub': 'Open + investigating',
-            'href': reverse('admin:core_disputereport_changelist'),
+            'href': reverse('admin:core_disputereport_changelist'), **TONE_RED,
         },
     ]
 

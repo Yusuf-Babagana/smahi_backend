@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from decouple import config
+from django.urls import reverse_lazy
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -237,6 +238,100 @@ PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
 ARTISAN_REGISTRATION_FEE = 2500  # Naira
 
+# Custom sidebar nav — replaces Unfold's auto-generated app_label
+# grouping (which just dumps every model under its raw Django app:
+# "accounts", "core", "token_blacklist"...) with business-domain
+# sections and a per-model icon, neither of which Unfold derives
+# automatically from a plain ModelAdmin registration (verified: no
+# `icon`/app-icon attribute is read anywhere in unfold/sites.py's
+# get_app_list handling — icons only ever come from this exact
+# SIDEBAR.navigation config). reverse_lazy is required, not reverse:
+# urls.py hasn't loaded yet when settings.py is evaluated.
+#
+# Every entry here was generated from the actual admin.site._registry
+# (all 27 registered models, Sep 2026) — if a new model is registered
+# later, it simply won't appear in the sidebar (still reachable by
+# direct URL / global search) until it's added here.
+_UNFOLD_NAVIGATION = [
+    {
+        "title": "Overview",
+        "separator": False,
+        "items": [
+            {"title": "Dashboard", "icon": "space_dashboard", "link": reverse_lazy("admin:index")},
+        ],
+    },
+    {
+        "title": "People",
+        "separator": True,
+        "items": [
+            {"title": "Users", "icon": "person", "link": reverse_lazy("admin:accounts_user_changelist")},
+            {"title": "Coordinators", "icon": "supervisor_account", "link": reverse_lazy("admin:accounts_coordinator_changelist")},
+            {"title": "Agents", "icon": "badge", "link": reverse_lazy("admin:accounts_agent_changelist")},
+            {"title": "Business Owners", "icon": "storefront", "link": reverse_lazy("admin:accounts_businessowner_changelist")},
+            {"title": "Clients", "icon": "group", "link": reverse_lazy("admin:accounts_client_changelist")},
+        ],
+    },
+    {
+        "title": "Verification & Directory",
+        "separator": True,
+        "items": [
+            {"title": "Artisan Profiles", "icon": "engineering", "link": reverse_lazy("admin:core_artisanprofile_changelist")},
+            {"title": "Business Profiles", "icon": "domain", "link": reverse_lazy("admin:core_businessprofile_changelist")},
+            {"title": "Verification Requests", "icon": "fact_check", "link": reverse_lazy("admin:core_verificationrequest_changelist")},
+        ],
+    },
+    {
+        "title": "Marketplace",
+        "separator": True,
+        "items": [
+            {"title": "Bookings", "icon": "event_available", "link": reverse_lazy("admin:core_booking_changelist")},
+            {"title": "Reviews", "icon": "star", "link": reverse_lazy("admin:core_review_changelist")},
+            {"title": "Registration Payments", "icon": "payments", "link": reverse_lazy("admin:core_registrationpayment_changelist")},
+            {"title": "Dispute Reports", "icon": "report", "link": reverse_lazy("admin:core_disputereport_changelist")},
+            {"title": "Favorites", "icon": "favorite", "link": reverse_lazy("admin:core_favorite_changelist")},
+        ],
+    },
+    {
+        "title": "Locations",
+        "separator": True,
+        "items": [
+            {"title": "Countries", "icon": "public", "link": reverse_lazy("admin:locations_country_changelist")},
+            {"title": "States", "icon": "map", "link": reverse_lazy("admin:locations_state_changelist")},
+            {"title": "LGAs", "icon": "location_city", "link": reverse_lazy("admin:locations_lga_changelist")},
+        ],
+    },
+    {
+        "title": "Communication",
+        "separator": True,
+        "items": [
+            {"title": "Conversations", "icon": "forum", "link": reverse_lazy("admin:chat_conversation_changelist")},
+            {"title": "Messages", "icon": "chat", "link": reverse_lazy("admin:chat_message_changelist")},
+            {"title": "Notifications", "icon": "notifications", "link": reverse_lazy("admin:notifications_notification_changelist")},
+        ],
+    },
+    {
+        "title": "Platform",
+        "separator": True,
+        "items": [
+            {"title": "Platform Settings", "icon": "settings", "link": reverse_lazy("admin:core_platformsettings_changelist")},
+            {"title": "Categories", "icon": "category", "link": reverse_lazy("admin:core_category_changelist")},
+            {"title": "Service Taxonomy", "icon": "account_tree", "link": reverse_lazy("admin:core_servicetaxonomy_changelist")},
+            {"title": "Activity Logs", "icon": "history", "link": reverse_lazy("admin:core_activitylog_changelist")},
+        ],
+    },
+    {
+        "title": "Security & Access",
+        "separator": True,
+        "items": [
+            {"title": "Groups", "icon": "shield", "link": reverse_lazy("admin:auth_group_changelist")},
+            {"title": "OTP Codes", "icon": "pin", "link": reverse_lazy("admin:notifications_otpcode_changelist")},
+            {"title": "Device Tokens", "icon": "smartphone", "link": reverse_lazy("admin:notifications_devicetoken_changelist")},
+            {"title": "Outstanding Tokens", "icon": "vpn_key", "link": reverse_lazy("admin:token_blacklist_outstandingtoken_changelist")},
+            {"title": "Blacklisted Tokens", "icon": "block", "link": reverse_lazy("admin:token_blacklist_blacklistedtoken_changelist")},
+        ],
+    },
+]
+
 # django-unfold — purely cosmetic theming for the admin site (mounted at
 # the site root, see smahi_backend/urls.py). Every model's CRUD/list/
 # filter/search behavior is unchanged; this only restyles it. Colors
@@ -261,7 +356,7 @@ UNFOLD = {
     # unfold/templates/unfold/helpers/search.html) — COMMAND.search_models
     # alone enables the backend but leaves it with no visible entry point.
     "COMMAND": {"search_models": True, "show_history": True},
-    "SIDEBAR": {"show_search": True, "command_search": True},
+    "SIDEBAR": {"show_search": True, "command_search": True, "navigation": _UNFOLD_NAVIGATION},
     # A smooth ramp interpolated from the app's own three brand anchors
     # (constants/theme.ts: brand100/brand600/brand900) rather than eyeballed
     # per-step — the previous version literally duplicated brand600 into
