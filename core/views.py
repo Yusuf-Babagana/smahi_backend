@@ -370,15 +370,28 @@ class AgentArtisanListView(generics.ListAPIView):
 
 
 class AgentClientListView(generics.ListAPIView):
-    """Clients a caller can see — a state_coordinator sees the whole
-    state, a plain agent their own LGA plus anyone admin-assigned to them
-    directly (accounts.admin.ClientAdmin / core.referrals
-    .assign_client_agent — sponsor_agent), even outside that LGA. Purely
-    additive: the LGA match alone already covered every client an agent
-    saw before this existed, so nothing here narrows visibility, it only
+    """Clients a caller can see — ownership-based for both roles, same as
+    AgentArtisanListView/CoordinatorAgentListView: a state_coordinator
+    sees only clients whose sponsor_coordinator is them (personally
+    referred, admin-assigned via core.referrals.assign_client_agent, or
+    registered by one of their own agents — that cascade already stamps
+    sponsor_coordinator the same way it does for artisans/businesses), a
+    plain agent their own LGA plus anyone admin-assigned to them directly
+    (sponsor_agent), even outside that LGA.
+
+    The coordinator branch used to be whole-state — changed after a real
+    incident: a brand-new coordinator immediately saw another
+    coordinator's clients just for sharing a state. Sharing a state is no
+    longer sufficient on its own; see core.referrals
+    ._coordinator_visible_agents for the identical fix applied to agents.
+
+    The agent branch is purely additive (unchanged by this fix): the LGA
+    match alone already covered every client an agent saw before
+    sponsor_agent existed, so nothing here narrows visibility, it only
     adds admin-assigned ones on top (clients pick an LGA at registration
     too — app/register.tsx step 4, every role — so LGA remains the
-    territorial default; sponsor_agent is the explicit override)."""
+    territorial default for an agent; sponsor_agent is the explicit
+    override)."""
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     search_fields = ['first_name', 'last_name', 'email', 'phone_number']
@@ -392,7 +405,7 @@ class AgentClientListView(generics.ListAPIView):
             return base.filter(Q(lga_id=user.lga_id) | Q(sponsor_agent_id=user.id)).distinct()
         if not user.state_id:
             return User.objects.none()
-        return base.filter(state_id=user.state_id)
+        return base.filter(sponsor_coordinator_id=user.id)
 
 
 class AgentBusinessListView(generics.ListAPIView):
@@ -457,14 +470,23 @@ class AgentServiceRequestsView(generics.ListAPIView):
 
 class AgentDashboardStatsView(APIView):
     """Summary counts for the agent/state-coordinator dashboard. A
-    state_coordinator's artisan/agent/business counts cover their own
-    referral network only (same ownership rule as AgentArtisanListView/
-    CoordinatorAgentListView — never a colleague coordinator's network,
-    even in the same state); a plain agent's artisan count covers only
-    what they personally registered. total_clients/pending_service_requests
-    remain territory-scoped (own LGA for an agent, whole state for a
-    coordinator) — clients aren't "registered" by anyone, so there's no
-    ownership relationship to scope them by."""
+    state_coordinator's artisan/agent/business/client counts all cover
+    their own referral network only (same ownership rule as
+    AgentArtisanListView/CoordinatorAgentListView/AgentClientListView —
+    never a colleague coordinator's network, even in the same state); a
+    plain agent's counts cover only what they personally registered plus
+    anyone admin-assigned to them directly. total_clients used to be
+    whole-state for a coordinator ("clients aren't 'registered' by
+    anyone") — that assumption caused a real incident (a brand-new
+    coordinator immediately saw another coordinator's clients/an
+    unclaimed agent just for sharing a state) and is no longer true now
+    that sponsor_coordinator/sponsor_agent are assignable (core.referrals
+    .assign_client_agent). pending_service_requests stays
+    territory-scoped (own LGA for an agent, whole state for a
+    coordinator) — a booking isn't "owned" by anyone the way a team
+    member or client relationship is; it's the same deliberate
+    state-wide oversight CoordinatorReportsView already has for
+    disputes, untouched by this fix."""
     permission_classes = [IsAuthenticated, IsStateAgent]
 
     def get(self, request):
@@ -481,10 +503,12 @@ class AgentDashboardStatsView(APIView):
         artisans = _recruited_query(request.user, ArtisanProfile)
         if request.user.role == 'agent':
             lga_id = request.user.lga_id
-            clients = User.objects.filter(role='client', lga_id=lga_id) if lga_id else User.objects.none()
+            clients = User.objects.filter(role='client').filter(
+                Q(lga_id=lga_id) | Q(sponsor_agent_id=request.user.id)
+            ) if lga_id else User.objects.filter(role='client', sponsor_agent_id=request.user.id)
             requests_qs = Booking.objects.filter(lga_id=lga_id) if lga_id else Booking.objects.none()
         else:
-            clients = User.objects.filter(role='client', state_id=state_id)
+            clients = User.objects.filter(role='client', sponsor_coordinator_id=request.user.id)
             requests_qs = Booking.objects.filter(state_id=state_id)
 
         data = {
@@ -1040,13 +1064,17 @@ def _agents_with_registration_counts(queryset):
 
 
 class CoordinatorAgentListView(generics.ListAPIView):
-    """Agents belonging to the requesting state coordinator — their own
-    recruits (the permanent sponsor_coordinator link + unclaimed legacy
-    agents in the same state), each annotated with how many artisans
-    they've registered and verified — the actual oversight a coordinator
-    needs that a bare agent list (identical to IsStateAgent's artisan/
-    client scoping) doesn't give. With multiple coordinators per state,
-    a colleague's claimed agents are deliberately out of reach."""
+    """Agents belonging to the requesting state coordinator — strictly
+    their own recruits (the permanent sponsor_coordinator link), each
+    annotated with how many artisans they've registered and verified —
+    the actual oversight a coordinator needs that a bare agent list
+    (identical to IsStateAgent's artisan/client scoping) doesn't give.
+    With multiple coordinators per state, a colleague's agents — claimed
+    or not yet claimed by anyone — are deliberately out of reach: an
+    unclaimed legacy agent belongs to nobody's dashboard until an admin
+    (or the coordinator's own CoordinatorCreateAgentView flow) explicitly
+    assigns it. See accounts.admin.AgentAdmin's 'reassign to coordinator'
+    action for claiming one."""
     serializer_class = AgentOverviewSerializer
     permission_classes = [IsAuthenticated, IsStateCoordinator]
     filterset_fields = ['lga', 'account_status']
@@ -1248,11 +1276,11 @@ class CoordinatorCreateAgentView(APIView):
 class CoordinatorAgentStatusView(APIView):
     """Coordinator approves/suspends/reactivates/dismisses/rejects one of
     their OWN agents — scoped to the same ownership rule as
-    CoordinatorAgentListView (their recruits + unclaimed legacy agents),
-    and can't touch anything but an 'agent'. A colleague's claimed agent
-    in the same state is as out of reach as one in a different state,
-    both returning the same 404. This is also how a 'pending_approval'
-    agent (CoordinatorCreateAgentView) actually gets approved — setting
+    CoordinatorAgentListView (strictly their own recruits), and can't
+    touch anything but an 'agent'. A colleague's claimed agent, or an
+    unclaimed one nobody has claimed yet, is as out of reach as one in a
+    different state, all returning the same 404. This is also how a
+    'pending_approval' agent (CoordinatorCreateAgentView) actually gets approved — setting
     status='active' from there works exactly the same as reactivating a
     suspended one, no separate endpoint needed."""
     permission_classes = [IsAuthenticated, IsStateCoordinator]

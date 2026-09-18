@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from django.db.models import Q
 from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings, ActivityLog
 from accounts.serializers import UserSerializer, PublicUserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
@@ -675,12 +674,13 @@ class CoordinatorOverviewSerializer(serializers.ModelSerializer):
     queryset annotation — deliberately: there's no direct FK from Agent to
     Coordinator (both just share state_id), so a real annotation would
     need a Subquery/OuterRef. Not worth the complexity here: this field
-    counts agents under THIS coordinator specifically (their own recruits
-    plus unclaimed legacy agents in their state — same ownership rule as
-    _coordinator_visible_agents in core.views), so Admin sees each
-    coordinator's team at a glance now that a state can hold 10+
-    coordinators instead of one. Unclaimed agents count toward every
-    coordinator in that state until claimed."""
+    counts agents under THIS coordinator specifically — reuses
+    core.referrals._coordinator_visible_agents so this Admin-facing count
+    can never drift from what the coordinator's own mobile dashboard
+    shows (that drift is exactly what let an unclaimed-agent leak go
+    unnoticed here after core.views._coordinator_visible_agents was
+    fixed to stop counting unclaimed legacy agents toward every
+    coordinator in the state)."""
 
     state_details = StateLiteSerializer(source='state', read_only=True)
     agents_count = serializers.SerializerMethodField()
@@ -695,9 +695,5 @@ class CoordinatorOverviewSerializer(serializers.ModelSerializer):
     def get_agents_count(self, obj):
         if not obj.state_id:
             return 0
-        User = get_user_model()
-        return User.objects.filter(
-            role='agent',
-        ).filter(
-            Q(sponsor_coordinator_id=obj.id) | Q(sponsor_coordinator__isnull=True, state_id=obj.state_id)
-        ).count()
+        from .referrals import _coordinator_visible_agents
+        return _coordinator_visible_agents(obj).count()

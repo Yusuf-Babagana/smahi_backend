@@ -761,16 +761,22 @@ class CoordinatorDashboardTestBase(APITestCase):
             first_name='Lagos', last_name='Coordinator', role='state_coordinator',
             country=self.country, state=self.lagos,
         )
+        # Claimed by their state's coordinator from the start — this is
+        # the production-normal state (CoordinatorCreateAgentView sets
+        # sponsor_coordinator at creation time). Tests that specifically
+        # need to model an unclaimed legacy agent (the Jigawa bug's actual
+        # shape) explicitly clear sponsor_coordinator themselves.
         self.kano_agent = User.objects.create_user(
             email='kano_agent@test.com', password='pass12345',
             first_name='Existing', last_name='KanoAgent', role='agent',
             country=self.country, state=self.kano, lga=self.kano_lga_a,
-            phone_number='08011112222',
+            phone_number='08011112222', sponsor_coordinator=self.kano_coordinator,
         )
         self.lagos_agent = User.objects.create_user(
             email='lagos_agent@test.com', password='pass12345',
             first_name='Existing', last_name='LagosAgent', role='agent',
             country=self.country, state=self.lagos, lga=self.lagos_lga,
+            sponsor_coordinator=self.lagos_coordinator,
         )
 
 
@@ -778,6 +784,8 @@ class CoordinatorAgentListTests(CoordinatorDashboardTestBase):
     LIST_URL = '/api/v1/coordinator/agents/'
 
     def test_coordinator_sees_only_their_own_states_agents(self):
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get(self.LIST_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -789,6 +797,8 @@ class CoordinatorAgentListTests(CoordinatorDashboardTestBase):
         """Regression: AgentOverviewSerializer previously showed the
         agent's state but not their LGA — a coordinator overseeing an
         entire state had no way to see which LGA each agent covers."""
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get(self.LIST_URL)
         agent_row = next(a for a in response.data['results'] if a['email'] == 'kano_agent@test.com')
@@ -796,12 +806,16 @@ class CoordinatorAgentListTests(CoordinatorDashboardTestBase):
         self.assertEqual(agent_row['lga_details']['name'], 'Nassarawa')
 
     def test_search_by_phone_number(self):
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get(self.LIST_URL, {'search': '08011112222'})
         emails = [a['email'] for a in response.data['results']]
         self.assertEqual(emails, ['kano_agent@test.com'])
 
     def test_search_by_lga_name(self):
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get(self.LIST_URL, {'search': 'Nassarawa'})
         emails = [a['email'] for a in response.data['results']]
@@ -818,8 +832,10 @@ class CoordinatorAgentListTests(CoordinatorDashboardTestBase):
     def test_coordinator_cannot_see_another_same_state_coordinators_claimed_agent(self):
         """Multi-coordinator partition: an agent claimed by one Kano
         coordinator (permanent sponsor_coordinator link) is invisible to a
-        second Kano coordinator, while unclaimed legacy agents in the same
-        state stay visible to both."""
+        second Kano coordinator, AND an unclaimed legacy agent in the same
+        state is invisible to both — this is the exact Jigawa production
+        bug this fix closes (a coordinator must never inherit another
+        coordinator's, or nobody's, agents just by sharing a state)."""
         other_kano_coord = User.objects.create_user(
             email='other_kano_coord@test.com', password='pass12345',
             first_name='Other', last_name='KanoCoordinator', role='state_coordinator',
@@ -831,23 +847,25 @@ class CoordinatorAgentListTests(CoordinatorDashboardTestBase):
             country=self.country, state=self.kano, lga=self.kano_lga_a,
             sponsor_coordinator=self.kano_coordinator,
         )
+        # Force self.kano_agent back to unclaimed (base setUp claims it to
+        # kano_coordinator by default) — it must not appear on either
+        # coordinator's list.
+        self.kano_agent.sponsor_coordinator = None
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
 
-        # The claiming coordinator sees their own agent plus unclaimed ones.
+        # The claiming coordinator sees only their own claimed agent.
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get(self.LIST_URL)
         emails = [a['email'] for a in response.data['results']]
         self.assertIn('claimed_by_kano@test.com', emails)
-        self.assertIn('kano_agent@test.com', emails)
+        self.assertNotIn('kano_agent@test.com', emails)
 
-        # The second same-state coordinator sees only unclaimed agents —
-        # someone else's claimed agent is as out of reach as another
-        # state's.
+        # The second same-state coordinator sees neither a colleague's
+        # claimed agent nor an unclaimed legacy one.
         self.client.force_authenticate(user=other_kano_coord)
         response = self.client.get(self.LIST_URL)
         emails = [a['email'] for a in response.data['results']]
-        self.assertIn('kano_agent@test.com', emails)
-        self.assertNotIn('claimed_by_kano@test.com', emails)
-        self.assertNotIn('lagos_agent@test.com', emails)
+        self.assertEqual(emails, [])
 
 
 class CoordinatorCreateAgentTests(CoordinatorDashboardTestBase):
@@ -980,6 +998,7 @@ class AgentPendingApprovalTests(CoordinatorDashboardTestBase):
             first_name='Pending', last_name='Agent', role='agent',
             country=self.country, state=self.kano, lga=self.kano_lga_b,
             account_status='pending_approval', serial_number=f'AGT-{self.kano.state_code}-90001',
+            sponsor_coordinator=self.kano_coordinator,
         )
 
     def status_url(self, agent_id):
@@ -1457,13 +1476,6 @@ class AgentLGAScopingTests(CoordinatorDashboardTestBase):
         super().setUp()
         from .models import ArtisanProfile, VerificationRequest
 
-        # kano_agent is claimed by kano_coordinator here (the base fixture
-        # itself leaves it unclaimed) so the artisans below chain up to a
-        # coordinator the same way AgentRegisterArtisanView really sets
-        # sponsor_coordinator from the registering agent's own.
-        self.kano_agent.sponsor_coordinator = self.kano_coordinator
-        self.kano_agent.save(update_fields=['sponsor_coordinator'])
-
         # A second agent covering the SAME LGA as kano_agent — proves the
         # ownership-based scoping below isn't secretly still LGA-based.
         self.kano_agent_colleague = User.objects.create_user(
@@ -1531,12 +1543,23 @@ class AgentLGAScopingTests(CoordinatorDashboardTestBase):
         self.assertIn('scoping_lga_a_client@test.com', emails)
         self.assertNotIn('scoping_lga_b_client@test.com', emails)
 
-    def test_coordinator_client_list_still_sees_the_whole_state(self):
+    def test_coordinator_client_list_is_ownership_scoped_not_state_wide(self):
+        """Reversal of this view's old state-wide behavior (see this
+        session's Jigawa bug report: a brand-new coordinator saw 14
+        pre-existing state clients that weren't theirs). A coordinator's
+        client list is their own claimed clients only — never every
+        client in the state regardless of who registered or was assigned
+        them."""
+        self.lga_a_client.sponsor_coordinator = self.kano_coordinator
+        self.lga_a_client.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get('/api/agent/clients/')
         emails = [c['email'] for c in response.data['results']]
         self.assertIn('scoping_lga_a_client@test.com', emails)
-        self.assertIn('scoping_lga_b_client@test.com', emails)
+        self.assertNotIn(
+            'scoping_lga_b_client@test.com', emails,
+            "an unclaimed client in the same state must not appear",
+        )
 
     def test_admin_assigned_client_is_additive_not_a_replacement(self):
         """core.referrals.assign_client_agent (accounts.admin.ClientAdmin)
@@ -1600,13 +1623,18 @@ class AgentLGAScopingTests(CoordinatorDashboardTestBase):
         self.assertEqual(response.data['total_clients'], 1)
 
     def test_coordinator_dashboard_stats_cover_their_whole_network(self):
+        # total_clients is ownership-scoped (this session's Jigawa fix) —
+        # only a client explicitly claimed by this coordinator counts.
+        self.lga_a_client.sponsor_coordinator = self.kano_coordinator
+        self.lga_a_client.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get('/api/agent/dashboard-stats/')
         # All three artisans (lga_a_artisan, colleague_registered_artisan,
         # lga_b_artisan) trace back to kano_coordinator's own network.
         self.assertEqual(response.data['total_artisans'], 3)
-        # total_clients stays state-wide (unchanged).
-        self.assertEqual(response.data['total_clients'], 2)
+        # Only the claimed client counts — lga_b_client is unclaimed and
+        # must not appear, same as an unclaimed agent must not.
+        self.assertEqual(response.data['total_clients'], 1)
 
     def test_agent_cannot_verify_an_artisan_outside_their_lga(self):
         self.client.force_authenticate(user=self.kano_agent)
@@ -2546,6 +2574,8 @@ class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
     STATS_URL = '/api/agent/dashboard-stats/'
 
     def test_coordinator_gets_agent_counts_agent_does_not(self):
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.kano_coordinator)
         coord_response = self.client.get(self.STATS_URL)
         self.assertEqual(coord_response.status_code, status.HTTP_200_OK, coord_response.data)
@@ -2563,11 +2593,14 @@ class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
         )
 
     def test_pending_agents_counted_separately_from_active(self):
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
         User.objects.create_user(
             email='pending_agent@test.com', password='pass12345',
             first_name='Pending', last_name='Agent', role='agent',
             country=self.country, state=self.kano, lga=self.kano_lga_a,
             phone_number='08033334444', account_status='pending_approval',
+            sponsor_coordinator=self.kano_coordinator,
         )
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.get(self.STATS_URL)
@@ -2575,6 +2608,101 @@ class CoordinatorDashboardStatsTests(CoordinatorDashboardTestBase):
         self.assertEqual(response.data['total_agents'], 2)
         self.assertEqual(response.data['active_agents'], 1)
         self.assertEqual(response.data['pending_agents'], 1)
+
+
+class JigawaMultiCoordinatorIsolationTests(CoordinatorDashboardTestBase):
+    """Direct regression coverage for the production bug report this
+    session's fix addresses: a brand-new coordinator assigned to Jigawa
+    State immediately saw 14 pre-existing state clients and 1 field
+    agent that were never theirs. Reproduces that exact shape (a new
+    coordinator, an unclaimed legacy agent, and state-wide clients
+    already in the state) and proves the two-coordinators-same-state
+    partition holds across every dashboard surface (agent list/count,
+    client list/count) — not just the one endpoint originally reported."""
+
+    def setUp(self):
+        super().setUp()
+        # An unclaimed legacy agent already in Kano — models data that
+        # predates ownership-based scoping (e.g. never explicitly claimed).
+        self.kano_agent.sponsor_coordinator = None
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+        # Pre-existing, unclaimed clients already in the state — models
+        # the "14 state clients" from the report.
+        for i in range(3):
+            User.objects.create_user(
+                email=f'preexisting_kano_client_{i}@test.com', password='pass12345',
+                first_name='Preexisting', last_name=f'Client{i}', role='client',
+                country=self.country, state=self.kano, lga=self.kano_lga_a,
+            )
+        # The brand-new coordinator — created after all of the above
+        # already existed, exactly like the Jigawa report.
+        self.new_kano_coordinator = User.objects.create_user(
+            email='brand_new_kano_coord@test.com', password='pass12345',
+            first_name='Brand', last_name='New', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+
+    def test_brand_new_coordinator_sees_zero_agents_and_zero_clients(self):
+        self.client.force_authenticate(user=self.new_kano_coordinator)
+        response = self.client.get('/api/agent/dashboard-stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['total_agents'], 0)
+        self.assertEqual(response.data['total_clients'], 0)
+
+        agents_response = self.client.get('/api/v1/coordinator/agents/')
+        self.assertEqual(agents_response.status_code, status.HTTP_200_OK, agents_response.data)
+        self.assertEqual(agents_response.data['results'], [])
+
+        clients_response = self.client.get('/api/agent/clients/')
+        self.assertEqual(clients_response.status_code, status.HTTP_200_OK, clients_response.data)
+        self.assertEqual(clients_response.data['results'], [])
+
+    def test_two_coordinators_same_state_never_see_each_others_agents_or_clients(self):
+        """Coordinator A registers/claims an agent and a client; Coordinator
+        B (same state, created afterward) sees neither, and vice versa —
+        mutual isolation, not just one-way."""
+        agent_a = User.objects.create_user(
+            email='coord_a_agent@test.com', password='pass12345',
+            first_name='CoordA', last_name='Agent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_coordinator=self.new_kano_coordinator,
+        )
+        User.objects.create_user(
+            email='coord_a_client@test.com', password='pass12345',
+            first_name='CoordA', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_coordinator=self.new_kano_coordinator,
+        )
+
+        coordinator_b = User.objects.create_user(
+            email='coord_b@test.com', password='pass12345',
+            first_name='Coord', last_name='B', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+        User.objects.create_user(
+            email='coord_b_agent@test.com', password='pass12345',
+            first_name='CoordB', last_name='Agent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+            sponsor_coordinator=coordinator_b,
+        )
+        User.objects.create_user(
+            email='coord_b_client@test.com', password='pass12345',
+            first_name='CoordB', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+            sponsor_coordinator=coordinator_b,
+        )
+
+        self.client.force_authenticate(user=self.new_kano_coordinator)
+        a_agents = [a['email'] for a in self.client.get('/api/v1/coordinator/agents/').data['results']]
+        a_clients = [c['email'] for c in self.client.get('/api/agent/clients/').data['results']]
+        self.assertEqual(a_agents, ['coord_a_agent@test.com'])
+        self.assertEqual(a_clients, ['coord_a_client@test.com'])
+
+        self.client.force_authenticate(user=coordinator_b)
+        b_agents = [a['email'] for a in self.client.get('/api/v1/coordinator/agents/').data['results']]
+        b_clients = [c['email'] for c in self.client.get('/api/agent/clients/').data['results']]
+        self.assertEqual(b_agents, ['coord_b_agent@test.com'])
+        self.assertEqual(b_clients, ['coord_b_client@test.com'])
 
 
 class AdminUserCRUDTests(CoordinatorDashboardTestBase):
@@ -2705,6 +2833,8 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
         self.assertIn('lagos_coord@test.com', emails)
 
     def test_list_includes_agents_count(self):
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.LIST_URL)
         kano_row = next(c for c in response.data['results'] if c['email'] == 'kano_coord@test.com')
@@ -2775,9 +2905,11 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
 
     def test_agents_count_reflects_each_coordinators_own_recruits(self):
         """In a multi-coordinator state, Admin's per-coordinator
-        agents_count is the coordinator's own team — claimed recruits
-        (permanent sponsor_coordinator link) plus unclaimed legacy agents
-        in the state — not the whole state's agent population."""
+        agents_count is strictly the coordinator's own claimed team (the
+        permanent sponsor_coordinator link) — never a colleague's claimed
+        agents, and never an unclaimed legacy agent in the same state.
+        This is the exact Jigawa bug: a brand-new coordinator must not
+        inherit another coordinator's, or nobody's, agents."""
         second_kano = User.objects.create_user(
             email='second_kano_admin_test@test.com', password='pass12345',
             first_name='Second', last_name='KanoCoord', role='state_coordinator',
@@ -2789,15 +2921,17 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
             country=self.country, state=self.kano, lga=self.kano_lga_a,
             sponsor_coordinator=second_kano,
         )
+        # Force self.kano_agent back to unclaimed (base setUp claims it to
+        # kano_coordinator by default) — it must not count toward either
+        # coordinator's total.
+        self.kano_agent.sponsor_coordinator = None
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
 
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.LIST_URL)
         rows = {c['email']: c['agents_count'] for c in response.data['results']}
-        # kano_coordinator only oversees the base unclaimed kano_agent (1);
-        # second_kano oversees its claimed agent plus the same unclaimed
-        # kano_agent via the legacy fallback (2).
-        self.assertEqual(rows['kano_coord@test.com'], 1)
-        self.assertEqual(rows['second_kano_admin_test@test.com'], 2)
+        self.assertEqual(rows['kano_coord@test.com'], 0, "unclaimed legacy agent must not count")
+        self.assertEqual(rows['second_kano_admin_test@test.com'], 1)
 
     def test_can_create_a_new_coordinator_after_the_old_one_is_dismissed(self):
         self.kano_coordinator.account_status = 'dismissed'
@@ -4022,6 +4156,7 @@ class AIAgentSearchTests(CoordinatorDashboardTestBase):
             first_name='Musa', last_name='Ibrahim', role='agent',
             country=self.country, state=self.kano, lga=self.kano_lga_b,
             phone_number='08099998888', serial_number=f'AGT-{self.kano.state_code}-77777',
+            sponsor_coordinator=self.kano_coordinator,
         )
         self.kano_agent.serial_number = f'AGT-{self.kano.state_code}-11111'
         self.kano_agent.phone_number = '08011112222'
@@ -4262,9 +4397,30 @@ class ReferralApiTests(CoordinatorDashboardTestBase):
         return f'/api/v1/coordinator/agents/{agent_id}/status/'
 
     def approve_agent(self, agent):
+        """Claims the agent for kano_coordinator first, mirroring production
+        (CoordinatorCreateAgentView sets sponsor_coordinator at registration
+        time) — a coordinator can only approve an agent they own, same as
+        CoordinatorAgentListView. Tests that specifically need to exercise
+        an *unclaimed* legacy agent must use activate_agent_directly instead."""
+        if agent.sponsor_coordinator_id != self.kano_coordinator.id:
+            agent.sponsor_coordinator = self.kano_coordinator
+            agent.save(update_fields=['sponsor_coordinator'])
         self.client.force_authenticate(user=self.kano_coordinator)
         response = self.client.post(self.status_url(agent.id), {'status': 'active'})
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        agent.refresh_from_db()
+
+    def activate_agent_directly(self, agent):
+        """Activates + mints a referral code exactly like approve_agent, but
+        bypasses the ownership-gated status API entirely and force-clears
+        any claim, so the agent ends up unclaimed (no sponsor_coordinator)
+        — for tests that specifically model a legacy agent nobody has
+        claimed yet (the base fixture claims kano_agent by default)."""
+        if agent.sponsor_coordinator_id is not None:
+            agent.sponsor_coordinator = None
+            agent.save(update_fields=['sponsor_coordinator'])
+        from core.services import set_agent_status
+        set_agent_status(agent, 'active', self.kano_coordinator)
         agent.refresh_from_db()
 
     # --- Code minting ---
@@ -4354,7 +4510,7 @@ class ReferralApiTests(CoordinatorDashboardTestBase):
             self.assertEqual(response.data['error'], 'Invalid referral code.')
 
     def test_validation_accepts_lowercase_and_matches_owner(self):
-        self.approve_agent(self.kano_agent)
+        self.activate_agent_directly(self.kano_agent)
         code = self.kano_agent.referral_code
         self.client.force_authenticate(user=self.outsider)
         response = self.client.post(self.VALIDATE_URL, {'code': code.lower()})
@@ -4385,7 +4541,7 @@ class ReferralApiTests(CoordinatorDashboardTestBase):
         self.assertEqual(response.data['coordinator']['name'], 'Kano Coordinator')
 
     def test_validation_never_leaks_email_phone_or_address(self):
-        self.approve_agent(self.kano_agent)
+        self.activate_agent_directly(self.kano_agent)
         code = self.kano_agent.referral_code
         self.client.force_authenticate(user=self.outsider)
         response = self.client.post(self.VALIDATE_URL, {'code': code})
@@ -4411,7 +4567,7 @@ class ReferralApiTests(CoordinatorDashboardTestBase):
     def test_agent_me_resolves_state_coordinator_when_sponsor_is_missing(self):
         """Legacy agent with no recorded sponsor still sees the current
         coordinator of their state as their overseer."""
-        self.approve_agent(self.kano_agent)
+        self.activate_agent_directly(self.kano_agent)
         self.client.force_authenticate(user=self.kano_agent)
         response = self.client.get(self.ME_URL)
         self.assertEqual(response.data['coordinator']['name'], 'Kano Coordinator')
@@ -4841,14 +4997,6 @@ class ReassignAgentCoordinatorAndAssignClientAgentTests(CoordinatorDashboardTest
     def test_reassign_agent_to_same_state_coordinator_succeeds(self):
         from .referrals import _coordinator_visible_agents, reassign_agent_coordinator
 
-        # Claimed by kano_coordinator first — an *unclaimed* agent
-        # (sponsor_coordinator=None) is already visible to every
-        # coordinator in the state via _coordinator_visible_agents' own
-        # null-fallback, so starting from unclaimed wouldn't prove
-        # anything moved.
-        self.kano_agent.sponsor_coordinator = self.kano_coordinator
-        self.kano_agent.save(update_fields=['sponsor_coordinator'])
-
         kano_coordinator_2 = User.objects.create_user(
             email='kano_coord_2@test.com', password='pass12345',
             first_name='Second', last_name='KanoCoord', role='state_coordinator',
@@ -4870,7 +5018,10 @@ class ReassignAgentCoordinatorAndAssignClientAgentTests(CoordinatorDashboardTest
         with self.assertRaises(ValueError):
             reassign_agent_coordinator(self.kano_agent, self.lagos_coordinator, self.superuser)
         self.kano_agent.refresh_from_db()
-        self.assertIsNone(self.kano_agent.sponsor_coordinator_id)
+        self.assertEqual(
+            self.kano_agent.sponsor_coordinator_id, self.kano_coordinator.id,
+            "a rejected cross-state reassignment must leave the existing claim untouched",
+        )
 
     def test_reassign_agent_to_a_non_coordinator_is_rejected(self):
         from .referrals import reassign_agent_coordinator
@@ -4900,10 +5051,52 @@ class ReassignAgentCoordinatorAndAssignClientAgentTests(CoordinatorDashboardTest
         self.lagos_client.refresh_from_db()
         self.assertIsNone(self.lagos_client.sponsor_agent_id)
 
+    def test_assign_client_to_same_state_coordinator_succeeds(self):
+        """A client can be assigned directly to a State Coordinator, not
+        just an Agent — satisfies 'explicitly assigned to them by an
+        admin' for the coordinator case, same as providers already
+        support via reassign_provider_owner."""
+        from .referrals import assign_client_agent
+
+        kano_client = User.objects.create_user(
+            email='assign_kano_client_coord@test.com', password='pass12345',
+            first_name='Kano', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        assign_client_agent(kano_client, self.kano_coordinator, self.superuser)
+
+        kano_client.refresh_from_db()
+        self.assertIsNone(kano_client.sponsor_agent_id)
+        self.assertEqual(kano_client.sponsor_coordinator_id, self.kano_coordinator.id)
+        self.assertTrue(ActivityLog.objects.filter(action='client_assigned', target_user=kano_client).exists())
+
+    def test_assign_client_to_agent_also_syncs_their_coordinator(self):
+        """assign_client_agent must sync sponsor_coordinator too when
+        assigning to an Agent — otherwise the client is visible to the
+        agent but invisible on that agent's own coordinator's dashboard,
+        the same gap this session's bug fix closes for direct client
+        assignment."""
+        from .referrals import assign_client_agent
+
+        kano_client = User.objects.create_user(
+            email='assign_kano_client_sync@test.com', password='pass12345',
+            first_name='Kano', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        assign_client_agent(kano_client, self.kano_agent, self.superuser)
+
+        kano_client.refresh_from_db()
+        self.assertEqual(kano_client.sponsor_agent_id, self.kano_agent.id)
+        self.assertEqual(kano_client.sponsor_coordinator_id, self.kano_coordinator.id)
+
     def test_assign_client_to_a_non_agent_is_rejected(self):
+        """assign_client_agent now accepts a Coordinator directly (see
+        test_assign_client_to_same_state_coordinator_succeeds above) — so
+        this must use a role that's neither, e.g. admin, to still prove
+        the function rejects anything else."""
         from .referrals import assign_client_agent
         with self.assertRaises(ValueError):
-            assign_client_agent(self.lagos_client, self.lagos_coordinator, self.superuser)
+            assign_client_agent(self.lagos_client, self.superuser, self.superuser)
 
     # --- Admin actions, end-to-end over real HTTP ---
 

@@ -209,7 +209,13 @@ class AgentCreationForm(UserCreationForm):
 class AgentAdmin(UserAdmin):
     add_form = AgentCreationForm
     list_display = ['email', 'first_name', 'last_name', 'state', 'lga', 'account_status', 'sponsor_coordinator', 'serial_number', 'referral_code', 'created_at']
-    list_filter = ['account_status', 'state', 'created_at']
+    # sponsor_coordinator here also gives a "None" bucket (Django's
+    # RelatedFieldListFilter auto-includes it for a nullable FK) — combine
+    # with the state filter to find currently-unclaimed agents in a state
+    # (invisible to every coordinator until reassigned — see
+    # core.referrals._coordinator_visible_agents) and fix them with the
+    # "Reassign to a different Coordinator" action below.
+    list_filter = ['account_status', 'state', 'sponsor_coordinator', 'created_at']
     readonly_fields = UserAdmin.readonly_fields + ('role', 'serial_number')
     actions = ['approve_or_reactivate_agents', 'suspend_agents', 'reject_agents', 'dismiss_agents', 'reassign_coordinator']
     add_fieldsets = (
@@ -390,29 +396,34 @@ class ClientAdmin(UserAdmin):
         obj.role = 'client'
         super().save_model(request, obj, form, change)
 
-    @admin.action(description='Assign to a different Agent')
+    @admin.action(description='Assign to a different Agent or Coordinator')
     def assign_agent(self, request, queryset):
         if 'apply' in request.POST:
-            new_agent = User.objects.filter(pk=request.POST.get('new_owner'), role='agent').first()
-            if not new_agent:
-                self.message_user(request, 'Pick a valid Agent.', level=messages.ERROR)
+            new_owner = User.objects.filter(
+                pk=request.POST.get('new_owner'), role__in=['agent', 'state_coordinator'],
+            ).first()
+            if not new_owner:
+                self.message_user(request, 'Pick a valid Agent or Coordinator.', level=messages.ERROR)
                 return
             ok, errors = 0, []
             for client in queryset:
                 try:
-                    assign_client_agent(client, new_agent, request.user)
+                    assign_client_agent(client, new_owner, request.user)
                     ok += 1
                 except ValueError as e:
                     errors.append(str(e))
             if ok:
-                self.message_user(request, f'{ok} client(s) assigned to {new_agent.email}.')
+                self.message_user(request, f'{ok} client(s) assigned to {new_owner.email}.')
             for err in errors:
                 self.message_user(request, err, level=messages.WARNING)
             return
 
-        eligible = User.objects.filter(role='agent', account_status__in=ACTIVE_STATUSES).order_by('email')
+        eligible = User.objects.filter(
+            role__in=['agent', 'state_coordinator'], account_status__in=ACTIVE_STATUSES,
+        ).order_by('email')
         rows = [
-            (client, client.sponsor_agent.email if client.sponsor_agent else 'unassigned')
+            (client, (client.sponsor_agent or client.sponsor_coordinator).email
+             if (client.sponsor_agent or client.sponsor_coordinator) else 'unassigned')
             for client in queryset
         ]
         return TemplateResponse(request, 'admin/reassign_generic_confirmation.html', {
@@ -422,7 +433,7 @@ class ClientAdmin(UserAdmin):
             'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
             'action_name': 'assign_agent',
             'opts': self.model._meta,
-            'title': 'Assign the selected Client(s) to a different Agent:',
-            'select_label': 'New Agent',
-            'help_text': 'Only Agents in the same state as each selected client will be accepted — anything else is rejected per-row with an explanation. This adds the client to that agent’s dashboard; it never removes anyone from their existing LGA-based view.',
+            'title': 'Assign the selected Client(s) to a different Agent or Coordinator:',
+            'select_label': 'New Agent / Coordinator',
+            'help_text': 'Only an Agent/Coordinator in the same state as each selected client will be accepted — anything else is rejected per-row with an explanation. This adds the client to that Agent’s/Coordinator’s dashboard; it never removes anyone from their existing LGA-based view.',
         })

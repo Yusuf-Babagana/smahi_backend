@@ -185,25 +185,29 @@ def referee_summary(owner):
 
 
 def _coordinator_visible_agents(coordinator):
-    """Which agents a state coordinator can see and manage, now that a
-    state holds many coordinators (the one-per-state rule is gone —
-    accounts/0018): the coordinator's OWN agents (permanent
-    sponsor_coordinator link), plus legacy agents in the same state that
-    were never claimed by anyone (registered before the referral network
-    or while the state had no standing coordinator). Strictly-claimed
-    agents of a DIFFERENT coordinator in the same state are excluded —
-    agents partition among their sponsors, so no coordinator can touch a
-    colleague's team. In a single-coordinator state this reduces to
-    exactly the old state-wide filter, so existing behavior is unchanged.
+    """Which agents a state coordinator can see and manage: strictly the
+    coordinator's OWN agents (permanent sponsor_coordinator link) — never
+    a colleague coordinator's in the same state, and — as of the Jigawa
+    incident (a brand-new coordinator immediately saw an unrelated
+    unclaimed agent) — never an *unclaimed* one either. Ownership only
+    ever comes from personally registering someone, an explicit admin
+    assignment (accounts.admin.AgentAdmin's "Reassign to a different
+    Coordinator"), or a referral-code redemption — never from merely
+    sharing a state. An unclaimed legacy agent is invisible to every
+    coordinator until one of those explicitly claims it; that's a
+    deliberate, one-time cleanup task for admin (AgentAdmin.list_filter
+    includes sponsor_coordinator to make them easy to find), not
+    something this query should paper over automatically.
 
     Lives here (not core.views) so referral_stats()/recent_network_activity()
-    below can share the exact same ownership rule as
+    below, and the duplicate inline copies of this same filter this bug
+    was found hiding in (core.serializers.get_agents_count,
+    core.services.search_agents — both now call this function instead),
+    can share the exact same ownership rule as
     CoordinatorAgentListView/CoordinatorAgentStatusView — a dashboard
     summary must never disagree with the list it's summarizing."""
     return _user_model().objects.filter(
-        role='agent', state_id=coordinator.state_id,
-    ).filter(
-        Q(sponsor_coordinator_id=coordinator.id) | Q(sponsor_coordinator__isnull=True)
+        role='agent', state_id=coordinator.state_id, sponsor_coordinator_id=coordinator.id,
     )
 
 
@@ -292,25 +296,44 @@ def reassign_agent_coordinator(agent, new_coordinator, actor):
     return agent
 
 
-def assign_client_agent(client, new_agent, actor):
-    """Assign a Client to an Agent — the admin's "assign to a different
-    Agent" action (accounts.admin.ClientAdmin). Deliberately additive:
+def assign_client_agent(client, new_owner, actor):
+    """Assign a Client to an Agent or a State Coordinator directly — the
+    admin's "assign to a different Agent or Coordinator" action
+    (accounts.admin.ClientAdmin). Deliberately additive on the Agent side:
     AgentClientListView (core/views.py) ORs sponsor_agent_id=<agent> in
     alongside its existing LGA-territorial filter, so every client an
     agent already sees (by LGA match) stays visible — this only ever adds
     a client to an agent's list, never removes one from another's.
 
-    Raises ValueError if new_agent isn't a same-state, currently-active
-    Agent."""
-    if new_agent.role != 'agent':
-        raise ValueError('New agent must be an Agent.')
-    if new_agent.account_status not in ACTIVE_STATUSES:
-        raise ValueError(f'{new_agent.email} is not an active seat holder.')
-    if new_agent.state_id != client.state_id:
-        raise ValueError(f'{new_agent.email} is not in the same state as {client.email}.')
+    Always keeps sponsor_coordinator in sync too — the same rule
+    reassign_provider_owner already established for ArtisanProfile/
+    BusinessProfile, and just as necessary here: without it, a client
+    assigned to an Agent would show up on that Agent's own dashboard but
+    never on their Coordinator's (AgentDashboardStatsView/
+    AgentClientListView's coordinator branch both read
+    sponsor_coordinator, not sponsor_agent).
 
-    client.sponsor_agent = new_agent
-    client.save(update_fields=['sponsor_agent'])
+    Raises ValueError if new_owner isn't a same-state, currently-active
+    Agent or State Coordinator."""
+    if new_owner.role not in ('agent', 'state_coordinator'):
+        raise ValueError('New owner must be an Agent or a State Coordinator.')
+    if new_owner.account_status not in ACTIVE_STATUSES:
+        raise ValueError(f'{new_owner.email} is not an active seat holder.')
+    if new_owner.state_id != client.state_id:
+        raise ValueError(f'{new_owner.email} is not in the same state as {client.email}.')
+
+    update_fields = []
+    if new_owner.role == 'agent':
+        client.sponsor_agent = new_owner
+        update_fields.append('sponsor_agent')
+        coord = effective_coordinator(new_owner)
+    else:
+        coord = new_owner
+    if coord is not None and client.sponsor_coordinator_id != coord.id:
+        client.sponsor_coordinator = coord
+        update_fields.append('sponsor_coordinator')
+    if update_fields:
+        client.save(update_fields=update_fields)
 
     from .services import log_activity
     log_activity(actor, 'client_assigned', target_user=client, activity_status='assigned')
