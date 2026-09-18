@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import ArtisanProfile, BusinessProfile, Booking, Category, ServiceTaxonomy
+from .models import ActivityLog, ArtisanProfile, BusinessProfile, Booking, Category, ServiceTaxonomy
 from .views import AIChatView, AIIntentClassifierView
 
 User = get_user_model()
@@ -4646,3 +4646,154 @@ class ReassignProviderOwnerTests(CoordinatorDashboardTestBase):
 
         self.assertNotIn(self.artisan_profile, _recruited_query(self.kano_agent, ArtisanProfile))
         self.assertIn(self.artisan_profile, _recruited_query(self.kano_agent_2, ArtisanProfile))
+
+
+class AdminCoordinatorAgentBusinessProxyTests(CoordinatorDashboardTestBase):
+    """accounts.admin.CoordinatorAdmin/AgentAdmin/BusinessOwnerAdmin — the
+    Django-Admin-only dedicated management pages for these three roles
+    (accounts/models.py's Coordinator/Agent/BusinessOwner proxy models).
+    Exercises real HTTP requests against the actual add views (not just
+    calling admin methods directly) so add_form-level validation —
+    required state, LGA-must-belong-to-state — is genuinely proven, not
+    assumed. Also proves core.services.set_agent_status/
+    set_coordinator_status didn't change CoordinatorAgentStatusView/
+    AdminCoordinatorStatusView's own behavior."""
+
+    def setUp(self):
+        super().setUp()
+        self.superuser = User.objects.create_superuser(email='proxy_super@test.com', password='pass12345')
+        self.client.login(email='proxy_super@test.com', password='pass12345')
+
+    def _request(self):
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        request = RequestFactory().post('/admin/')
+        request.user = self.superuser
+        request.session = {}
+        request._messages = FallbackStorage(request)
+        return request
+
+    def _admin_for(self, model):
+        from django.contrib.admin.sites import site as admin_site
+        return admin_site._registry[model]
+
+    # --- Coordinator add form ---
+
+    def test_creating_a_coordinator_without_state_is_rejected(self):
+        response = self.client.post('/admin/accounts/coordinator/add/', {
+            'email': 'nostate_coord@test.com', 'password1': 'Testpass123!', 'password2': 'Testpass123!',
+            'first_name': 'No', 'last_name': 'State', 'country': self.country.id,
+        })
+        self.assertEqual(response.status_code, 200)  # re-renders with errors, no redirect
+        self.assertFalse(User.objects.filter(email='nostate_coord@test.com').exists())
+
+    def test_creating_a_coordinator_with_state_mints_code_and_logs_activity(self):
+        response = self.client.post('/admin/accounts/coordinator/add/', {
+            'email': 'new_coord@test.com', 'password1': 'Testpass123!', 'password2': 'Testpass123!',
+            'first_name': 'New', 'last_name': 'Coord', 'country': self.country.id, 'state': self.kano.id,
+        })
+        self.assertEqual(response.status_code, 302)
+        coord = User.objects.get(email='new_coord@test.com')
+        self.assertEqual(coord.role, 'state_coordinator')
+        self.assertEqual(coord.account_status, 'active')
+        self.assertRegex(coord.referral_code, r'^SMAHI-KN-[A-Z2-9]{4}$')
+        self.assertTrue(ActivityLog.objects.filter(action='coordinator_created', target_user=coord).exists())
+
+    # --- Agent add form ---
+
+    def test_creating_an_agent_with_mismatched_lga_state_is_rejected(self):
+        response = self.client.post('/admin/accounts/agent/add/', {
+            'email': 'mismatch_agent@test.com', 'password1': 'Testpass123!', 'password2': 'Testpass123!',
+            'first_name': 'Mismatch', 'last_name': 'Agent', 'country': self.country.id,
+            'state': self.kano.id, 'lga': self.lagos_lga.id,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(email='mismatch_agent@test.com').exists())
+
+    def test_creating_an_agent_correctly_sets_pending_status_and_serial_number(self):
+        response = self.client.post('/admin/accounts/agent/add/', {
+            'email': 'new_agent@test.com', 'password1': 'Testpass123!', 'password2': 'Testpass123!',
+            'first_name': 'New', 'last_name': 'Agent', 'country': self.country.id,
+            'state': self.kano.id, 'lga': self.kano_lga_a.id,
+        })
+        self.assertEqual(response.status_code, 302)
+        agent = User.objects.get(email='new_agent@test.com')
+        self.assertEqual(agent.role, 'agent')
+        self.assertEqual(agent.account_status, 'pending_approval')
+        self.assertEqual(agent.serial_number, f'AGT-KN-{agent.id:05d}')
+        self.assertIsNone(agent.referral_code, 'not minted until approved')
+        self.assertTrue(ActivityLog.objects.filter(action='agent_created', target_user=agent).exists())
+
+    # --- Status-transition actions ---
+
+    def test_approving_a_pending_agent_activates_and_mints_code(self):
+        from accounts.models import Agent
+        self.kano_agent.account_status = 'pending_approval'
+        self.kano_agent.save(update_fields=['account_status'])
+
+        self._admin_for(Agent)._transition(self._request(), Agent.objects.filter(id=self.kano_agent.id), 'active')
+
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.account_status, 'active')
+        self.assertRegex(self.kano_agent.referral_code, r'^SMAHI-AG-[A-Z2-9]{4}$')
+        self.assertTrue(ActivityLog.objects.filter(action='agent_approved', target_user=self.kano_agent).exists())
+
+    def test_dismissing_then_reactivating_a_coordinator_via_admin_is_allowed(self):
+        """The API refuses to reactivate a dismissed coordinator by design
+        (AdminCoordinatorStatusView) — Django Admin is the documented
+        escape valve. Confirms CoordinatorAdmin actually provides it."""
+        from accounts.models import Coordinator
+        admin_ = self._admin_for(Coordinator)
+
+        admin_._transition(self._request(), Coordinator.objects.filter(id=self.kano_coordinator.id), 'dismissed')
+        self.kano_coordinator.refresh_from_db()
+        self.assertEqual(self.kano_coordinator.account_status, 'dismissed')
+
+        admin_._transition(self._request(), Coordinator.objects.filter(id=self.kano_coordinator.id), 'active')
+        self.kano_coordinator.refresh_from_db()
+        self.assertEqual(self.kano_coordinator.account_status, 'active')
+        self.assertTrue(
+            ActivityLog.objects.filter(action='coordinator_reactivated', target_user=self.kano_coordinator).exists()
+        )
+
+    def test_api_still_refuses_to_reactivate_a_dismissed_coordinator(self):
+        """Regression guard for the core.services extraction — the API's
+        own restriction (and its exact error message) must be completely
+        unchanged."""
+        self.kano_coordinator.account_status = 'dismissed'
+        self.kano_coordinator.save(update_fields=['account_status'])
+
+        from rest_framework.test import APIClient
+        api_client = APIClient()
+        api_client.force_authenticate(user=self.superuser)
+        response = api_client.post(f'/api/admin/coordinators/{self.kano_coordinator.id}/status/', {'status': 'active'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error'], 'This coordinator has been dismissed and cannot be reactivated here.')
+        self.kano_coordinator.refresh_from_db()
+        self.assertEqual(self.kano_coordinator.account_status, 'dismissed')
+
+    # --- Queryset scoping ---
+
+    def test_each_proxy_changelist_only_shows_its_own_role(self):
+        from accounts.models import Agent, BusinessOwner, Coordinator
+
+        business_owner = User.objects.create_user(
+            email='proxy_business@test.com', password='pass12345',
+            first_name='Proxy', last_name='Business', role='business',
+            country=self.country, state=self.kano,
+        )
+
+        coord_qs = self._admin_for(Coordinator).get_queryset(self._request())
+        self.assertIn(self.kano_coordinator, coord_qs)
+        self.assertNotIn(self.kano_agent, coord_qs)
+        self.assertNotIn(business_owner, coord_qs)
+
+        agent_qs = self._admin_for(Agent).get_queryset(self._request())
+        self.assertIn(self.kano_agent, agent_qs)
+        self.assertNotIn(self.kano_coordinator, agent_qs)
+        self.assertNotIn(business_owner, agent_qs)
+
+        business_qs = self._admin_for(BusinessOwner).get_queryset(self._request())
+        self.assertIn(business_owner, business_qs)
+        self.assertNotIn(self.kano_agent, business_qs)
+        self.assertNotIn(self.kano_coordinator, business_qs)

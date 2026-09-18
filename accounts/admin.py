@@ -2,8 +2,9 @@ from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import UserCreationForm
 from core.referrals import ensure_referral_code
-from core.services import set_agent_status, set_coordinator_status
+from core.services import log_activity, set_agent_status, set_coordinator_status
 from .models import Agent, BusinessOwner, Coordinator
 
 User = get_user_model()
@@ -111,10 +112,13 @@ class UserAdmin(BaseUserAdmin):
 # Django-Admin-driven status change can never quietly disagree with an
 # API-driven one, and both get an ActivityLog entry.
 
-class CoordinatorAdminForm(forms.ModelForm):
-    class Meta:
-        model = Coordinator
-        fields = '__all__'
+class CoordinatorCreationForm(UserCreationForm):
+    """add_form (not form/change-form) is what BaseUserAdmin.get_form()
+    actually uses on the Add page (see django.contrib.auth.admin.UserAdmin
+    .get_form — it swaps in add_form whenever obj is None); ModelAdmin.
+    get_form() rebuilds this form's Meta.fields from CoordinatorAdmin.
+    add_fieldsets below, so subclassing UserCreationForm (not a plain
+    ModelForm) is what keeps password1/password2 hashing working."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -126,7 +130,7 @@ class CoordinatorAdminForm(forms.ModelForm):
 
 @admin.register(Coordinator)
 class CoordinatorAdmin(UserAdmin):
-    form = CoordinatorAdminForm
+    add_form = CoordinatorCreationForm
     list_display = ['email', 'first_name', 'last_name', 'state', 'account_status', 'referral_code', 'created_at']
     list_filter = ['account_status', 'state', 'created_at']
     readonly_fields = UserAdmin.readonly_fields + ('role',)
@@ -149,7 +153,10 @@ class CoordinatorAdmin(UserAdmin):
         # pending_approval step (AdminCreateCoordinatorView's own
         # reasoning: unlike an agent, nobody else has to vouch for them).
         obj.role = 'state_coordinator'
+        is_new = not change
         super().save_model(request, obj, form, change)
+        if is_new:
+            log_activity(request.user, 'coordinator_created', target_user=obj, activity_status='active')
 
     def _transition(self, request, queryset, new_status):
         ok, errors = 0, []
@@ -177,10 +184,8 @@ class CoordinatorAdmin(UserAdmin):
         self._transition(request, queryset, 'dismissed')
 
 
-class AgentAdminForm(forms.ModelForm):
-    class Meta:
-        model = Agent
-        fields = '__all__'
+class AgentCreationForm(UserCreationForm):
+    """See CoordinatorCreationForm's docstring — same add_form mechanism."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -201,7 +206,7 @@ class AgentAdminForm(forms.ModelForm):
 
 @admin.register(Agent)
 class AgentAdmin(UserAdmin):
-    form = AgentAdminForm
+    add_form = AgentCreationForm
     list_display = ['email', 'first_name', 'last_name', 'state', 'lga', 'account_status', 'serial_number', 'referral_code', 'created_at']
     list_filter = ['account_status', 'state', 'created_at']
     readonly_fields = UserAdmin.readonly_fields + ('role', 'serial_number')
@@ -230,6 +235,8 @@ class AgentAdmin(UserAdmin):
             state_code = state.state_code or state.name[:3].upper()
             obj.serial_number = f'AGT-{state_code}-{obj.id:05d}'
             obj.save(update_fields=['serial_number'])
+        if is_new:
+            log_activity(request.user, 'agent_created', target_user=obj, activity_status='pending_approval')
 
     def _transition(self, request, queryset, new_status):
         ok, errors = 0, []
