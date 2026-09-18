@@ -1765,9 +1765,11 @@ class RegisterArtisanLGAAndSkillTests(CoordinatorDashboardTestBase):
         self.assertIn('Artisan Account Credentials', call_kwargs['subject'])
         self.assertIn(response.data['generated_password'], call_kwargs['html_content'])
 
-    def test_plain_agent_registers_an_artisan_without_an_email(self):
-        """Existing behaviour preserved: a plain agent's artisan
-        registration stays password-share-only — no email is dispatched."""
+    def test_plain_agent_registers_an_artisan_and_credentials_are_emailed(self):
+        """A plain agent's artisan registration also dispatches the welcome
+        credentials email automatically — this used to be coordinator-only,
+        but every account created on someone's behalf now gets its login
+        credentials emailed regardless of who registered them."""
         from unittest.mock import patch
 
         with patch('notifications.brevo.send_transactional_email', return_value=True) as mocked:
@@ -1777,8 +1779,12 @@ class RegisterArtisanLGAAndSkillTests(CoordinatorDashboardTestBase):
                 'custom_category_name': 'Welding',
             })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.assertFalse(response.data.get('email_sent'))
-        mocked.assert_not_called()
+        self.assertTrue(response.data.get('email_sent'))
+        self.assertEqual(mocked.call_count, 1)
+        call_kwargs = mocked.call_args.kwargs
+        self.assertEqual(call_kwargs['to_email'], 'manual_artisan@test.com')
+        self.assertIn('Artisan Account Credentials', call_kwargs['subject'])
+        self.assertIn(response.data['generated_password'], call_kwargs['html_content'])
 
 
 class RegistrationCountryDerivationTests(CoordinatorDashboardTestBase):
@@ -1932,9 +1938,11 @@ class AgentRegisterBusinessTests(CoordinatorDashboardTestBase):
         self.assertIn('Business Account Credentials', call_kwargs['subject'])
         self.assertIn(response.data['generated_password'], call_kwargs['html_content'])
 
-    def test_plain_agent_registers_a_business_without_an_email(self):
-        """Existing behaviour preserved: a plain agent's business
-        registration stays password-share-only — no email is dispatched."""
+    def test_plain_agent_registers_a_business_and_credentials_are_emailed(self):
+        """A plain agent's business registration also dispatches the welcome
+        credentials email automatically — this used to be coordinator-only,
+        but every account created on someone's behalf now gets its login
+        credentials emailed regardless of who registered them."""
         from unittest.mock import patch
 
         with patch('notifications.brevo.send_transactional_email', return_value=True) as mocked:
@@ -1944,8 +1952,12 @@ class AgentRegisterBusinessTests(CoordinatorDashboardTestBase):
                 'business_name': 'Manual Store', 'lga': self.kano_lga_a.id, 'custom_category_name': 'Retail',
             })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.assertFalse(response.data.get('email_sent'))
-        mocked.assert_not_called()
+        self.assertTrue(response.data.get('email_sent'))
+        self.assertEqual(mocked.call_count, 1)
+        call_kwargs = mocked.call_args.kwargs
+        self.assertEqual(call_kwargs['to_email'], 'manual_business@test.com')
+        self.assertIn('Business Account Credentials', call_kwargs['subject'])
+        self.assertIn(response.data['generated_password'], call_kwargs['html_content'])
 
 
 class AgentRegistrationPaymentTests(CoordinatorDashboardTestBase):
@@ -2867,6 +2879,27 @@ class AdminCoordinatorManagementTests(CoordinatorDashboardTestBase):
         self.assertEqual(new_coord.country_id, self.ogun.country_id, "country must be derived from the state, not trusted separately")
         self.assertTrue(new_coord.is_active)
         self.assertTrue(new_coord.check_password(password), "the returned password must actually be the one that was set")
+
+    def test_admin_creates_a_coordinator_and_credentials_are_emailed(self):
+        """Completes the Admin:Coordinator:Agent hierarchy: an admin-created
+        coordinator now also gets a welcome credentials email dispatched
+        automatically, same as CoordinatorCreateAgentView already does for
+        agents (this endpoint previously sent no email at all)."""
+        from unittest.mock import patch
+
+        with patch('notifications.brevo.send_transactional_email', return_value=True) as mocked:
+            self.client.force_authenticate(user=self.admin)
+            response = self.client.post(self.CREATE_URL, {
+                'email': 'emailed_coord@test.com', 'first_name': 'Emailed', 'last_name': 'Coordinator',
+                'state': self.ogun.id,
+            })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data.get('email_sent'))
+        self.assertEqual(mocked.call_count, 1)
+        call_kwargs = mocked.call_args.kwargs
+        self.assertEqual(call_kwargs['to_email'], 'emailed_coord@test.com')
+        self.assertIn('Coordinator Account Credentials', call_kwargs['subject'])
+        self.assertIn(response.data['generated_password'], call_kwargs['html_content'])
 
     def test_can_create_multiple_coordinators_for_the_same_state(self):
         """The one-coordinator-per-state rule is gone (DB constraint

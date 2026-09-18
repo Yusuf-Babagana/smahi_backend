@@ -248,6 +248,31 @@ class SendFailureTests(APITestCase):
             OTPCode.objects.filter(email='newuser2@test.com', purpose='email_verify').exists()
         )
 
+    @patch('notifications.brevo.send_transactional_email', return_value=True)
+    def test_registration_emails_login_credentials(self, mock_brevo_send):
+        """Self-service registration now also dispatches a welcome email
+        with the account's login credentials — the same "here are your
+        login credentials" email every agent/coordinator/admin-initiated
+        registration already sends, extended to the one path where the
+        account holder chose their own password. Separate from
+        send_otp's verification email (notifications.services, mocked
+        elsewhere in this class/module) — this one goes through
+        notifications.brevo directly, same as core.views's welcome
+        emails."""
+        self.client.force_authenticate(None)
+        response = self.client.post('/api/auth/register/', {
+            'email': 'selfreg@test.com', 'password': 'pass12345',
+            'password_confirm': 'pass12345',
+            'first_name': 'Self', 'last_name': 'Registered', 'role': 'client',
+        })
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertTrue(response.data.get('email_sent'))
+        self.assertEqual(mock_brevo_send.call_count, 1)
+        call_kwargs = mock_brevo_send.call_args.kwargs
+        self.assertEqual(call_kwargs['to_email'], 'selfreg@test.com')
+        self.assertIn('Account Credentials', call_kwargs['subject'])
+        self.assertIn('pass12345', call_kwargs['html_content'])
+
 
 class NotificationInboxTests(APITestCase):
     """Every Dashboard Must Be Connected (item 10) — a Notification has
