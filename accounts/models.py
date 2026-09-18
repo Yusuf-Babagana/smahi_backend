@@ -191,3 +191,10 @@ class BusinessOwner(User):
         proxy = True
         verbose_name = 'Business Owner'
         verbose_name_plural = 'Business Owners'
+
+
+class Client(User):
+    class Meta:
+        proxy = True
+        verbose_name = 'Client'
+        verbose_name_plural = 'Clients'

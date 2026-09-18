@@ -256,6 +256,67 @@ def reassign_provider_owner(profile, new_owner):
         profile.user.save(update_fields=['sponsor_coordinator'])
 
 
+def reassign_agent_coordinator(agent, new_coordinator, actor):
+    """Move an Agent under a different State Coordinator — the admin's
+    "reassign to a different Coordinator" action (accounts.admin
+    .AgentAdmin). sponsor_coordinator is exactly the field
+    _coordinator_visible_agents() reads to decide which agents a
+    coordinator's mobile dashboard shows, so this alone is enough to move
+    the agent's visibility — no other query needs to change.
+
+    Every other place sponsor_coordinator is ever set (grepped across
+    core/views.py, accounts/serializers.py) only does so once, guarded by
+    "only if currently null" — at agent creation or first self-
+    registration/claim. This is the first thing that reassigns an
+    already-claimed agent, so unlike reassign_provider_owner's
+    registered_by (a genuinely mutable "who currently oversees this"
+    field), moving an agent's coordinator really does change their
+    permanent-looking sponsor link — that's the point of this action, not
+    an oversight.
+
+    Raises ValueError if new_coordinator isn't a same-state, currently-
+    active State Coordinator — same territory boundary as
+    reassign_provider_owner/CoordinatorCreateAgentView."""
+    if new_coordinator.role != 'state_coordinator':
+        raise ValueError('New coordinator must be a State Coordinator.')
+    if new_coordinator.account_status not in ACTIVE_STATUSES:
+        raise ValueError(f'{new_coordinator.email} is not an active seat holder.')
+    if new_coordinator.state_id != agent.state_id:
+        raise ValueError(f'{new_coordinator.email} is not in the same state as {agent.email}.')
+
+    agent.sponsor_coordinator = new_coordinator
+    agent.save(update_fields=['sponsor_coordinator'])
+
+    from .services import log_activity
+    log_activity(actor, 'agent_reassigned', target_user=agent, activity_status='reassigned')
+    return agent
+
+
+def assign_client_agent(client, new_agent, actor):
+    """Assign a Client to an Agent — the admin's "assign to a different
+    Agent" action (accounts.admin.ClientAdmin). Deliberately additive:
+    AgentClientListView (core/views.py) ORs sponsor_agent_id=<agent> in
+    alongside its existing LGA-territorial filter, so every client an
+    agent already sees (by LGA match) stays visible — this only ever adds
+    a client to an agent's list, never removes one from another's.
+
+    Raises ValueError if new_agent isn't a same-state, currently-active
+    Agent."""
+    if new_agent.role != 'agent':
+        raise ValueError('New agent must be an Agent.')
+    if new_agent.account_status not in ACTIVE_STATUSES:
+        raise ValueError(f'{new_agent.email} is not an active seat holder.')
+    if new_agent.state_id != client.state_id:
+        raise ValueError(f'{new_agent.email} is not in the same state as {client.email}.')
+
+    client.sponsor_agent = new_agent
+    client.save(update_fields=['sponsor_agent'])
+
+    from .services import log_activity
+    log_activity(actor, 'client_assigned', target_user=client, activity_status='assigned')
+    return client
+
+
 def referral_stats(user):
     """Counts for the logged-in user's referral dashboard. Never counts
     outside the user's own recruitment network — a Coordinator sees only

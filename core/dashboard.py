@@ -103,6 +103,7 @@ def dashboard_callback(request, context):
         {'label': 'Manage Coordinators', 'icon': 'supervisor_account', 'href': reverse('admin:accounts_coordinator_changelist')},
         {'label': 'Manage Agents', 'icon': 'badge', 'href': reverse('admin:accounts_agent_changelist')},
         {'label': 'Manage Business Owners', 'icon': 'storefront', 'href': reverse('admin:accounts_businessowner_changelist')},
+        {'label': 'Manage Clients', 'icon': 'group', 'href': reverse('admin:accounts_client_changelist')},
         {'label': 'Manage Artisans', 'icon': 'engineering', 'href': reverse('admin:core_artisanprofile_changelist')},
         {'label': 'Manage Bookings', 'icon': 'event_available', 'href': reverse('admin:core_booking_changelist')},
         {'label': 'View Disputes', 'icon': 'report', 'href': reverse('admin:core_disputereport_changelist')},

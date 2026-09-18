@@ -3,9 +3,10 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
-from core.referrals import ensure_referral_code
+from django.template.response import TemplateResponse
+from core.referrals import ACTIVE_STATUSES, assign_client_agent, ensure_referral_code, reassign_agent_coordinator
 from core.services import log_activity, set_agent_status, set_coordinator_status
-from .models import Agent, BusinessOwner, Coordinator
+from .models import Agent, BusinessOwner, Client, Coordinator
 
 User = get_user_model()
 
@@ -207,10 +208,10 @@ class AgentCreationForm(UserCreationForm):
 @admin.register(Agent)
 class AgentAdmin(UserAdmin):
     add_form = AgentCreationForm
-    list_display = ['email', 'first_name', 'last_name', 'state', 'lga', 'account_status', 'serial_number', 'referral_code', 'created_at']
+    list_display = ['email', 'first_name', 'last_name', 'state', 'lga', 'account_status', 'sponsor_coordinator', 'serial_number', 'referral_code', 'created_at']
     list_filter = ['account_status', 'state', 'created_at']
     readonly_fields = UserAdmin.readonly_fields + ('role', 'serial_number')
-    actions = ['approve_or_reactivate_agents', 'suspend_agents', 'reject_agents', 'dismiss_agents']
+    actions = ['approve_or_reactivate_agents', 'suspend_agents', 'reject_agents', 'dismiss_agents', 'reassign_coordinator']
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
@@ -221,7 +222,28 @@ class AgentAdmin(UserAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).filter(role='agent')
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'sponsor_coordinator':
+            kwargs['queryset'] = User.objects.filter(
+                role='state_coordinator', account_status__in=ACTIVE_STATUSES,
+            ).order_by('email')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def save_model(self, request, obj, form, change):
+        # Editing sponsor_coordinator directly on the change form (base
+        # UserAdmin's Referral fieldset already exposes it) goes through
+        # the same validated reassignment as the bulk action below,
+        # instead of a blind save — same pattern
+        # core.admin.ReassignableOwnerAdminMixin already established for
+        # registered_by.
+        if change and 'sponsor_coordinator' in form.changed_data and obj.sponsor_coordinator:
+            try:
+                reassign_agent_coordinator(obj, obj.sponsor_coordinator, request.user)
+            except ValueError as e:
+                self.message_user(request, str(e), level=messages.ERROR)
+                return
+            return  # reassign_agent_coordinator already saved it
+
         obj.role = 'agent'
         is_new = not change
         if is_new:
@@ -267,6 +289,45 @@ class AgentAdmin(UserAdmin):
     def dismiss_agents(self, request, queryset):
         self._transition(request, queryset, 'dismissed')
 
+    @admin.action(description='Reassign to a different Coordinator')
+    def reassign_coordinator(self, request, queryset):
+        if 'apply' in request.POST:
+            new_coordinator = User.objects.filter(
+                pk=request.POST.get('new_owner'), role='state_coordinator',
+            ).first()
+            if not new_coordinator:
+                self.message_user(request, 'Pick a valid Coordinator.', level=messages.ERROR)
+                return
+            ok, errors = 0, []
+            for agent in queryset:
+                try:
+                    reassign_agent_coordinator(agent, new_coordinator, request.user)
+                    ok += 1
+                except ValueError as e:
+                    errors.append(str(e))
+            if ok:
+                self.message_user(request, f'{ok} agent(s) reassigned to {new_coordinator.email}.')
+            for err in errors:
+                self.message_user(request, err, level=messages.WARNING)
+            return
+
+        eligible = User.objects.filter(role='state_coordinator', account_status__in=ACTIVE_STATUSES).order_by('email')
+        rows = [
+            (agent, agent.sponsor_coordinator.email if agent.sponsor_coordinator else 'unclaimed (no coordinator)')
+            for agent in queryset
+        ]
+        return TemplateResponse(request, 'admin/reassign_generic_confirmation.html', {
+            **self.admin_site.each_context(request),
+            'rows': rows,
+            'eligible': eligible,
+            'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
+            'action_name': 'reassign_coordinator',
+            'opts': self.model._meta,
+            'title': 'Reassign the selected Agent(s) to a different Coordinator:',
+            'select_label': 'New Coordinator',
+            'help_text': 'Only Coordinators in the same state as each selected agent will be accepted — anything else is rejected per-row with an explanation.',
+        })
+
 
 @admin.register(BusinessOwner)
 class BusinessOwnerAdmin(UserAdmin):
@@ -293,3 +354,75 @@ class BusinessOwnerAdmin(UserAdmin):
     def save_model(self, request, obj, form, change):
         obj.role = 'business'
         super().save_model(request, obj, form, change)
+
+
+@admin.register(Client)
+class ClientAdmin(UserAdmin):
+    """A Client's own admin section. No approval step or serial number
+    (clients aren't a role-seat the way agents/coordinators are) — the
+    one bespoke thing here is assign_agent, which sets sponsor_agent so
+    AgentClientListView (core/views.py) shows this client to that agent
+    in addition to (never instead of) the existing LGA-territorial match."""
+    list_display = ['email', 'first_name', 'last_name', 'state', 'lga', 'sponsor_agent', 'is_active', 'created_at']
+    list_filter = ['state', 'lga', 'created_at']
+    readonly_fields = UserAdmin.readonly_fields + ('role',)
+    actions = ['suspend_users', 'reactivate_users', 'assign_agent']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(role='client')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'sponsor_agent':
+            kwargs['queryset'] = User.objects.filter(
+                role='agent', account_status__in=ACTIVE_STATUSES,
+            ).order_by('email')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if change and 'sponsor_agent' in form.changed_data and obj.sponsor_agent:
+            try:
+                assign_client_agent(obj, obj.sponsor_agent, request.user)
+            except ValueError as e:
+                self.message_user(request, str(e), level=messages.ERROR)
+                return
+            return  # assign_client_agent already saved it
+
+        obj.role = 'client'
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description='Assign to a different Agent')
+    def assign_agent(self, request, queryset):
+        if 'apply' in request.POST:
+            new_agent = User.objects.filter(pk=request.POST.get('new_owner'), role='agent').first()
+            if not new_agent:
+                self.message_user(request, 'Pick a valid Agent.', level=messages.ERROR)
+                return
+            ok, errors = 0, []
+            for client in queryset:
+                try:
+                    assign_client_agent(client, new_agent, request.user)
+                    ok += 1
+                except ValueError as e:
+                    errors.append(str(e))
+            if ok:
+                self.message_user(request, f'{ok} client(s) assigned to {new_agent.email}.')
+            for err in errors:
+                self.message_user(request, err, level=messages.WARNING)
+            return
+
+        eligible = User.objects.filter(role='agent', account_status__in=ACTIVE_STATUSES).order_by('email')
+        rows = [
+            (client, client.sponsor_agent.email if client.sponsor_agent else 'unassigned')
+            for client in queryset
+        ]
+        return TemplateResponse(request, 'admin/reassign_generic_confirmation.html', {
+            **self.admin_site.each_context(request),
+            'rows': rows,
+            'eligible': eligible,
+            'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
+            'action_name': 'assign_agent',
+            'opts': self.model._meta,
+            'title': 'Assign the selected Client(s) to a different Agent:',
+            'select_label': 'New Agent',
+            'help_text': 'Only Agents in the same state as each selected client will be accepted — anything else is rejected per-row with an explanation. This adds the client to that agent’s dashboard; it never removes anyone from their existing LGA-based view.',
+        })

@@ -371,9 +371,14 @@ class AgentArtisanListView(generics.ListAPIView):
 
 class AgentClientListView(generics.ListAPIView):
     """Clients a caller can see — a state_coordinator sees the whole
-    state, a plain agent only their own LGA (clients pick an LGA at
-    registration too — app/register.tsx step 4, every role — so this
-    scopes the same way as AgentArtisanListView)."""
+    state, a plain agent their own LGA plus anyone admin-assigned to them
+    directly (accounts.admin.ClientAdmin / core.referrals
+    .assign_client_agent — sponsor_agent), even outside that LGA. Purely
+    additive: the LGA match alone already covered every client an agent
+    saw before this existed, so nothing here narrows visibility, it only
+    adds admin-assigned ones on top (clients pick an LGA at registration
+    too — app/register.tsx step 4, every role — so LGA remains the
+    territorial default; sponsor_agent is the explicit override)."""
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     search_fields = ['first_name', 'last_name', 'email', 'phone_number']
@@ -384,7 +389,7 @@ class AgentClientListView(generics.ListAPIView):
         if user.role == 'agent':
             if not user.lga_id:
                 return User.objects.none()
-            return base.filter(lga_id=user.lga_id)
+            return base.filter(Q(lga_id=user.lga_id) | Q(sponsor_agent_id=user.id)).distinct()
         if not user.state_id:
             return User.objects.none()
         return base.filter(state_id=user.state_id)

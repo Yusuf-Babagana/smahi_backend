@@ -1,0 +1,59 @@
+{% extends "admin/base_site.html" %}
+{% load i18n l10n admin_urls static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script src="{% static 'admin/js/cancel.js' %}" async></script>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} delete-confirmation{% endblock %}
+
+{% block content %}
+    <div class="border border-base-200 rounded-default shadow-xs dark:border-base-800">
+        <p class="font-semibold p-4 text-font-important-light dark:text-font-important-dark">
+            {{ title }}
+        </p>
+
+        <div class="border-t border-base-200 p-4 dark:border-base-800">
+            <ul class="leading-relaxed text-font-default-light dark:text-font-default-dark" style="list-style: disc; list-style-position: inside;">
+                {% for obj, current_label in rows %}
+                    <li>{{ obj }} — currently {{ current_label }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <form method="post" class="border-t border-base-200 p-4 dark:border-base-800">
+            {% csrf_token %}
+
+            {% for obj, current_label in rows %}
+                <input type="hidden" name="{{ action_checkbox_name }}" value="{{ obj.pk|unlocalize }}">
+            {% endfor %}
+
+            <input type="hidden" name="action" value="{{ action_name }}">
+            <input type="hidden" name="apply" value="1">
+
+            <label class="block font-semibold mb-2 text-font-important-light dark:text-font-important-dark" for="id_new_owner">
+                {{ select_label }}
+            </label>
+            <select name="new_owner" id="id_new_owner" required
+                class="border border-base-200 rounded-default text-sm w-full dark:bg-base-900 dark:border-base-700 dark:text-font-default-dark"
+                style="max-width: 28rem; padding: 0.625rem;">
+                <option value="">{% translate "— select —" %}</option>
+                {% for owner in eligible %}
+                    <option value="{{ owner.pk }}">
+                        {{ owner.get_role_display }} — {{ owner.state.name|default:"no state" }} — {{ owner.email }}
+                    </option>
+                {% endfor %}
+            </select>
+            <p class="text-font-subtle-light text-xs mt-2 dark:text-font-subtle-dark">
+                {{ help_text }}
+            </p>
+
+            <div class="flex items-center gap-3 mt-4">
+                <input type="submit" value="{% translate 'Confirm' %}"
+                    class="bg-primary-600 cursor-pointer font-medium px-4 py-2.5 rounded-default text-white text-sm hover:bg-primary-700">
+                <a href="#" class="cancel-link text-font-default-light text-sm dark:text-font-default-dark">{% translate "Cancel" %}</a>
+            </div>
+        </form>
+    </div>
+{% endblock %}

@@ -682,6 +682,13 @@ class ActivityLog(models.Model):
         # 'any user he register', scoped by registered_by, not territory.
         ('registered_user_updated', 'Updated registered account'),
         ('registered_user_deactivated', 'Deactivated registered account'),
+        # Admin-driven team reassignment (accounts.admin.AgentAdmin/
+        # ClientAdmin) — moving an already-claimed Agent to a different
+        # Coordinator, or assigning a Client to an Agent, both restricted
+        # to same-state pairs. See core.referrals.reassign_agent_coordinator/
+        # assign_client_agent.
+        ('agent_reassigned', 'Reassigned agent to a different coordinator'),
+        ('client_assigned', 'Assigned client to an agent'),
     ]
 
     actor = models.ForeignKey(

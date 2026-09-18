@@ -1538,6 +1538,23 @@ class AgentLGAScopingTests(CoordinatorDashboardTestBase):
         self.assertIn('scoping_lga_a_client@test.com', emails)
         self.assertIn('scoping_lga_b_client@test.com', emails)
 
+    def test_admin_assigned_client_is_additive_not_a_replacement(self):
+        """core.referrals.assign_client_agent (accounts.admin.ClientAdmin)
+        must only ever ADD a client to an agent's list — lga_b_client is
+        proven invisible to kano_agent above by pure LGA mismatch; once
+        explicitly assigned, it becomes visible too, while lga_a_client
+        (never assigned, LGA-matched only) stays visible exactly as
+        before — nothing this feature does can hide a client that
+        territorial matching already showed."""
+        from .referrals import assign_client_agent
+        assign_client_agent(self.lga_b_client, self.kano_agent, self.kano_coordinator)
+
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.get('/api/agent/clients/')
+        emails = [c['email'] for c in response.data['results']]
+        self.assertIn('scoping_lga_a_client@test.com', emails, 'existing LGA-matched client must still be visible')
+        self.assertIn('scoping_lga_b_client@test.com', emails, 'admin-assigned client (different LGA) must now be visible too')
+
     def test_agent_artisan_list_shows_only_what_they_personally_registered(self):
         self.client.force_authenticate(user=self.kano_agent)
         response = self.client.get('/api/agent/artisans/')
@@ -4797,3 +4814,159 @@ class AdminCoordinatorAgentBusinessProxyTests(CoordinatorDashboardTestBase):
         self.assertIn(business_owner, business_qs)
         self.assertNotIn(self.kano_agent, business_qs)
         self.assertNotIn(self.kano_coordinator, business_qs)
+
+
+class ReassignAgentCoordinatorAndAssignClientAgentTests(CoordinatorDashboardTestBase):
+    """core.referrals.reassign_agent_coordinator/assign_client_agent —
+    the functions behind accounts.admin.AgentAdmin's "Reassign to a
+    different Coordinator" and accounts.admin.ClientAdmin's "Assign to a
+    different Agent" bulk actions. Exercises the functions directly
+    (validation) and each admin action end-to-end via real HTTP requests
+    through the actual confirmation page, matching the pattern already
+    established in AdminCoordinatorAgentBusinessProxyTests."""
+
+    def setUp(self):
+        super().setUp()
+        self.superuser = User.objects.create_superuser(email='reassign_super@test.com', password='pass12345')
+        self.client.login(email='reassign_super@test.com', password='pass12345')
+
+        self.lagos_client = User.objects.create_user(
+            email='lagos_client@test.com', password='pass12345',
+            first_name='Lagos', last_name='Client', role='client',
+            country=self.country, state=self.lagos, lga=self.lagos_lga,
+        )
+
+    # --- reassign_agent_coordinator ---
+
+    def test_reassign_agent_to_same_state_coordinator_succeeds(self):
+        from .referrals import _coordinator_visible_agents, reassign_agent_coordinator
+
+        # Claimed by kano_coordinator first — an *unclaimed* agent
+        # (sponsor_coordinator=None) is already visible to every
+        # coordinator in the state via _coordinator_visible_agents' own
+        # null-fallback, so starting from unclaimed wouldn't prove
+        # anything moved.
+        self.kano_agent.sponsor_coordinator = self.kano_coordinator
+        self.kano_agent.save(update_fields=['sponsor_coordinator'])
+
+        kano_coordinator_2 = User.objects.create_user(
+            email='kano_coord_2@test.com', password='pass12345',
+            first_name='Second', last_name='KanoCoord', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+        self.assertIn(self.kano_agent, _coordinator_visible_agents(self.kano_coordinator))
+        self.assertNotIn(self.kano_agent, _coordinator_visible_agents(kano_coordinator_2))
+
+        reassign_agent_coordinator(self.kano_agent, kano_coordinator_2, self.superuser)
+
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.sponsor_coordinator_id, kano_coordinator_2.id)
+        self.assertNotIn(self.kano_agent, _coordinator_visible_agents(self.kano_coordinator))
+        self.assertIn(self.kano_agent, _coordinator_visible_agents(kano_coordinator_2))
+        self.assertTrue(ActivityLog.objects.filter(action='agent_reassigned', target_user=self.kano_agent).exists())
+
+    def test_reassign_agent_to_different_state_coordinator_is_rejected(self):
+        from .referrals import reassign_agent_coordinator
+        with self.assertRaises(ValueError):
+            reassign_agent_coordinator(self.kano_agent, self.lagos_coordinator, self.superuser)
+        self.kano_agent.refresh_from_db()
+        self.assertIsNone(self.kano_agent.sponsor_coordinator_id)
+
+    def test_reassign_agent_to_a_non_coordinator_is_rejected(self):
+        from .referrals import reassign_agent_coordinator
+        with self.assertRaises(ValueError):
+            reassign_agent_coordinator(self.kano_agent, self.lagos_agent, self.superuser)
+
+    # --- assign_client_agent ---
+
+    def test_assign_client_to_same_state_agent_succeeds(self):
+        from .referrals import assign_client_agent
+
+        kano_client = User.objects.create_user(
+            email='assign_kano_client@test.com', password='pass12345',
+            first_name='Kano', last_name='Client', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        assign_client_agent(kano_client, self.kano_agent, self.superuser)
+
+        kano_client.refresh_from_db()
+        self.assertEqual(kano_client.sponsor_agent_id, self.kano_agent.id)
+        self.assertTrue(ActivityLog.objects.filter(action='client_assigned', target_user=kano_client).exists())
+
+    def test_assign_client_to_different_state_agent_is_rejected(self):
+        from .referrals import assign_client_agent
+        with self.assertRaises(ValueError):
+            assign_client_agent(self.lagos_client, self.kano_agent, self.superuser)
+        self.lagos_client.refresh_from_db()
+        self.assertIsNone(self.lagos_client.sponsor_agent_id)
+
+    def test_assign_client_to_a_non_agent_is_rejected(self):
+        from .referrals import assign_client_agent
+        with self.assertRaises(ValueError):
+            assign_client_agent(self.lagos_client, self.lagos_coordinator, self.superuser)
+
+    # --- Admin actions, end-to-end over real HTTP ---
+
+    def test_agent_admin_reassign_coordinator_action_end_to_end(self):
+        from accounts.models import Agent
+
+        kano_coordinator_2 = User.objects.create_user(
+            email='http_kano_coord_2@test.com', password='pass12345',
+            first_name='Http', last_name='KanoCoord', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+
+        # Step 1: request the confirmation page.
+        confirm = self.client.post('/admin/accounts/agent/', {
+            'action': 'reassign_coordinator', '_selected_action': [str(self.kano_agent.pk)],
+        })
+        self.assertEqual(confirm.status_code, 200)
+        self.assertIn(kano_coordinator_2.email.encode(), confirm.content)
+
+        # Step 2: submit with the chosen coordinator.
+        applied = self.client.post('/admin/accounts/agent/', {
+            'action': 'reassign_coordinator', '_selected_action': [str(self.kano_agent.pk)],
+            'apply': '1', 'new_owner': str(kano_coordinator_2.pk),
+        }, follow=True)
+        self.assertEqual(applied.status_code, 200)
+        self.kano_agent.refresh_from_db()
+        self.assertEqual(self.kano_agent.sponsor_coordinator_id, kano_coordinator_2.id)
+
+    def test_client_admin_assign_agent_action_end_to_end(self):
+        confirm = self.client.post('/admin/accounts/client/', {
+            'action': 'assign_agent', '_selected_action': [str(self.lagos_client.pk)],
+        })
+        self.assertEqual(confirm.status_code, 200)
+        self.assertIn(self.lagos_agent.email.encode(), confirm.content)
+
+        applied = self.client.post('/admin/accounts/client/', {
+            'action': 'assign_agent', '_selected_action': [str(self.lagos_client.pk)],
+            'apply': '1', 'new_owner': str(self.lagos_agent.pk),
+        }, follow=True)
+        self.assertEqual(applied.status_code, 200)
+        self.lagos_client.refresh_from_db()
+        self.assertEqual(self.lagos_client.sponsor_agent_id, self.lagos_agent.id)
+
+    def test_business_profile_reassign_action_still_works_unchanged(self):
+        """No code touched in core/admin.py or core/referrals
+        .reassign_provider_owner by this feature — a direct assertion
+        that it still works, since 'do not break any functionality' was
+        explicit."""
+        from core.models import BusinessProfile
+        from core.referrals import reassign_provider_owner
+
+        owner = User.objects.create_user(
+            email='untouched_business_owner@test.com', password='pass12345',
+            first_name='Untouched', last_name='Owner', role='business',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        profile = BusinessProfile.objects.create(user=owner, business_name='Still Works Store', registered_by=self.kano_agent)
+
+        kano_agent_2 = User.objects.create_user(
+            email='untouched_kano_agent_2@test.com', password='pass12345',
+            first_name='Untouched', last_name='Agent2', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        reassign_provider_owner(profile, kano_agent_2)
+        profile.refresh_from_db()
+        self.assertEqual(profile.registered_by_id, kano_agent_2.id)
