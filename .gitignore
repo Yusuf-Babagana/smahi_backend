@@ -8,6 +8,12 @@ __pycache__/
 
 # Database
 db.sqlite3
+db.sqlite3.backup-*
+
+# SQLite -> MySQL migration backups/plans — real customer data, never committed
+data_backup.json
+data_backup_fixed.json
+user_merge_plan.json
 
 # IDE
 .vscode/
