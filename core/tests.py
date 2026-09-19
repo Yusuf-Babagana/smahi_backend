@@ -1959,6 +1959,30 @@ class AgentRegisterBusinessTests(CoordinatorDashboardTestBase):
         self.assertIn('Business Account Credentials', call_kwargs['subject'])
         self.assertIn(response.data['generated_password'], call_kwargs['html_content'])
 
+    def test_generated_password_survives_autocapitalize_and_logs_in(self):
+        """Regression: the emailed one-time password used to be a random-
+        case token (secrets.token_urlsafe) — a lowercase first character
+        got silently capitalized by a phone keyboard's default
+        auto-capitalize-first-letter behavior when the business owner
+        typed it in by hand, so the login they typed never matched the
+        hash and they saw a confusing "Invalid credentials". The password
+        must now always start with an uppercase letter (so
+        auto-capitalize is a no-op) and actually log the account in."""
+        self.client.force_authenticate(user=self.kano_agent)
+        response = self.client.post(self.REGISTER_URL, {
+            'email': 'typed_password_business@test.com', 'first_name': 'Typed', 'last_name': 'Password',
+            'business_name': 'Typed Store', 'custom_category_name': 'Retail',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        password = response.data['generated_password']
+        self.assertTrue(password[0].isupper(), f"password {password!r} must start uppercase")
+
+        self.client.force_authenticate(user=None)
+        login_response = self.client.post('/api/auth/login/', {
+            'email': 'typed_password_business@test.com', 'password': password,
+        })
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK, login_response.data)
+
 
 class AgentRegistrationPaymentTests(CoordinatorDashboardTestBase):
     """Coordinator/Agent collects the registration fee via Paystack right

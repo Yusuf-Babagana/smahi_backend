@@ -552,6 +552,31 @@ class AgentDashboardStatsView(APIView):
         return Response(data)
 
 
+def _generate_temp_password():
+    """One-time password for an artisan/business account someone else
+    (an Agent/Coordinator) registers on their behalf, then emails to them
+    to type in by hand — never copy-pasted with any reliability on a
+    low-end Android phone, so it must survive manual retyping.
+
+    Deliberately NOT secrets.token_urlsafe(): that produces a random-case
+    string, and a lowercase first character gets silently capitalized by
+    the phone keyboard's default auto-capitalize-first-letter behavior
+    (Android TextInput defaults to autoCapitalize="sentences"; the login
+    screen's password field doesn't override it) — the typed password then
+    never matches the hash, and login fails with a confusing "Invalid
+    credentials" for a password that was, character for character, exactly
+    what the email said. A token_urlsafe() password can also contain
+    visually confusable characters (0/O, 1/l/I).
+
+    Same "Smahi@########" shape CoordinatorCreateAgentView already uses for
+    agent passwords (its own comment: "clean, human-friendly ... e.g.
+    Smahi@48213821") — starting with an already-uppercase letter makes
+    auto-capitalize a no-op, and an all-digit tail has no confusable
+    letters left to mistype."""
+    import secrets
+    return f"Smahi@{secrets.randbelow(10**8):08d}"
+
+
 def _send_coordinator_welcome_email(user, generated_password, request):
     """Deliver an account-credentials welcome email to an artisan or
     business account created by an Agent or State Coordinator — mirroring
@@ -641,7 +666,6 @@ class AgentRegisterArtisanView(APIView):
     permission_classes = [IsAuthenticated, IsStateAgent]
 
     def post(self, request):
-        import secrets
         from accounts.serializers import UserRegistrationSerializer
 
         if not request.user.state_id:
@@ -671,7 +695,7 @@ class AgentRegisterArtisanView(APIView):
                     'already_registered': True,
                 }, status=status.HTTP_200_OK)
 
-        generated_password = secrets.token_urlsafe(9)
+        generated_password = _generate_temp_password()
 
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         data['role'] = 'artisan'
@@ -770,7 +794,6 @@ class AgentRegisterBusinessView(APIView):
     permission_classes = [IsAuthenticated, IsStateAgent]
 
     def post(self, request):
-        import secrets
         from accounts.serializers import UserRegistrationSerializer
 
         if not request.user.state_id:
@@ -796,7 +819,7 @@ class AgentRegisterBusinessView(APIView):
         if not business_name:
             return Response({'error': 'business_name is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        generated_password = secrets.token_urlsafe(9)
+        generated_password = _generate_temp_password()
 
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         data['role'] = 'business'
