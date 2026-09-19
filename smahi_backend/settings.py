@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from decouple import config
+import environ
 from django.urls import reverse_lazy
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -77,12 +78,22 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'smahi_backend.wsgi.application'
 
+# Defaults to the existing SQLite file when DATABASE_URL is unset — local
+# dev and any environment without it in .env keep working exactly as
+# before. Setting DATABASE_URL (e.g. mysql://user:pass@host:3306/dbname)
+# in production's .env is the only thing that switches the engine; no code
+# change needed to move between SQLite and MySQL/Postgres.
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': environ.Env.db_url_config(
+        config('DATABASE_URL', default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
+    )
 }
+
+# utf8mb4 (not MySQL's older 3-byte-only "utf8") is required for emoji and
+# other 4-byte characters in chat messages/names to save instead of raising
+# an encoding error — irrelevant for SQLite, harmless to set unconditionally.
+if DATABASES['default']['ENGINE'] == 'django.db.backends.mysql':
+    DATABASES['default'].setdefault('OPTIONS', {})['charset'] = 'utf8mb4'
 
 AUTH_PASSWORD_VALIDATORS = [
     {
