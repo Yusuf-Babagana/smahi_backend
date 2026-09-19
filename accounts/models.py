@@ -74,7 +74,12 @@ class User(AbstractUser):
     username = None
     account_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     email = models.EmailField(unique=True)
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='client')
+    # db_index: every role-scoped Django Admin page (ClientAdmin/AgentAdmin/
+    # CoordinatorAdmin/BusinessOwnerAdmin) and API view filters on this
+    # column — without an index, "WHERE role='client'" (by far the largest
+    # bucket in this one shared table) forced a full-table scan on every
+    # page load, the main cause of the Client admin page being slow.
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='client', db_index=True)
     # Unique Agent ID (e.g. "AGT-KN-00123") — required by the Coordinator
     # Dashboard spec for "identification and tracking". Only ever set for
     # agents today (CoordinatorCreateAgentView), but lives on User rather
@@ -149,7 +154,10 @@ class User(AbstractUser):
     referral_code = models.CharField(max_length=40, unique=True, null=True, blank=True, db_index=True)
     sponsor_coordinator = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='coordinator_recruits')
     sponsor_agent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='agent_recruits')
-    created_at = models.DateTimeField(auto_now_add=True)
+    # db_index: Meta.ordering below sorts every list/admin query by this
+    # column — unindexed, that's a full sort of the filtered rows on every
+    # page load instead of reading them back in already-sorted order.
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = UserManager()

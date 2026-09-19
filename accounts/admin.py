@@ -46,6 +46,25 @@ class UserAdmin(BaseUserAdmin):
     readonly_fields = ('referral_code',)
     actions = ['suspend_users', 'reactivate_users', 'generate_referral_codes']
 
+    # The changelist's "N results" count re-runs the exact same filtered
+    # query a second time just to count it — on the Client page (by far the
+    # biggest role bucket in this single shared User table) that was a big
+    # part of the slow load. Admin only ever needs "roughly how many", not
+    # an exact count, so skip it (built-in ModelAdmin escape hatch).
+    show_full_result_count = False
+
+    def get_queryset(self, request):
+        # Every subclass below (CoordinatorAdmin/AgentAdmin/BusinessOwnerAdmin/
+        # ClientAdmin) calls super().get_queryset(request).filter(role=...) —
+        # adding select_related here once, rather than in each of their
+        # list_display's FK columns (state/lga/sponsor_agent/
+        # sponsor_coordinator/country), avoids each of them running a
+        # separate query per row per column (100 rows/page x several FK
+        # columns = hundreds of extra round trips) for every one of them.
+        return super().get_queryset(request).select_related(
+            'country', 'state', 'lga', 'sponsor_agent', 'sponsor_coordinator',
+        )
+
     @admin.action(description='Suspend selected users (blocks login)')
     def suspend_users(self, request, queryset):
         # account_status is what the app's own login/session-gate logic
