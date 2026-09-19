@@ -27,7 +27,7 @@ output goes to a separate file.
 
 Usage: python merge_duplicate_states_fixture.py
 Reads:  data_backup.json
-Writes: data_backup_fixed.json
+Writes: data_backup_step1_locations.json (input to merge_duplicate_users.py next)
 """
 import json
 import os
@@ -41,7 +41,7 @@ django.setup()
 from django.db import connection  # noqa: E402
 
 INPUT = 'data_backup.json'
-OUTPUT = 'data_backup_fixed.json'
+OUTPUT = 'data_backup_step1_locations.json'
 
 
 def get_collation(table, column):

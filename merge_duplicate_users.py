@@ -29,14 +29,18 @@ needs to be told their login email changed.
 
 Verifies at the end that no case-insensitive duplicate email remains.
 
+Run this AFTER merge_duplicate_states_fixture.py, not instead of it — it
+reads that script's output, not the raw backup, so the location fixes
+carry through into the final file.
+
 Usage: python merge_duplicate_users.py
-Reads:  data_backup.json, user_merge_plan.json
+Reads:  data_backup_step1_locations.json, user_merge_plan.json
 Writes: data_backup_fixed.json
 """
 import json
 from collections import defaultdict
 
-INPUT = 'data_backup.json'
+INPUT = 'data_backup_step1_locations.json'
 PLAN = 'user_merge_plan.json'
 OUTPUT = 'data_backup_fixed.json'
 
