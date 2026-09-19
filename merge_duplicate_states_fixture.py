@@ -1,29 +1,45 @@
 """One-off fixup for the SQLite -> MySQL migration's `dumpdata` backup.
 
-SQLite's default text comparison is case/whitespace-sensitive, but MySQL's
-default collation isn't — so a worldwide reference dataset (states, then
-cities/LGAs) that happened to have near-duplicate rows in SQLite (first
-found: Bangladesh states differing only by a trailing space, e.g. "Dhaka"
-vs "Dhaka "; then an LGA collision for "Urumqi") satisfied SQLite's unique
+SQLite's default text comparison is case/accent/whitespace-sensitive, but
+MySQL's default collation is none of those — so a worldwide reference
+dataset (states, then cities/LGAs) that happened to have near-duplicate
+rows in SQLite (found so far: Bangladesh states differing only by a
+trailing space, e.g. "Dhaka" vs "Dhaka "; an LGA collision between
+"Urumqi" and the correctly-accented "Ürümqi") satisfied SQLite's unique
 constraints fine but trips `loaddata`'s IntegrityError against MySQL.
 Rather than fix these one at a time as each new collision surfaces, this
 merges every such duplicate for BOTH locations.State and locations.LGA in
-one pass: for each colliding group it keeps the row whose name has no
-leading/trailing whitespace (falling back to a deterministic shortest-
-name/lowest-pk choice for a non-whitespace collision, with a printed NOTE
-so it can be reviewed), re-points every FK/M2M reference at the kept row,
-and drops the duplicate(s). Pure JSON in, JSON out — never touches a
-database, so the original backup is never modified.
+one pass: for each colliding group (matched case/accent/whitespace-
+insensitively, the same way MySQL's collation compares them) it keeps the
+row whose name has no leading/trailing whitespace (falling back to a
+deterministic shortest-name/lowest-pk choice for a non-whitespace
+collision, with a printed NOTE so it can be reviewed), re-points every
+FK/M2M reference at the kept row, and drops the duplicate(s). Pure JSON
+in, JSON out — never touches a database, so the original backup is never
+modified.
 
 Usage: python merge_duplicate_states_fixture.py
 Reads:  data_backup.json
 Writes: data_backup_fixed.json
 """
 import json
+import unicodedata
 from collections import defaultdict
 
 INPUT = 'data_backup.json'
 OUTPUT = 'data_backup_fixed.json'
+
+
+def fold(name):
+    """Matches MySQL's default collation, which is both case- AND
+    accent-insensitive (its actual, real-world cause: the first fixed
+    LGA collision was "Ürümqi" vs a plain-ASCII spelling of the same
+    city — .lower() alone never groups those together, since Python
+    doesn't fold accents). NFKD splits a letter from its combining
+    accent mark(s); dropping non-ASCII bytes then strips the marks
+    while leaving the base letter, e.g. "Ürümqi" -> "urumqi"."""
+    decomposed = unicodedata.normalize('NFKD', name.strip())
+    return decomposed.encode('ascii', 'ignore').decode('ascii').lower()
 
 
 def pick_canonical(objs):
@@ -53,7 +69,7 @@ def merge_duplicates(data, model_label, key_fields, fk_models, m2m_model_fields)
     for obj in data:
         if obj['model'] == model_label:
             key = tuple(
-                obj['fields'][f].strip().lower() if f == 'name' else obj['fields'][f]
+                fold(obj['fields'][f]) if f == 'name' else obj['fields'][f]
                 for f in key_fields
             )
             groups[key].append(obj)
