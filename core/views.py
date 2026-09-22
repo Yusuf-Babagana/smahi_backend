@@ -2251,8 +2251,30 @@ class BookingViewSet(viewsets.ModelViewSet):
         # Client -> Agent Dashboard connection (item 8) possible at all:
         # AgentServiceRequestsView scopes by exactly this lga/state.
         artisan = serializer.validated_data.get('artisan')
+        scheduled_date = serializer.validated_data.get('scheduled_date')
+        double_booked = drf_serializers.ValidationError(
+            {'scheduled_date': "This artisan already has a booking at that time. Please choose a different slot."}
+        )
         try:
             with transaction.atomic():
+                if artisan:
+                    # Mysql doesn't support unique_active_booking_per_artisan_slot
+                    # (Booking.Meta's conditional UniqueConstraint) — Django's
+                    # mysql.W036 check confirms it silently skips creating that
+                    # index on MySQL, so nothing at the DB level stops two
+                    # concurrent requests for the same artisan/slot from both
+                    # passing BookingCreateSerializer.validate()'s
+                    # pre-transaction check and both inserting. Locking the
+                    # artisan row serializes any concurrent booking attempts
+                    # for them through this transaction, so the re-check right
+                    # after actually sees the other request's commit (or lack
+                    # of one) instead of racing it.
+                    User.objects.select_for_update().get(pk=artisan.pk)
+                    if Booking.objects.filter(
+                        artisan=artisan, scheduled_date=scheduled_date,
+                        status__in=['pending', 'confirmed', 'in_progress'],
+                    ).exists():
+                        raise double_booked
                 booking = serializer.save(
                     client=self.request.user,
                     country=artisan.country if artisan else None,
@@ -2260,13 +2282,11 @@ class BookingViewSet(viewsets.ModelViewSet):
                     lga=artisan.lga if artisan else None,
                 )
         except IntegrityError:
-            # The unique_active_booking_per_artisan_slot constraint caught a
-            # race that BookingCreateSerializer.validate()'s pre-transaction
-            # check couldn't — same message either way, from the user's
-            # perspective this is just a slower version of that check.
-            raise drf_serializers.ValidationError(
-                {'scheduled_date': "This artisan already has a booking at that time. Please choose a different slot."}
-            )
+            # Backstop for backends where unique_active_booking_per_artisan_slot
+            # does exist as a real DB constraint (SQLite, Postgres) — same
+            # message either way, from the user's perspective this is just a
+            # slower version of the check above.
+            raise double_booked
         # After the transaction commits — the notification infrastructure
         # (Notification.EVENT_CHOICES, emit()'s in-app + push channels) had
         # existed for a while with nothing actually calling it for any

@@ -101,7 +101,13 @@ DATABASES['default']['CONN_MAX_AGE'] = 60
 # other 4-byte characters in chat messages/names to save instead of raising
 # an encoding error — irrelevant for SQLite, harmless to set unconditionally.
 if DATABASES['default']['ENGINE'] == 'django.db.backends.mysql':
-    DATABASES['default'].setdefault('OPTIONS', {})['charset'] = 'utf8mb4'
+    _mysql_options = DATABASES['default'].setdefault('OPTIONS', {})
+    _mysql_options['charset'] = 'utf8mb4'
+    # Without STRICT_TRANS_TABLES, MySQL silently truncates/coerces
+    # out-of-range or wrong-type values on INSERT/UPDATE instead of raising
+    # (Django's mysql.W002) — the same input SQLite or Postgres would
+    # reject outright can go in corrupted instead of failing loudly here.
+    _mysql_options['init_command'] = "SET sql_mode='STRICT_TRANS_TABLES'"
 
 AUTH_PASSWORD_VALIDATORS = [
     {
