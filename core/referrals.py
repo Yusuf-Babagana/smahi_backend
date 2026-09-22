@@ -218,12 +218,24 @@ def _recruited_query(owner, provider_model):
     both providers registered by an Agent under them AND providers who
     redeemed the Coordinator's own referral code on self-registration (this
     field is set permanently, so the chain survives turnover). For an
-    Agent: only what they personally registered."""
+    Agent: same two cases one level down — anyone they personally
+    registered (AgentRegisterArtisanView/AgentRegisterBusinessView), and
+    anyone whose user.sponsor_agent points at them because they redeemed
+    the Agent's own referral code on self-registration
+    (UserRegistrationSerializer.create() sets sponsor_agent permanently for
+    exactly this). Without the second half, an agent registers someone
+    directly and sees them fine, but someone who typed in that same
+    agent's code on the public signup form silently never appeared on
+    the agent's own dashboard — the identical gap
+    AgentClientListView's ``Q(sponsor_agent_id=...)`` already closed for
+    clients, just missing here for artisans/businesses."""
     if owner.role == 'state_coordinator':
         return provider_model.objects.filter(
             Q(registered_by_id=owner.id) | Q(user__sponsor_coordinator_id=owner.id)
         ).distinct()
-    return provider_model.objects.filter(registered_by_id=owner.id)
+    return provider_model.objects.filter(
+        Q(registered_by_id=owner.id) | Q(user__sponsor_agent_id=owner.id)
+    ).distinct()
 
 
 def reassign_provider_owner(profile, new_owner):
@@ -290,6 +302,22 @@ def reassign_agent_coordinator(agent, new_coordinator, actor):
 
     agent.sponsor_coordinator = new_coordinator
     agent.save(update_fields=['sponsor_coordinator'])
+
+    # Every artisan/business/client this agent has ever registered or
+    # recruited (AgentRegisterArtisanView/AgentRegisterBusinessView, and
+    # anyone who self-registered with the agent's own referral code — see
+    # UserRegistrationSerializer.create()) got THEIR OWN
+    # sponsor_coordinator set once, as a snapshot of this agent's
+    # sponsor_coordinator at that exact moment — it never updates on its
+    # own afterward. Without this, moving an agent to a new coordinator
+    # silently strands everyone they'd already recruited under the old
+    # (or, for an agent who was unclaimed when they recruited someone, no)
+    # coordinator, invisible on the new coordinator's dashboard even
+    # though the agent who owns them just moved there. sponsor_agent is
+    # set on every one of those people regardless of role or which of the
+    # two registration paths created them, so it alone is enough to find
+    # all of them.
+    _user_model().objects.filter(sponsor_agent_id=agent.id).update(sponsor_coordinator=new_coordinator)
 
     from .services import log_activity
     log_activity(actor, 'agent_reassigned', target_user=agent, activity_status='reassigned')

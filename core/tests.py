@@ -5105,6 +5105,52 @@ class ReassignAgentCoordinatorAndAssignClientAgentTests(CoordinatorDashboardTest
         self.assertIn(self.kano_agent, _coordinator_visible_agents(kano_coordinator_2))
         self.assertTrue(ActivityLog.objects.filter(action='agent_reassigned', target_user=self.kano_agent).exists())
 
+    def test_reassign_agent_cascades_to_everyone_they_recruited(self):
+        """Regression: a real production report ("coordinators are not
+        seeing the artisans/business owners their agent registered")
+        traced back to sponsor_coordinator being a one-time snapshot on
+        every artisan/business/client the agent recruited — reassigning
+        the AGENT alone never touched it, silently stranding their whole
+        roster under the old (or, if the agent was unclaimed at the time,
+        no) coordinator. sponsor_agent is what both registration paths
+        (AgentRegisterArtisanView and self-registration via the agent's
+        own referral code) always set, so it's the one reliable way to
+        find everyone who needs to move with the agent."""
+        from .referrals import _recruited_query, reassign_agent_coordinator
+
+        artisan_user = User.objects.create_user(
+            email='kano_recruited_artisan@test.com', password='pass12345',
+            first_name='Recruited', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_agent=self.kano_agent, sponsor_coordinator=self.kano_coordinator,
+        )
+        artisan_profile = ArtisanProfile.objects.create(user=artisan_user, registered_by=self.kano_agent)
+        # Models an agent who was UNCLAIMED at the moment they registered
+        # this client — the Jigawa-shaped case where sponsor_coordinator
+        # was never anything but None to begin with.
+        unclaimed_recruit = User.objects.create_user(
+            email='kano_recruited_no_coord@test.com', password='pass12345',
+            first_name='Recruited', last_name='NoCoord', role='client',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+            sponsor_agent=self.kano_agent, sponsor_coordinator=None,
+        )
+
+        kano_coordinator_2 = User.objects.create_user(
+            email='kano_coord_3@test.com', password='pass12345',
+            first_name='Third', last_name='KanoCoord', role='state_coordinator',
+            country=self.country, state=self.kano,
+        )
+        self.assertIn(artisan_profile, _recruited_query(self.kano_coordinator, ArtisanProfile))
+
+        reassign_agent_coordinator(self.kano_agent, kano_coordinator_2, self.superuser)
+
+        artisan_user.refresh_from_db()
+        unclaimed_recruit.refresh_from_db()
+        self.assertEqual(artisan_user.sponsor_coordinator_id, kano_coordinator_2.id)
+        self.assertEqual(unclaimed_recruit.sponsor_coordinator_id, kano_coordinator_2.id)
+        self.assertNotIn(artisan_profile, _recruited_query(self.kano_coordinator, ArtisanProfile))
+        self.assertIn(artisan_profile, _recruited_query(kano_coordinator_2, ArtisanProfile))
+
     def test_reassign_agent_to_different_state_coordinator_is_rejected(self):
         from .referrals import reassign_agent_coordinator
         with self.assertRaises(ValueError):
