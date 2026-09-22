@@ -74,6 +74,14 @@ class User(AbstractUser):
     username = None
     account_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     email = models.EmailField(unique=True)
+    # Redeclared purely to add db_index — AbstractUser's own first_name/
+    # last_name have none. Every agent/coordinator/admin "search users" API
+    # (AgentClientListView, CoordinatorAgentListView, AdminUserListView,
+    # AdminCoordinatorListView, UserAdmin) searches these with a '^'
+    # (istartswith) prefix specifically so MySQL can use these indexes
+    # instead of a full table scan on every search.
+    first_name = models.CharField(max_length=150, blank=True, db_index=True)
+    last_name = models.CharField(max_length=150, blank=True, db_index=True)
     # db_index: every role-scoped Django Admin page (ClientAdmin/AgentAdmin/
     # CoordinatorAdmin/BusinessOwnerAdmin) and API view filters on this
     # column — without an index, "WHERE role='client'" (by far the largest

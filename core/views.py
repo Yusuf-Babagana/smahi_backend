@@ -356,7 +356,14 @@ class AgentArtisanListView(generics.ListAPIView):
     serializer_class = ArtisanProfileSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     filterset_fields = ['category', 'verification_status']
-    search_fields = ['user__first_name', 'user__last_name', 'bio']
+    # '^' anchors the name fields to istartswith so they can use
+    # accounts.User's first_name/last_name indexes instead of a full
+    # table scan — an unanchored 'contains' search across this (agent/
+    # coordinator "search my artisans") and every sibling view below was
+    # the direct cause of admin/agent/coordinator dashboards feeling slow
+    # to search once real data volume hit MySQL. bio stays unanchored —
+    # free text, genuinely searched mid-string.
+    search_fields = ['^user__first_name', '^user__last_name', 'bio']
 
     def get_queryset(self):
         user = self.request.user
@@ -399,7 +406,8 @@ class AgentClientListView(generics.ListAPIView):
     override)."""
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
-    search_fields = ['first_name', 'last_name', 'email', 'phone_number']
+    # See AgentArtisanListView's search_fields comment.
+    search_fields = ['^first_name', '^last_name', '^email', '^phone_number']
 
     def get_queryset(self):
         user = self.request.user
@@ -424,7 +432,9 @@ class AgentBusinessListView(generics.ListAPIView):
     serializer_class = BusinessProfileSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     filterset_fields = ['category', 'verification_status']
-    search_fields = ['business_name', 'user__first_name', 'user__last_name']
+    # See AgentArtisanListView's search_fields comment. business_name
+    # stays unanchored — free text, genuinely searched mid-string.
+    search_fields = ['business_name', '^user__first_name', '^user__last_name']
 
     def get_queryset(self):
         user = self.request.user
@@ -459,7 +469,8 @@ class AgentServiceRequestsView(generics.ListAPIView):
     serializer_class = AgentServiceRequestSerializer
     permission_classes = [IsAuthenticated, IsStateAgent]
     filterset_fields = ['status']
-    search_fields = ['client__first_name', 'client__last_name', 'artisan__first_name', 'artisan__last_name']
+    # See AgentArtisanListView's search_fields comment.
+    search_fields = ['^client__first_name', '^client__last_name', '^artisan__first_name', '^artisan__last_name']
 
     def get_queryset(self):
         user = self.request.user
@@ -1104,8 +1115,10 @@ class CoordinatorAgentListView(generics.ListAPIView):
     # same way DjangoFilterBackend does, so "search by LGA" doesn't need
     # its own endpoint/param. Phone number added for the same reason: the
     # Coordinator Dashboard spec explicitly asks for name/serial/phone/LGA
-    # search, not just name/email.
-    search_fields = ['first_name', 'last_name', 'email', 'phone_number', 'lga__name']
+    # search, not just name/email. '^' anchors these to istartswith so
+    # they can use an index instead of forcing a full scan of this
+    # coordinator's (potentially large) agent list on every search.
+    search_fields = ['^first_name', '^last_name', '^email', '^phone_number', '^lga__name']
 
     def get_queryset(self):
         if not self.request.user.state_id:
@@ -1841,7 +1854,14 @@ class AdminUserListView(generics.ListAPIView):
     serializer_class = AdminUserSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
     filterset_fields = ['role', 'account_status', 'state']
-    search_fields = ['first_name', 'last_name', 'email', 'phone_number', 'state__name']
+    # '^' anchors these to istartswith so they can use the indexes on
+    # first_name/last_name/email/phone_number (see accounts.models.User)
+    # instead of a full scan of the ENTIRE users table (this view is
+    # unscoped — every user, no per-agent/coordinator filter) on every
+    # keystroke of a search. This was the single biggest source of "search
+    # is slow" once MySQL was doing that scan over real network I/O
+    # instead of SQLite's local file.
+    search_fields = ['^first_name', '^last_name', '^email', '^phone_number', '^state__name']
 
     def get_queryset(self):
         return User.objects.all().select_related('state', 'lga', 'country').order_by('-created_at')
@@ -1899,7 +1919,10 @@ class AdminCoordinatorListView(generics.ListAPIView):
     serializer_class = CoordinatorOverviewSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
     filterset_fields = ['state', 'account_status']
-    search_fields = ['first_name', 'last_name', 'email', 'phone_number', 'state__name']
+    # See AdminUserListView's search_fields comment — same fix, same
+    # reason (this view is also unscoped: every coordinator, not one
+    # state's worth).
+    search_fields = ['^first_name', '^last_name', '^email', '^phone_number', '^state__name']
 
     def get_queryset(self):
         return User.objects.filter(role='state_coordinator').select_related('state').order_by('-created_at')
