@@ -231,14 +231,24 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if category_id:
             return category_id
         if custom_category_name:
-            # The icon choice only applies to a genuinely NEW category —
-            # get_or_create's `defaults` are ignored when a row already
-            # matches, so an earlier registrant's (or a guessed) icon for
-            # an existing category is never overwritten by this one.
-            category_obj, _ = Category.objects.get_or_create(
+            # get_or_create can't be used here: Category.name has no
+            # uniqueness constraint, so name__iexact can already match more
+            # than one existing row (case-variant duplicates), which makes
+            # get_or_create's internal .get() raise MultipleObjectsReturned
+            # instead of returning either one — crashing registration
+            # outright for whatever category name happens to collide.
+            # first() tolerates that: pick whichever duplicate exists, same
+            # as get_or_create would if there were only one.
+            category_obj = Category.objects.filter(
                 name__iexact=custom_category_name, category_type=category_type,
-                defaults={'name': custom_category_name, 'material_icon': custom_category_icon, 'category_type': category_type},
-            )
+            ).first()
+            if category_obj is None:
+                # The icon choice only applies to a genuinely NEW category —
+                # an earlier registrant's (or a guessed) icon for an
+                # existing category is never overwritten by this one.
+                category_obj = Category.objects.create(
+                    name=custom_category_name, material_icon=custom_category_icon, category_type=category_type,
+                )
             return category_obj.id
         return None
 

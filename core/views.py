@@ -188,7 +188,12 @@ class ArtisanViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
             if getattr(settings, 'PAYSTACK_SECRET_KEY', ''):
                 queryset = queryset.filter(user__registration_fee_paid=True)
         
-        # Note: I removed the prefetch_related for service_countries to keep it simple
+        # service_countries/states/lgas are each nested M2M serializers
+        # (ArtisanProfileSerializer.service_*_details) — without this,
+        # every artisan row on this public browse/search endpoint costs 3
+        # extra queries. Harmless on SQLite (in-process); on MySQL it's 3
+        # real network round-trips per row, times PAGE_SIZE rows per page.
+        queryset = queryset.prefetch_related('service_countries', 'service_states', 'service_lgas')
 
         category_id = self.request.query_params.get('category_id')
         country_id = self.request.query_params.get('country_id')

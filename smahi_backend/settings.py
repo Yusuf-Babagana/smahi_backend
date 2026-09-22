@@ -89,6 +89,14 @@ DATABASES = {
     )
 }
 
+# Without this Django opens a brand-new MySQL connection (TCP + auth) on
+# every single request and tears it down at the end — free on SQLite (just
+# a local file handle) but real, avoidable latency on MySQL. 60s reuses a
+# connection across a burst of requests from the same worker without
+# holding it open indefinitely, which matters on PythonAnywhere's low-tier
+# MySQL connection-count limits. No-op for SQLite (the value is ignored).
+DATABASES['default']['CONN_MAX_AGE'] = 60
+
 # utf8mb4 (not MySQL's older 3-byte-only "utf8") is required for emoji and
 # other 4-byte characters in chat messages/names to save instead of raising
 # an encoding error — irrelevant for SQLite, harmless to set unconditionally.

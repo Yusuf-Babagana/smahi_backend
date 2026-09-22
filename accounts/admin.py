@@ -38,7 +38,16 @@ def _mint_missing_referral_codes(users):
 class UserAdmin(BaseUserAdmin):
     list_display = ['email', 'first_name', 'last_name', 'role', 'account_status', 'referral_code', 'is_verified', 'is_active', 'created_at']
     list_filter = ['role', 'account_status', 'is_verified', 'is_active', 'created_at', 'country']
-    search_fields = ['email', 'first_name', 'last_name', 'phone_number', 'referral_code']
+    # '^' anchors these to istartswith so MySQL can actually use the indexes
+    # on email/phone_number/referral_code (all indexed — see accounts/models.py).
+    # Plain icontains (no anchor) is a leading-wildcard 'LIKE %term%', which
+    # can never use an index and forces a full table scan of every one of
+    # these columns on every keystroke of a search — the direct cause of
+    # "search is slow" once the table has thousands of rows on real MySQL
+    # I/O instead of SQLite's local file. first_name/last_name stay
+    # icontains since people genuinely search those mid-name and neither is
+    # indexed either way.
+    search_fields = ['^email', 'first_name', 'last_name', '^phone_number', '^referral_code']
     ordering = ['-created_at']
     # Machine-minted via core.referrals (creation/approval paths + admin
     # actions + save_model hook) — never hand-edited, so a typo can never

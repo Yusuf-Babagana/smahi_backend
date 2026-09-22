@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Q, Prefetch
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
 from core.translation import translation_service
@@ -16,7 +16,21 @@ class ConversationViewSet(viewsets.ModelViewSet):
     serializer_class = ConversationSerializer
 
     def get_queryset(self):
-        return self.request.user.conversations.all()
+        # Without these, every conversation row costs 3 extra queries
+        # (participants_details, get_last_message, get_unread_count in
+        # ConversationSerializer) — fine on SQLite, but each becomes a real
+        # MySQL round-trip, turning a 20-item page into 60+ queries.
+        # Prefetching all of a page's messages once and letting the
+        # serializer read them from memory collapses that back down to a
+        # fixed number of queries regardless of page size.
+        return self.request.user.conversations.prefetch_related(
+            'participants',
+            Prefetch(
+                'messages',
+                queryset=Message.objects.select_related('sender'),
+                to_attr='prefetched_messages',
+            ),
+        )
 
     @action(detail=False, methods=['post'])
     def get_or_create(self, request):
@@ -61,7 +75,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         return Message.objects.filter(
             conversation_id=conversation_id,
             conversation__participants=self.request.user
-        )
+        ).select_related('sender')
 
     def perform_create(self, serializer):
         conversation_id = self.request.data.get('conversation_id')

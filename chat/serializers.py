@@ -60,7 +60,17 @@ class ConversationSerializer(serializers.ModelSerializer):
         read_only_fields = ['participants']
 
     def get_last_message(self, obj):
-        last_msg = obj.messages.last()
+        # ConversationViewSet.get_queryset() prefetches all of a
+        # conversation's messages (ordered oldest-first, per Message.Meta)
+        # into prefetched_messages so this reads from memory instead of
+        # issuing one query per conversation. Fall back to a live query for
+        # callers that build a Conversation without that prefetch (e.g.
+        # ConversationViewSet.get_or_create's direct get_serializer() call).
+        messages = getattr(obj, 'prefetched_messages', None)
+        if messages is None:
+            last_msg = obj.messages.last()
+        else:
+            last_msg = messages[-1] if messages else None
         if last_msg:
             # Pass context through so the nested serializer's to_representation
             # can see request.user and translate the preview into their language
@@ -70,6 +80,9 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     def get_unread_count(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
+        if not (request and request.user.is_authenticated):
+            return 0
+        messages = getattr(obj, 'prefetched_messages', None)
+        if messages is None:
             return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
-        return 0
+        return sum(1 for m in messages if not m.is_read and m.sender_id != request.user.id)

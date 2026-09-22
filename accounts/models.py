@@ -87,7 +87,10 @@ class User(AbstractUser):
     # already reads `user.serial_number` directly. Null/blank for every
     # other role and every account created before this field existed.
     serial_number = models.CharField(max_length=30, unique=True, null=True, blank=True)
-    phone_number = models.CharField(max_length=20, blank=True)
+    # db_index: UserAdmin.search_fields searches this with a '^' (startswith)
+    # prefix specifically so it can use an index instead of a full-table
+    # scan — pointless without one.
+    phone_number = models.CharField(max_length=20, blank=True, db_index=True)
     address = models.TextField(blank=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
     # Optional — never required, and blank for every account created before
