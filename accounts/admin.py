@@ -3,7 +3,9 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
+from django.forms.models import BaseInlineFormSet
 from django.template.response import TemplateResponse
+from core.models import ArtisanProfile, BusinessProfile
 from core.referrals import ACTIVE_STATUSES, assign_client_agent, ensure_referral_code, reassign_agent_coordinator
 from core.services import log_activity, set_agent_status, set_coordinator_status
 from .models import Agent, BusinessOwner, Client, Coordinator
@@ -143,6 +145,51 @@ class UserAdmin(BaseUserAdmin):
 # Django-Admin-driven status change can never quietly disagree with an
 # API-driven one, and both get an ActivityLog entry.
 
+class AgentInlineFormSet(BaseInlineFormSet):
+    """Backs AgentInline below. Ticking an existing row's delete checkbox
+    must NEVER delete the agent's account — it means "this agent no
+    longer reports to this coordinator," the exact same detach that
+    reassign_agent_coordinator/the "Reassign to a different Coordinator"
+    action already perform elsewhere, just via the inline's own
+    checkbox+save instead of a separate confirmation page. Overriding
+    delete_existing (rather than leaving BaseModelFormSet's default,
+    which calls obj.delete()) is what makes that safe."""
+
+    def delete_existing(self, obj, commit=True):
+        obj.sponsor_coordinator = None
+        if commit:
+            obj.save(update_fields=['sponsor_coordinator'])
+
+
+class AgentInline(admin.TabularInline):
+    """Shows a coordinator's own agents directly on their change page —
+    "beside each coordinator, his agents appear under him" — instead of
+    admin having to separately open the Agent list and filter by
+    sponsor_coordinator. Read-only identity fields (editing an agent's
+    own details belongs on their own change page, linked via
+    show_change_link); the delete checkbox is the "remove" half (see
+    AgentInlineFormSet). Adding a brand-new agent still goes through
+    AgentAdmin's own add form (email/password/state/LGA, the
+    pending_approval flow, serial number minting) — an inline "add" row
+    would bypass all of that, so it's disabled here in favor of
+    CoordinatorAdmin.assign_agents below, which attaches an *existing*
+    agent instead."""
+
+    model = Agent
+    fk_name = 'sponsor_coordinator'
+    formset = AgentInlineFormSet
+    verbose_name = 'Agent'
+    verbose_name_plural = 'Agents reporting to this coordinator'
+    extra = 0
+    can_delete = True
+    show_change_link = True
+    fields = ['email', 'first_name', 'last_name', 'lga', 'account_status', 'serial_number']
+    readonly_fields = ['email', 'first_name', 'last_name', 'lga', 'account_status', 'serial_number']
+
+    def has_add_permission(self, request, obj):
+        return False
+
+
 class CoordinatorCreationForm(UserCreationForm):
     """add_form (not form/change-form) is what BaseUserAdmin.get_form()
     actually uses on the Add page (see django.contrib.auth.admin.UserAdmin
@@ -162,10 +209,30 @@ class CoordinatorCreationForm(UserCreationForm):
 @admin.register(Coordinator)
 class CoordinatorAdmin(UserAdmin):
     add_form = CoordinatorCreationForm
-    list_display = ['email', 'first_name', 'last_name', 'state', 'account_status', 'referral_code', 'created_at']
+    list_display = ['email', 'first_name', 'last_name', 'state', 'account_status', 'agents_count', 'referral_code', 'created_at']
     list_filter = ['account_status', 'state', 'created_at']
     readonly_fields = UserAdmin.readonly_fields + ('role',)
-    actions = ['reactivate_coordinators', 'suspend_coordinators', 'dismiss_coordinators']
+    actions = ['reactivate_coordinators', 'suspend_coordinators', 'dismiss_coordinators', 'assign_agents']
+    inlines = [AgentInline]
+    # UserAdmin's own Referral fieldset shows sponsor_coordinator/
+    # sponsor_agent, which don't apply to a Coordinator — they're the top
+    # of the Coordinator -> Agent -> Service Provider chain, never sponsored
+    # by anyone else. Left in place, that field's dropdown lists every
+    # User in the system (no formfield_for_foreignkey restriction exists
+    # for it here, unlike AgentAdmin's own sponsor_coordinator field),
+    # which is both pointless clutter and — the AgentInline below already
+    # correctly scopes to this coordinator's own agents — confusingly
+    # showed every agent from every state on this same page. Only
+    # referral_code (this coordinator's own, for recruiting agents) is
+    # still relevant.
+    fieldsets = (
+        (None, {'fields': ('email', 'password')}),
+        ('Personal Info', {'fields': ('first_name', 'last_name', 'phone_number', 'address', 'profile_picture')}),
+        ('Location', {'fields': ('country', 'state', 'lga')}),
+        ('Referral', {'fields': ('referral_code',)}),
+        ('Permissions', {'fields': ('role', 'is_verified', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Important dates', {'fields': ('last_login', 'date_joined')}),
+    )
     # Base UserAdmin.add_fieldsets has no Location section at all — without
     # this, the add form couldn't satisfy the form's own required-state
     # validation above.
@@ -178,6 +245,26 @@ class CoordinatorAdmin(UserAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(role='state_coordinator')
+
+    def get_inline_instances(self, request, obj=None):
+        # AgentInline only makes sense once the coordinator exists — a
+        # brand-new one on the Add page has no agents yet, and rendering
+        # it there would require its (empty) management form data on
+        # every coordinator-creation POST for no benefit.
+        if obj is None:
+            return []
+        return super().get_inline_instances(request, obj)
+
+    @admin.display(description='Agents')
+    def agents_count(self, obj):
+        # Same ownership rule as core.referrals._coordinator_visible_agents
+        # (imported lazily — accounts/admin.py importing core.referrals at
+        # module level already works fine elsewhere in this file, but this
+        # mirrors CoordinatorOverviewSerializer.get_agents_count's own
+        # local-import style for the identical reason: never drift from
+        # what the coordinator's own mobile dashboard shows).
+        from core.referrals import _coordinator_visible_agents
+        return _coordinator_visible_agents(obj).count()
 
     def save_model(self, request, obj, form, change):
         # A coordinator is active immediately on creation — no
@@ -214,6 +301,62 @@ class CoordinatorAdmin(UserAdmin):
     def dismiss_coordinators(self, request, queryset):
         self._transition(request, queryset, 'dismissed')
 
+    @admin.action(description='Assign agent(s) to this Coordinator')
+    def assign_agents(self, request, queryset):
+        # The inverse direction of AgentAdmin.reassign_coordinator (pick a
+        # coordinator, then choose which of ITS agents to reassign) — this
+        # is "pick a coordinator, then choose which agents (in the same
+        # state, unclaimed or claimed by someone else) should now report
+        # to them," so it operates on exactly one coordinator rather than
+        # a batch.
+        if queryset.count() != 1:
+            self.message_user(
+                request, 'Select exactly one Coordinator to assign agents to.', level=messages.ERROR,
+            )
+            return
+        coordinator = queryset.first()
+
+        if 'apply' in request.POST:
+            agent_ids = request.POST.getlist('agent_ids')
+            agents = User.objects.filter(pk__in=agent_ids, role='agent')
+            ok, errors = 0, []
+            for agent in agents:
+                try:
+                    reassign_agent_coordinator(agent, coordinator, request.user)
+                    ok += 1
+                except ValueError as e:
+                    errors.append(str(e))
+            if ok:
+                self.message_user(request, f'{ok} agent(s) assigned to {coordinator.email}.')
+            elif not errors:
+                self.message_user(request, 'No agents were selected.', level=messages.WARNING)
+            for err in errors:
+                self.message_user(request, err, level=messages.WARNING)
+            return
+
+        # Same state, not already reporting to this coordinator — includes
+        # unclaimed agents (sponsor_coordinator is null) and agents
+        # currently claimed by a colleague in the same state, exactly the
+        # two cases reassign_agent_coordinator itself allows.
+        eligible = User.objects.filter(
+            role='agent', state_id=coordinator.state_id,
+        ).exclude(sponsor_coordinator_id=coordinator.id).select_related('lga', 'sponsor_coordinator').order_by('email')
+
+        return TemplateResponse(request, 'admin/assign_agents_confirmation.html', {
+            **self.admin_site.each_context(request),
+            'coordinator': coordinator,
+            'eligible': eligible,
+            'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
+            'action_name': 'assign_agents',
+            'opts': self.model._meta,
+            'title': f'Assign agents to {coordinator.email}:',
+            'select_label': f"Agents in {coordinator.state or 'their state'} available to assign",
+            'help_text': (
+                'Only Agents in the same state as this Coordinator can be assigned. '
+                'An agent already reporting to another Coordinator will be moved to this one.'
+            ),
+        })
+
 
 class AgentCreationForm(UserCreationForm):
     """See CoordinatorCreationForm's docstring — same add_form mechanism."""
@@ -235,6 +378,70 @@ class AgentCreationForm(UserCreationForm):
         return cleaned
 
 
+class ProviderReassignInlineFormSet(BaseInlineFormSet):
+    """Shared by ArtisanProfileInline/BusinessProfileInline below — same
+    role as AgentInlineFormSet, one level down the chain: ticking an
+    existing row's delete checkbox must never delete the artisan/business
+    account, only detach them from this agent (registered_by -> None),
+    the same "no longer reports to" semantics reassign_provider_owner/
+    ReassignableOwnerAdminMixin already use elsewhere."""
+
+    def delete_existing(self, obj, commit=True):
+        obj.registered_by = None
+        if commit:
+            obj.save(update_fields=['registered_by'])
+
+
+class ArtisanProfileInline(admin.TabularInline):
+    """Shows an agent's own registered artisans directly on their change
+    page — "beside each agent, the artisans/businesses they registered
+    appear under him," the same ask CoordinatorAdmin.AgentInline already
+    answers one level up. registered_by (not sponsor_agent) is the right
+    scope here: it's the genuinely mutable "who currently oversees this
+    provider" field reassign_provider_owner moves, whereas sponsor_agent
+    is permanent referral-credit history that can point at an agent who
+    no longer actively manages them (see core.referrals' own docstrings).
+    Read-only + no add, same reasoning as AgentInline: editing/creating a
+    profile belongs on ArtisanProfileAdmin's own form/API, not here."""
+
+    model = ArtisanProfile
+    fk_name = 'registered_by'
+    formset = ProviderReassignInlineFormSet
+    verbose_name = 'Artisan'
+    verbose_name_plural = 'Artisans registered by this agent'
+    extra = 0
+    can_delete = True
+    show_change_link = True
+    fields = ['user', 'full_name', 'category', 'verification_status', 'created_at']
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj):
+        return False
+
+    @admin.display(description='Name')
+    def full_name(self, obj):
+        return f'{obj.user.first_name} {obj.user.last_name}'.strip() or '—'
+
+
+class BusinessProfileInline(admin.TabularInline):
+    """See ArtisanProfileInline's docstring — identical shape and reasoning,
+    one model over."""
+
+    model = BusinessProfile
+    fk_name = 'registered_by'
+    formset = ProviderReassignInlineFormSet
+    verbose_name = 'Business'
+    verbose_name_plural = 'Business owners registered by this agent'
+    extra = 0
+    can_delete = True
+    show_change_link = True
+    fields = ['user', 'business_name', 'verification_status', 'created_at']
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj):
+        return False
+
+
 @admin.register(Agent)
 class AgentAdmin(UserAdmin):
     add_form = AgentCreationForm
@@ -248,6 +455,25 @@ class AgentAdmin(UserAdmin):
     list_filter = ['account_status', 'state', 'sponsor_coordinator', 'created_at']
     readonly_fields = UserAdmin.readonly_fields + ('role', 'serial_number')
     actions = ['approve_or_reactivate_agents', 'suspend_agents', 'reject_agents', 'dismiss_agents', 'reassign_coordinator']
+    inlines = [ArtisanProfileInline, BusinessProfileInline]
+    # UserAdmin's Referral fieldset also shows sponsor_agent, which is
+    # meaningless for an Agent — the chain is strictly Coordinator ->
+    # Agent -> Service Provider, an Agent is never sponsored by another
+    # Agent. Left in place, its dropdown (no formfield_for_foreignkey
+    # restriction exists for it, unlike sponsor_coordinator just below)
+    # lists every User of every role in the system as a choice — the
+    # exact same leak CoordinatorAdmin's own fieldsets override already
+    # fixed for its irrelevant sponsor fields. sponsor_coordinator stays:
+    # it's genuinely meaningful here, and already properly restricted by
+    # formfield_for_foreignkey below.
+    fieldsets = (
+        (None, {'fields': ('email', 'password')}),
+        ('Personal Info', {'fields': ('first_name', 'last_name', 'phone_number', 'address', 'profile_picture')}),
+        ('Location', {'fields': ('country', 'state', 'lga')}),
+        ('Referral', {'fields': ('referral_code', 'sponsor_coordinator')}),
+        ('Permissions', {'fields': ('role', 'is_verified', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Important dates', {'fields': ('last_login', 'date_joined')}),
+    )
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
@@ -257,6 +483,13 @@ class AgentAdmin(UserAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(role='agent')
+
+    def get_inline_instances(self, request, obj=None):
+        # Same reasoning as CoordinatorAdmin.get_inline_instances — a
+        # brand-new agent on the Add page has registered no one yet.
+        if obj is None:
+            return []
+        return super().get_inline_instances(request, obj)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'sponsor_coordinator':

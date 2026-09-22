@@ -4912,6 +4912,21 @@ class ReassignProviderOwnerTests(CoordinatorDashboardTestBase):
         self.assertNotIn(self.artisan_profile, _recruited_query(self.kano_agent, ArtisanProfile))
         self.assertIn(self.artisan_profile, _recruited_query(self.kano_agent_2, ArtisanProfile))
 
+    def test_referral_code_redemption_shows_up_without_direct_registration(self):
+        """An artisan who self-registered using kano_agent_2's own referral
+        code (sponsor_agent set to them) must show up in kano_agent_2's own
+        roster even though kano_agent_2 never personally registered them
+        (registered_by still points at kano_agent) — the same gap
+        AgentClientListView's Q(sponsor_agent_id=...) already closed for
+        clients, closed here for artisans/businesses. Additive: the
+        original registrar keeps seeing them too."""
+        from .referrals import _recruited_query
+        self.kano_artisan.sponsor_agent = self.kano_agent_2
+        self.kano_artisan.save(update_fields=['sponsor_agent'])
+
+        self.assertIn(self.artisan_profile, _recruited_query(self.kano_agent_2, ArtisanProfile))
+        self.assertIn(self.artisan_profile, _recruited_query(self.kano_agent, ArtisanProfile))
+
 
 class AdminCoordinatorAgentBusinessProxyTests(CoordinatorDashboardTestBase):
     """accounts.admin.CoordinatorAdmin/AgentAdmin/BusinessOwnerAdmin — the
@@ -5263,6 +5278,101 @@ class ReassignAgentCoordinatorAndAssignClientAgentTests(CoordinatorDashboardTest
         self.kano_agent.refresh_from_db()
         self.assertEqual(self.kano_agent.sponsor_coordinator_id, kano_coordinator_2.id)
 
+    def test_coordinator_change_page_lists_their_own_agents(self):
+        """AgentInline on CoordinatorAdmin — "beside each coordinator, his
+        agents appear under him." kano_agent is already claimed by
+        kano_coordinator (base fixture default); lagos_agent (a different
+        coordinator's agent) must not show up here."""
+        response = self.client.get(f'/admin/accounts/coordinator/{self.kano_coordinator.id}/change/')
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn(self.kano_agent.email, content)
+        self.assertNotIn(self.lagos_agent.email, content)
+
+    def test_coordinator_inline_delete_checkbox_detaches_not_deletes(self):
+        """Ticking the inline's delete checkbox for an existing agent row
+        must unclaim them (sponsor_coordinator -> None), never call
+        User.delete() — AgentInlineFormSet.delete_existing's whole job."""
+        response = self.client.post(
+            f'/admin/accounts/coordinator/{self.kano_coordinator.id}/change/',
+            {
+                # The main Coordinator form and the inline formset are one
+                # combined POST — omitting the main form's own required
+                # fields (email, date_joined) fails validation before
+                # Django ever reaches the inline formset at all, which
+                # silently re-renders the same page (200) without saving
+                # anything instead of the redirect a real success gives.
+                'email': self.kano_coordinator.email,
+                'date_joined_0': self.kano_coordinator.date_joined.strftime('%Y-%m-%d'),
+                'date_joined_1': self.kano_coordinator.date_joined.strftime('%H:%M:%S'),
+                'coordinator_recruits-TOTAL_FORMS': '1',
+                'coordinator_recruits-INITIAL_FORMS': '1',
+                'coordinator_recruits-MIN_NUM_FORMS': '0',
+                'coordinator_recruits-MAX_NUM_FORMS': '0',
+                'coordinator_recruits-0-id': str(self.kano_agent.id),
+                'coordinator_recruits-0-sponsor_coordinator': str(self.kano_coordinator.id),
+                'coordinator_recruits-0-DELETE': 'on',
+                '_continue': 'Save and continue editing',
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(User.objects.filter(pk=self.kano_agent.pk).exists(), "must detach, never delete the account")
+        self.kano_agent.refresh_from_db()
+        self.assertIsNone(self.kano_agent.sponsor_coordinator_id)
+
+    def test_coordinator_admin_agents_count_matches_dashboard_rule(self):
+        """The changelist's agents_count column reuses
+        _coordinator_visible_agents — must never drift from what the
+        coordinator's own mobile dashboard shows (the exact bug this
+        session's earlier Jigawa fix closed for the other two copies of
+        this same query)."""
+        from accounts.admin import CoordinatorAdmin
+        from accounts.models import Coordinator
+        from django.contrib.admin.sites import site
+        admin_instance = CoordinatorAdmin(Coordinator, site)
+        self.assertEqual(admin_instance.agents_count(self.kano_coordinator), 1)
+        self.assertEqual(admin_instance.agents_count(self.lagos_coordinator), 1)
+
+    def test_coordinator_admin_assign_agents_action_end_to_end(self):
+        """The inverse of AgentAdmin.reassign_coordinator: pick one
+        Coordinator, then choose which agents (same state, unclaimed or
+        claimed by a colleague) should now report to them."""
+        unclaimed_kano_agent = User.objects.create_user(
+            email='unclaimed_for_assign@test.com', password='pass12345',
+            first_name='Unclaimed', last_name='Agent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+
+        # Step 1: request the confirmation page — must list the unclaimed
+        # agent as eligible, and never list an agent already claimed by
+        # this same coordinator (kano_agent) or a different-state agent
+        # (lagos_agent).
+        confirm = self.client.post('/admin/accounts/coordinator/', {
+            'action': 'assign_agents', '_selected_action': [str(self.kano_coordinator.pk)],
+        })
+        self.assertEqual(confirm.status_code, 200)
+        content = confirm.content.decode()
+        self.assertIn(unclaimed_kano_agent.email, content)
+        self.assertNotIn(self.lagos_agent.email, content)
+
+        # Step 2: submit with the chosen agent(s).
+        applied = self.client.post('/admin/accounts/coordinator/', {
+            'action': 'assign_agents', '_selected_action': [str(self.kano_coordinator.pk)],
+            'apply': '1', 'agent_ids': [str(unclaimed_kano_agent.pk)],
+        }, follow=True)
+        self.assertEqual(applied.status_code, 200)
+        unclaimed_kano_agent.refresh_from_db()
+        self.assertEqual(unclaimed_kano_agent.sponsor_coordinator_id, self.kano_coordinator.id)
+
+    def test_coordinator_admin_assign_agents_requires_exactly_one_coordinator(self):
+        response = self.client.post('/admin/accounts/coordinator/', {
+            'action': 'assign_agents',
+            '_selected_action': [str(self.kano_coordinator.pk), str(self.lagos_coordinator.pk)],
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Select exactly one Coordinator', response.content)
+
     def test_client_admin_assign_agent_action_end_to_end(self):
         confirm = self.client.post('/admin/accounts/client/', {
             'action': 'assign_agent', '_selected_action': [str(self.lagos_client.pk)],
@@ -5301,3 +5411,76 @@ class ReassignAgentCoordinatorAndAssignClientAgentTests(CoordinatorDashboardTest
         reassign_provider_owner(profile, kano_agent_2)
         profile.refresh_from_db()
         self.assertEqual(profile.registered_by_id, kano_agent_2.id)
+
+    def test_agent_change_page_lists_their_registered_artisans_and_businesses(self):
+        """ArtisanProfileInline/BusinessProfileInline on AgentAdmin —
+        "beside each agent, the artisans/businesses they registered
+        appear under him," the same ask AgentInline (CoordinatorAdmin)
+        already answers one level up. Scoped by registered_by, so a
+        second agent's own provider must never show up here."""
+        from core.models import ArtisanProfile, BusinessProfile
+
+        own_artisan_user = User.objects.create_user(
+            email='agent_inline_own_artisan@test.com', password='pass12345',
+            first_name='Own', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        ArtisanProfile.objects.create(user=own_artisan_user, registered_by=self.kano_agent)
+
+        other_agent = User.objects.create_user(
+            email='agent_inline_other_agent@test.com', password='pass12345',
+            first_name='Other', last_name='Agent', role='agent',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+            sponsor_coordinator=self.kano_coordinator,
+        )
+        other_artisan_user = User.objects.create_user(
+            email='agent_inline_other_artisan@test.com', password='pass12345',
+            first_name='Other', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_b,
+        )
+        ArtisanProfile.objects.create(user=other_artisan_user, registered_by=other_agent)
+
+        response = self.client.get(f'/admin/accounts/agent/{self.kano_agent.id}/change/')
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn(own_artisan_user.email, content)
+        self.assertNotIn(other_artisan_user.email, content)
+
+    def test_agent_inline_artisan_delete_checkbox_detaches_not_deletes(self):
+        """Ticking the artisan inline's delete checkbox must unclaim them
+        (registered_by -> None), never call ArtisanProfile.delete() —
+        ProviderReassignInlineFormSet.delete_existing's whole job,
+        mirroring AgentInlineFormSet one level up."""
+        from core.models import ArtisanProfile
+
+        artisan_user = User.objects.create_user(
+            email='agent_inline_delete_artisan@test.com', password='pass12345',
+            first_name='ToDetach', last_name='Artisan', role='artisan',
+            country=self.country, state=self.kano, lga=self.kano_lga_a,
+        )
+        profile = ArtisanProfile.objects.create(user=artisan_user, registered_by=self.kano_agent)
+
+        response = self.client.post(
+            f'/admin/accounts/agent/{self.kano_agent.id}/change/',
+            {
+                'email': self.kano_agent.email,
+                'date_joined_0': self.kano_agent.date_joined.strftime('%Y-%m-%d'),
+                'date_joined_1': self.kano_agent.date_joined.strftime('%H:%M:%S'),
+                'artisans_registered-TOTAL_FORMS': '1',
+                'artisans_registered-INITIAL_FORMS': '1',
+                'artisans_registered-MIN_NUM_FORMS': '0',
+                'artisans_registered-MAX_NUM_FORMS': '0',
+                'artisans_registered-0-id': str(profile.id),
+                'artisans_registered-0-DELETE': 'on',
+                'businesses_registered-TOTAL_FORMS': '0',
+                'businesses_registered-INITIAL_FORMS': '0',
+                'businesses_registered-MIN_NUM_FORMS': '0',
+                'businesses_registered-MAX_NUM_FORMS': '0',
+                '_continue': 'Save and continue editing',
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(ArtisanProfile.objects.filter(pk=profile.pk).exists(), "must detach, never delete the profile")
+        profile.refresh_from_db()
+        self.assertIsNone(profile.registered_by_id)

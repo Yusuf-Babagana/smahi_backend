@@ -1,0 +1,67 @@
+{% extends "admin/base_site.html" %}
+{% load i18n l10n admin_urls static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script src="{% static 'admin/js/cancel.js' %}" async></script>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} delete-confirmation{% endblock %}
+
+{% block content %}
+    <div class="border border-base-200 rounded-default shadow-xs dark:border-base-800">
+        <p class="font-semibold p-4 text-font-important-light dark:text-font-important-dark">
+            {{ title }}
+        </p>
+
+        <div class="border-t border-base-200 p-4 dark:border-base-800">
+            <p class="text-font-subtle-light text-xs dark:text-font-subtle-dark">
+                {{ help_text }}
+            </p>
+        </div>
+
+        <form method="post" class="border-t border-base-200 p-4 dark:border-base-800">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="{{ action_name }}">
+            <input type="hidden" name="apply" value="1">
+            <input type="hidden" name="{{ action_checkbox_name }}" value="{{ coordinator.pk|unlocalize }}">
+
+            {% if eligible %}
+                <label class="block font-semibold mb-2 text-font-important-light dark:text-font-important-dark">
+                    {{ select_label }}
+                </label>
+                <ul class="leading-relaxed text-font-default-light dark:text-font-default-dark" style="max-height: 24rem; overflow-y: auto;">
+                    {% for agent in eligible %}
+                        <li class="py-1">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="agent_ids" value="{{ agent.pk|unlocalize }}">
+                                <span>
+                                    {{ agent.email }}
+                                    {% if agent.lga %} — {{ agent.lga.name }}{% endif %}
+                                    {% if agent.sponsor_coordinator %}
+                                        <span class="text-font-subtle-light text-xs dark:text-font-subtle-dark">(currently under {{ agent.sponsor_coordinator.email }})</span>
+                                    {% else %}
+                                        <span class="text-font-subtle-light text-xs dark:text-font-subtle-dark">(unclaimed)</span>
+                                    {% endif %}
+                                </span>
+                            </label>
+                        </li>
+                    {% endfor %}
+                </ul>
+
+                <div class="flex items-center gap-3 mt-4">
+                    <input type="submit" value="{% translate 'Assign selected' %}"
+                        class="bg-primary-600 cursor-pointer font-medium px-4 py-2.5 rounded-default text-white text-sm hover:bg-primary-700">
+                    <a href="#" class="cancel-link text-font-default-light text-sm dark:text-font-default-dark">{% translate "Cancel" %}</a>
+                </div>
+            {% else %}
+                <p class="text-font-default-light text-sm dark:text-font-default-dark">
+                    {% translate "No eligible agents found in this coordinator's state." %}
+                </p>
+                <div class="flex items-center gap-3 mt-4">
+                    <a href="#" class="cancel-link text-font-default-light text-sm dark:text-font-default-dark">{% translate "Back" %}</a>
+                </div>
+            {% endif %}
+        </form>
+    </div>
+{% endblock %}
