@@ -3,7 +3,14 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from core.admin_views import verify_user_from_dashboard
+
 urlpatterns = [
+    # Must come before 'admin/' below — admin.site.urls ends in its own
+    # catch_all_view, which would otherwise swallow this path first (same
+    # reasoning as the comment on 'admin/' itself: whichever pattern is
+    # tried first for a given prefix wins).
+    path('admin/verify-user/<int:user_id>/', verify_user_from_dashboard, name='admin-dashboard-verify'),
     # Deliberately NOT mounted at '' (site root) — Django admin ships a
     # catch-all view (for a friendly 404/login-redirect on a mistyped
     # admin URL) that, mounted at the root, swallows every request that

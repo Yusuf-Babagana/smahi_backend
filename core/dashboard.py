@@ -2,7 +2,7 @@ import json
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
 from django.urls import reverse
 from django.utils import timezone
@@ -107,6 +107,20 @@ def dashboard_callback(request, context):
     )
     context['users_chart'], context['users_chart_empty'] = _weekly_trend(
         User.objects, 'date_joined', 'New users'
+    )
+
+    # One-tap verification widget — mirrors the same "Pending verification"
+    # section on the mobile app's admin dashboard (adminAPI.
+    # getPendingVerifications / app/admin/dashboard.tsx), routed here
+    # through verify_user_from_dashboard (core/admin_views.py) since this
+    # page is session-authenticated, not JWT. Capped at 10 — "Review
+    # Verifications" in quick_actions below is the full, filterable list.
+    context['pending_verification_users'] = list(
+        User.objects.filter(
+            Q(role='artisan', artisan_profile__verification_status='pending') |
+            Q(role='business', business_profile__verification_status='pending'),
+            account_status='active',
+        ).select_related('state').order_by('-created_at')[:10]
     )
 
     context['quick_actions'] = [

@@ -346,9 +346,10 @@ class AgentArtisanListView(generics.ListAPIView):
     verification status — unlike the public ArtisanViewSet list, which
     hides offline/unavailable artisans.
 
-    Scope is ownership-based, not territory-based: a plain agent sees only
-    the artisans they personally registered; a state_coordinator sees their
-    own direct registrations plus everything registered under their agents
+    Scope is ownership-based, not territory-based: a plain agent sees the
+    artisans they personally registered plus anyone who redeemed their own
+    referral code on self-registration; a state_coordinator sees their own
+    direct registrations plus everything registered under their agents
     (same chain CoordinatorAgentListView/_recruited_query already use) —
     never a colleague coordinator's or a colleague agent's registrations,
     even when they cover the same LGA/state (an LGA normally has several
@@ -1909,6 +1910,55 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance.is_active = False
         instance.account_status = 'inactive'
         instance.save(update_fields=['is_active', 'account_status'])
+
+
+class AdminPendingVerificationView(generics.ListAPIView):
+    """Artisans/businesses still awaiting verification, across every
+    state — the list behind the admin dashboard's "Verification" section.
+    Unscoped by design (Admin oversees everything), unlike
+    AgentArtisanListView/_verification_requests_visible_to which are
+    scoped to the calling agent/coordinator's own LGA/state."""
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    pagination_class = None
+
+    def get_queryset(self):
+        return User.objects.filter(
+            Q(role='artisan', artisan_profile__verification_status='pending') |
+            Q(role='business', business_profile__verification_status='pending'),
+            account_status='active',
+        ).select_related('state').order_by('-created_at')
+
+
+class AdminVerifyUserView(APIView):
+    """One-tap verification for Admin — approves an artisan/business
+    directly from the mobile dashboard instead of requiring Django Admin.
+    Deliberately the same approve_artisan_verification/
+    approve_business_verification functions AgentVerifyArtisanView/
+    AgentVerifyBusinessView use (core/services.py), including the same
+    registration-fee-paid guard, so this shortcut doesn't skip any rule
+    those endpoints enforce — it only removes the LGA/state scoping,
+    which Admin is exempt from everywhere else in this file too."""
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request, user_id):
+        try:
+            target_user = User.objects.get(id=user_id, role__in=['artisan', 'business'])
+        except User.DoesNotExist:
+            return Response({'error': 'Artisan or business not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if getattr(settings, 'PAYSTACK_SECRET_KEY', '') and not target_user.registration_fee_paid:
+            return Response(
+                {'error': 'Cannot verify this account: registration fee of ₦2,500 has not been paid.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if target_user.role == 'artisan':
+            approve_artisan_verification(target_user, reviewed_by=request.user)
+        else:
+            approve_business_verification(target_user, reviewed_by=request.user)
+
+        return Response({'message': 'Account verified successfully.'})
 
 
 class AdminCoordinatorListView(generics.ListAPIView):

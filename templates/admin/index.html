@@ -33,6 +33,31 @@
     </div>
     {% endif %}
 
+    {% if pending_verification_users %}
+    <div class="mb-6">
+        {% component "unfold/components/card.html" with title="Pending verification" %}
+            <div class="flex flex-col divide-y divide-base-200 dark:divide-base-800">
+                {% for u in pending_verification_users %}
+                <div class="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                    <div class="min-w-0">
+                        <div class="font-medium text-font-important-light dark:text-font-important-dark truncate">
+                            {{ u.get_full_name|default:u.email }}
+                        </div>
+                        <div class="text-xs text-font-subtle-light dark:text-font-subtle-dark mt-0.5">
+                            {{ u.get_role_display|default:u.role }}{% if u.state %} · {{ u.state.name }}{% endif %}
+                        </div>
+                    </div>
+                    <form method="post" action="{% url 'admin-dashboard-verify' u.id %}" class="shrink-0">
+                        {% csrf_token %}
+                        {% component "unfold/components/button.html" with submit=True variant="primary" size="sm" icon="check" %}Verify{% endcomponent %}
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+        {% endcomponent %}
+    </div>
+    {% endif %}
+
     <div class="grid gap-4 grid-cols-1 md:grid-cols-2 mb-6">
         <div>
             {% component "unfold/components/card.html" with title="Bookings — last 7 days" %}

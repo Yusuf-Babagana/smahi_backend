@@ -9,6 +9,7 @@ from .views import (
     AgentRegisterBusinessView, AgentInitializeRegistrationPaymentView, AgentVerifyRegistrationPaymentView,
     AdminStatsView, AdminUserListView, AdminUserDetailView, AdminCoordinatorListView,
     AdminCreateCoordinatorView, AdminCoordinatorStatusView,
+    AdminPendingVerificationView, AdminVerifyUserView,
 )
 
 router = DefaultRouter()
@@ -47,6 +48,8 @@ urlpatterns = [
     path('admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
     path('admin/users/', AdminUserListView.as_view(), name='admin-users'),
     path('admin/users/<int:pk>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
+    path('admin/verification/pending/', AdminPendingVerificationView.as_view(), name='admin-verification-pending'),
+    path('admin/verification/<int:user_id>/verify/', AdminVerifyUserView.as_view(), name='admin-verify-user'),
     path('admin/coordinators/', AdminCoordinatorListView.as_view(), name='admin-coordinators'),
     path('admin/coordinators/create/', AdminCreateCoordinatorView.as_view(), name='admin-coordinator-create'),
     path('admin/coordinators/<int:coordinator_id>/status/', AdminCoordinatorStatusView.as_view(), name='admin-coordinator-status'),
