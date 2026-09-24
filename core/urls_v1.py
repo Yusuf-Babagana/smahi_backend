@@ -7,7 +7,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    DisputeReportViewSet, CoordinatorAgentListView, CoordinatorAgentStatusView,
+    DisputeReportViewSet, PortfolioItemViewSet, CoordinatorAgentListView, CoordinatorAgentStatusView,
     CoordinatorCreateAgentView, CoordinatorReportsView, CoordinatorActivityLogView,
     CoordinatorLGAOverviewView, CoordinatorAgentSearchView, CoordinatorRegisteredUserDetailView,
     FavoriteListView, FavoriteToggleView, PresenceHeartbeatView,
@@ -17,6 +17,7 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'disputes', DisputeReportViewSet, basename='dispute')
+router.register(r'portfolio', PortfolioItemViewSet, basename='portfolio')
 
 urlpatterns = [
     path('', include(router.urls)),

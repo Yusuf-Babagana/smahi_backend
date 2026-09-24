@@ -5,7 +5,7 @@ from django.template.response import TemplateResponse
 from django.utils import timezone
 from .models import (
     Category, ServiceTaxonomy, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto,
-    Review, RegistrationPayment, PlatformSettings, DisputeReport, Favorite, ActivityLog,
+    PortfolioItem, Review, RegistrationPayment, PlatformSettings, DisputeReport, Favorite, ActivityLog,
 )
 from .referrals import ACTIVE_STATUSES
 from notifications.events import emit
@@ -224,6 +224,14 @@ class BookingAdmin(admin.ModelAdmin):
     search_fields = ['client__email', 'artisan__email', 'service_description']
     readonly_fields = ['created_at', 'updated_at']
     inlines = [BookingPhotoInline]
+
+
+@admin.register(PortfolioItem)
+class PortfolioItemAdmin(admin.ModelAdmin):
+    list_display = ['user', 'kind', 'caption', 'price_label', 'created_at']
+    list_filter = ['kind', 'created_at']
+    search_fields = ['user__email', 'user__first_name', 'user__last_name', 'caption']
+    readonly_fields = ['created_at']
 
 
 @admin.register(Review)

@@ -10,8 +10,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import ActivityLog, ArtisanProfile, BusinessProfile, Booking, Category, ServiceTaxonomy
-from .views import AIChatView, AIIntentClassifierView
+from .models import ActivityLog, ArtisanProfile, BusinessProfile, Booking, Category, ServiceTaxonomy, VerificationRequest
+from .views import AIChatView, AIIntentClassifierView, PortfolioItemViewSet
 
 User = get_user_model()
 
@@ -5484,3 +5484,225 @@ class ReassignAgentCoordinatorAndAssignClientAgentTests(CoordinatorDashboardTest
         self.assertTrue(ArtisanProfile.objects.filter(pk=profile.pk).exists(), "must detach, never delete the profile")
         profile.refresh_from_db()
         self.assertIsNone(profile.registered_by_id)
+
+
+class VerificationIntegrityTests(APITestCase):
+    """Regression coverage for a real data-integrity bug: rejecting a
+    previously-approved artisan/business used to leave User.is_verified
+    True (the client-facing badge survived an explicit reject), and
+    VerificationRequestViewSet.process had no guard against reprocessing
+    an already-decided request."""
+
+    def test_rejecting_a_previously_approved_artisan_clears_is_verified(self):
+        from .services import approve_artisan_verification, reject_artisan_verification
+
+        artisan = User.objects.create_user(
+            email='reject_verify_artisan@test.com', password='pass12345', role='artisan',
+        )
+        category = Category.objects.create(name='Plumbing', category_type='artisan')
+        ArtisanProfile.objects.create(user=artisan, category=category, verification_status='pending')
+        admin = User.objects.create_user(email='reject_verify_admin@test.com', password='pass12345', role='admin')
+
+        approve_artisan_verification(artisan, reviewed_by=admin)
+        artisan.refresh_from_db()
+        self.assertTrue(artisan.is_verified)
+
+        reject_artisan_verification(artisan, reviewed_by=admin, reason='fraud complaint')
+        artisan.refresh_from_db()
+        self.assertFalse(artisan.is_verified, "reject must always clear is_verified, even after a prior approve")
+        self.assertEqual(artisan.artisan_profile.verification_status, 'rejected')
+
+    def test_rejecting_a_previously_approved_business_clears_is_verified(self):
+        from .services import approve_business_verification, reject_business_verification
+
+        business = User.objects.create_user(
+            email='reject_verify_business@test.com', password='pass12345', role='business',
+        )
+        category = Category.objects.create(name='Catering', category_type='business')
+        BusinessProfile.objects.create(user=business, category=category, business_name='X', verification_status='pending')
+        admin = User.objects.create_user(email='reject_verify_business_admin@test.com', password='pass12345', role='admin')
+
+        approve_business_verification(business, reviewed_by=admin)
+        business.refresh_from_db()
+        self.assertTrue(business.is_verified)
+
+        reject_business_verification(business, reviewed_by=admin, reason='address could not be confirmed')
+        business.refresh_from_db()
+        self.assertFalse(business.is_verified)
+
+    def test_processing_an_already_decided_request_does_not_corrupt_state(self):
+        from locations.models import Country, State
+
+        country = Country.objects.create(name='Nigeria')
+        kano = State.objects.create(name='Kano', country=country)
+        coordinator = User.objects.create_user(
+            email='reprocess_coord@test.com', password='pass12345', role='state_coordinator',
+            account_status='active', state=kano,
+        )
+        artisan = User.objects.create_user(
+            email='reprocess_artisan@test.com', password='pass12345', role='artisan', state=kano,
+        )
+        vr = VerificationRequest.objects.create(artisan=artisan, document_image_1='verification_documents/x.jpg')
+
+        self.client.force_authenticate(user=coordinator)
+        url = f'/api/verification/{vr.id}/process/'
+
+        approve_response = self.client.post(url, {'status': 'approved'}, format='json')
+        self.assertEqual(approve_response.status_code, 200, approve_response.content)
+
+        # Whether this 400s (the explicit status != 'pending' guard) or
+        # 404s (the agent/coordinator branch of _verification_requests_visible_to
+        # already excludes non-pending requests) is secondary — either is a
+        # safe "reprocessing blocked" outcome. What matters is nothing changes.
+        reprocess_response = self.client.post(url, {'status': 'rejected'}, format='json')
+        self.assertIn(reprocess_response.status_code, (400, 404))
+
+        vr.refresh_from_db()
+        artisan.refresh_from_db()
+        self.assertEqual(vr.status, 'approved')
+        self.assertTrue(artisan.is_verified)
+        self.assertEqual(artisan.artisan_profile.verification_status, 'approved')
+
+    def test_non_artisan_cannot_submit_a_verification_request(self):
+        # Previously any authenticated role could POST a VerificationRequest
+        # naming themselves — an agent later approving it would hand out
+        # is_verified=True and a bogus ArtisanProfile to a non-artisan account.
+        client_user = User.objects.create_user(
+            email='fake_verify_client@test.com', password='pass12345', role='client',
+        )
+        self.client.force_authenticate(user=client_user)
+        response = self.client.post('/api/verification/', {'additional_info': 'hi'}, format='multipart')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(VerificationRequest.objects.count(), 0)
+
+
+class AdminSuspendSyncsIsActiveTests(APITestCase):
+    """Regression coverage: PATCHing account_status via the admin Edit
+    Account screen (AdminUserDetailView / AdminUserUpdateSerializer) used
+    to leave is_active untouched — a client/coordinator/admin "suspended"
+    this way kept completely normal access, since IsClient/IsAdmin/
+    IsStateAgent's coordinator branch only ever check role, never
+    account_status."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            email='suspend_admin@test.com', password='pass12345', first_name='A', last_name='B',
+        )
+        self.client.force_authenticate(user=self.admin)
+
+    def test_suspending_a_client_clears_is_active(self):
+        target = User.objects.create_user(
+            email='suspend_target_client@test.com', password='pass12345', role='client', account_status='active',
+        )
+        self.assertTrue(target.is_active)
+
+        response = self.client.patch(f'/api/admin/users/{target.id}/', {'account_status': 'suspended'}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+
+        target.refresh_from_db()
+        self.assertEqual(target.account_status, 'suspended')
+        self.assertFalse(target.is_active, "is_active must follow account_status, not stay independently True")
+
+    def test_reactivating_sets_is_active_true(self):
+        target = User.objects.create_user(
+            email='suspend_target_coord@test.com', password='pass12345', role='state_coordinator',
+            account_status='suspended', is_active=False,
+        )
+        response = self.client.patch(f'/api/admin/users/{target.id}/', {'account_status': 'active'}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+
+        target.refresh_from_db()
+        self.assertTrue(target.is_active)
+
+
+class RegistrationFeeSourceOfTruthTests(APITestCase):
+    """PlatformSettings.registration_fee is the one source of truth every
+    payment call site should read — previously every call site read a
+    separate hardcoded settings.ARTISAN_REGISTRATION_FEE constant instead,
+    so editing the fee in Django Admin silently had no effect."""
+
+    def test_helper_reads_platform_settings_not_the_hardcoded_constant(self):
+        from .models import PlatformSettings
+        from .services import get_registration_fee_naira
+
+        self.assertEqual(get_registration_fee_naira(), 2500)
+
+        settings_row = PlatformSettings.current()
+        settings_row.registration_fee = 3500
+        settings_row.save()
+
+        self.assertEqual(get_registration_fee_naira(), 3500)
+
+
+class PortfolioItemTests(APITestCase):
+    """The showcase-photo feature backing app/business/dashboard.tsx and
+    app/artisan/(tabs)/portfolio.tsx's "Photo showcase" section — one
+    model shared by both roles (PortfolioItem's own docstring)."""
+
+    @staticmethod
+    def _tiny_jpeg(name='photo.jpg'):
+        from io import BytesIO
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        buf = BytesIO()
+        Image.new('RGB', (2, 2), color='blue').save(buf, format='JPEG')
+        buf.seek(0)
+        return SimpleUploadedFile(name, buf.read(), content_type='image/jpeg')
+
+    def setUp(self):
+        self.artisan = User.objects.create_user(
+            email='portfolio_artisan@test.com', password='pass12345', role='artisan',
+        )
+        self.client_user = User.objects.create_user(
+            email='portfolio_client@test.com', password='pass12345', role='client',
+        )
+
+    def test_artisan_can_add_and_delete_own_photo(self):
+        self.client.force_authenticate(user=self.artisan)
+        create_response = self.client.post(
+            '/api/v1/portfolio/',
+            {'image': self._tiny_jpeg(), 'caption': 'Finished job', 'kind': 'service'},
+            format='multipart',
+        )
+        self.assertEqual(create_response.status_code, 201, create_response.content)
+        item_id = create_response.data['id']
+
+        delete_response = self.client.delete(f'/api/v1/portfolio/{item_id}/')
+        self.assertEqual(delete_response.status_code, 204)
+
+    def test_client_cannot_add_a_photo(self):
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.post('/api/v1/portfolio/', {'image': self._tiny_jpeg()}, format='multipart')
+        self.assertEqual(response.status_code, 403)
+
+    def test_another_user_cannot_delete_someone_elses_photo(self):
+        self.client.force_authenticate(user=self.artisan)
+        create_response = self.client.post(
+            '/api/v1/portfolio/', {'image': self._tiny_jpeg()}, format='multipart',
+        )
+        item_id = create_response.data['id']
+
+        self.client.force_authenticate(user=self.client_user)
+        delete_response = self.client.delete(f'/api/v1/portfolio/{item_id}/')
+        self.assertEqual(delete_response.status_code, 404)
+
+    def test_public_list_is_filterable_by_user_for_a_future_client_facing_screen(self):
+        self.client.force_authenticate(user=self.artisan)
+        self.client.post('/api/v1/portfolio/', {'image': self._tiny_jpeg(), 'kind': 'for_sale', 'price_label': '₦18,000'}, format='multipart')
+        self.client.logout()
+
+        response = self.client.get(f'/api/v1/portfolio/?user={self.artisan.id}')
+        self.assertEqual(response.status_code, 200)
+        results = response.data['results'] if isinstance(response.data, dict) and 'results' in response.data else response.data
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['kind'], 'for_sale')
+
+    def test_max_items_enforced(self):
+        self.client.force_authenticate(user=self.artisan)
+        for _ in range(PortfolioItemViewSet.MAX_ITEMS):
+            resp = self.client.post('/api/v1/portfolio/', {'image': self._tiny_jpeg()}, format='multipart')
+            self.assertEqual(resp.status_code, 201, resp.content)
+
+        over_limit_response = self.client.post('/api/v1/portfolio/', {'image': self._tiny_jpeg()}, format='multipart')
+        self.assertEqual(over_limit_response.status_code, 400)

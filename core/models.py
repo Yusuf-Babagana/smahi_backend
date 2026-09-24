@@ -442,6 +442,38 @@ class BookingPhoto(models.Model):
         return f"Photo for Booking #{self.booking_id}"
 
 
+class PortfolioItem(models.Model):
+    """A photo an artisan or business adds to showcase their work, their
+    storefront, or something they sell — the client-facing "showcase"
+    feature on both role dashboards. One model for both roles (KIND
+    distinguishes a plain work photo from one with a price) rather than
+    two near-identical tables, since the upload/list/delete lifecycle is
+    identical either way."""
+    KIND_CHOICES = [
+        ('service', 'Service'),
+        ('for_sale', 'For sale'),
+    ]
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='portfolio_items',
+        limit_choices_to={'role__in': ['artisan', 'business']},
+    )
+    image = models.ImageField(upload_to='portfolio/')
+    caption = models.CharField(max_length=120, blank=True)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default='service')
+    # A display label ("₦18,000", "From ₦5,000"), not a real money amount —
+    # nothing here is charged or reconciled through the platform, it is
+    # only ever shown back on the photo. Blank unless kind='for_sale'.
+    price_label = models.CharField(max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Portfolio photo for {self.user_id}"
+
+
 class Review(models.Model):
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='review')
     rating = models.PositiveIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])

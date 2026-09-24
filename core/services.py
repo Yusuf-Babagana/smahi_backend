@@ -11,11 +11,25 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import ArtisanProfile, BusinessProfile, VerificationRequest, ActivityLog
+from .models import ArtisanProfile, BusinessProfile, VerificationRequest, ActivityLog, PlatformSettings
 from notifications.events import emit
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+def get_registration_fee_naira():
+    """The artisan/business registration fee, in Naira — the one source of
+    truth every payment call site (self-service and agent-collected) reads.
+    Previously every call site read settings.ARTISAN_REGISTRATION_FEE, a
+    separate hardcoded constant, instead of PlatformSettings.registration_fee
+    — the field that model's own docstring says exists specifically so this
+    fee can change "without a deploy." Editing it in Django Admin had no
+    effect on what was actually charged. int(): DecimalField, but every
+    caller does exact-Naira arithmetic (×100 for kobo, or compares straight
+    against a whole-Naira value from Paystack) and none wants fractional
+    kobo from a stray decimal."""
+    return int(PlatformSettings.current().registration_fee)
 
 
 def log_activity(actor, action, target_user=None, lga=None, state=None,
@@ -83,11 +97,18 @@ def approve_artisan_verification(artisan_user, reviewed_by):
 
 
 def reject_artisan_verification(artisan_user, reviewed_by, reason=''):
-    """Reject an artisan's verification. Does not touch is_verified if it
-    was never True — this only ever moves pending -> rejected."""
+    """Reject an artisan's verification — including revoking an existing
+    approval. Always clears is_verified unconditionally rather than only
+    when it was never True: a reject reachable after a prior approve
+    (re-review following a complaint, a reprocessed request) must always
+    mean "not verified," never leave the client-facing badge showing on
+    an account that was just explicitly rejected."""
     artisan_profile, _ = ArtisanProfile.objects.get_or_create(user=artisan_user)
     artisan_profile.verification_status = 'rejected'
     artisan_profile.save(update_fields=['verification_status'])
+
+    artisan_user.is_verified = False
+    artisan_user.save(update_fields=['is_verified'])
 
     VerificationRequest.objects.filter(artisan=artisan_user, status='pending').update(
         status='rejected', rejection_reason=reason, reviewed_by=reviewed_by, reviewed_at=timezone.now()
@@ -132,11 +153,16 @@ def approve_business_verification(business_user, reviewed_by):
 
 
 def reject_business_verification(business_user, reviewed_by, reason=''):
-    """Reject a business's verification. Does not touch is_verified if it
-    was never True — this only ever moves pending -> rejected."""
+    """Reject a business's verification — including revoking an existing
+    approval. See reject_artisan_verification's docstring: is_verified is
+    always cleared unconditionally, never left True after an explicit
+    reject."""
     business_profile, _ = BusinessProfile.objects.get_or_create(user=business_user)
     business_profile.verification_status = 'rejected'
     business_profile.save(update_fields=['verification_status'])
+
+    business_user.is_verified = False
+    business_user.save(update_fields=['is_verified'])
 
     emit(
         'verification_rejected',

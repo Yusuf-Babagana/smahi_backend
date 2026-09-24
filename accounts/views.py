@@ -13,6 +13,7 @@ import uuid
 import requests as http_requests
 from .serializers import UserRegistrationSerializer, UserSerializer, UserUpdateSerializer
 from notifications.services import send_otp, verify_otp, OTPError, OTPCooldown
+from core.services import get_registration_fee_naira
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ def register_view(request):
             }
             if existing.role == 'artisan':
                 response_data['requires_payment'] = existing.account_status == 'inactive'
-                response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
+                response_data['payment_amount'] = get_registration_fee_naira()
             return Response(response_data, status=status.HTTP_200_OK)
 
     serializer = UserRegistrationSerializer(data=request.data)
@@ -176,7 +177,7 @@ def register_view(request):
         # Tell the frontend that an artisan or business must pay before they can use the app
         if user.role in ('artisan', 'business'):
             response_data['requires_payment'] = True
-            response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
+            response_data['payment_amount'] = get_registration_fee_naira()
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -258,7 +259,7 @@ def login_view(request):
     # Artisans and businesses who haven't paid the registration fee need to be redirected
     if user.role in ('artisan', 'business') and not user.registration_fee_paid:
         response_data['requires_payment'] = True
-        response_data['payment_amount'] = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500)
+        response_data['payment_amount'] = get_registration_fee_naira()
 
         # Self-heal accounts stuck 'inactive' from before payments were
         # configured (or while they are switched off): they owe the fee but
@@ -636,7 +637,7 @@ def initialize_registration_payment(request):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    amount_kobo = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500) * 100
+    amount_kobo = get_registration_fee_naira() * 100
     reference = f"SMAHI-REG-{uuid.uuid4().hex[:12].upper()}"
 
     # Where Paystack redirects the browser after payment. The app's WebView
@@ -696,7 +697,7 @@ def initialize_registration_payment(request):
     return Response({
         'authorization_url': data['data']['authorization_url'],
         'reference': reference,
-        'amount': getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500),
+        'amount': get_registration_fee_naira(),
     })
 
 

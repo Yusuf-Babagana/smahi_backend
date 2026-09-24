@@ -31,7 +31,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from django.http import FileResponse, Http404
 from django.db.models import Q, F, Count, Sum, Exists, OuterRef
-from .models import Category, ServiceTaxonomy, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, RegistrationPayment, DisputeReport, Favorite, ActivityLog
+from .models import Category, ServiceTaxonomy, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, PortfolioItem, Review, RegistrationPayment, DisputeReport, Favorite, ActivityLog
 from notifications.models import DeviceToken
 from .serializers import (
     CategorySerializer, FlatCategorySerializer,
@@ -40,14 +40,14 @@ from .serializers import (
     VerificationRequestSerializer, VerificationProcessSerializer,
     BookingSerializer, BookingCreateSerializer, BookingUpdateSerializer,
     ReviewSerializer, PublicReviewSerializer, DisputeReportSerializer,
-    BookingPhotoSerializer, AgentOverviewSerializer, CoordinatorOverviewSerializer,
+    BookingPhotoSerializer, PortfolioItemSerializer, AgentOverviewSerializer, CoordinatorOverviewSerializer,
     ActivityLogSerializer, AgentServiceRequestSerializer,
 )
 from notifications.events import emit
 from .services import (
     approve_artisan_verification, reject_artisan_verification,
     approve_business_verification, reject_business_verification,
-    log_activity, search_agents,
+    log_activity, search_agents, get_registration_fee_naira,
 )
 from .referrals import (
     coordinator_directory_entry, effective_coordinator, generate_referral_code,
@@ -964,7 +964,7 @@ class AgentInitializeRegistrationPaymentView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        amount_kobo = getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500) * 100
+        amount_kobo = get_registration_fee_naira() * 100
         reference = f"SMAHI-REG-{uuid.uuid4().hex[:12].upper()}"
         callback_url = request.build_absolute_uri(f'/api/auth/payments/callback/?reference={reference}')
         if callback_url.startswith('http://') and not any(
@@ -1010,7 +1010,7 @@ class AgentInitializeRegistrationPaymentView(APIView):
         return Response({
             'authorization_url': data['data']['authorization_url'],
             'reference': reference,
-            'amount': getattr(settings, 'ARTISAN_REGISTRATION_FEE', 2500),
+            'amount': get_registration_fee_naira(),
         })
 
 
@@ -1710,7 +1710,7 @@ class AgentVerifyArtisanView(APIView):
 
         if getattr(settings, 'PAYSTACK_SECRET_KEY', '') and not artisan_user.registration_fee_paid:
             return Response(
-                {'error': 'Cannot verify this artisan: registration fee of ₦2,500 has not been paid.'},
+                {'error': f'Cannot verify this artisan: registration fee of ₦{get_registration_fee_naira():,} has not been paid.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1758,7 +1758,7 @@ class AgentVerifyBusinessView(APIView):
 
         if new_status == 'approved' and getattr(settings, 'PAYSTACK_SECRET_KEY', '') and not business_user.registration_fee_paid:
             return Response(
-                {'error': 'Cannot verify this business: registration fee of ₦2,500 has not been paid.'},
+                {'error': f'Cannot verify this business: registration fee of ₦{get_registration_fee_naira():,} has not been paid.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1901,6 +1901,26 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    def perform_update(self, serializer):
+        # account_status and is_active used to be two independent writable
+        # fields here with nothing syncing them — app/admin/user-detail.tsx
+        # only exposes an account_status picker (no is_active control at
+        # all), so PATCHing e.g. 'suspended' left is_active untouched and
+        # true. IsClient/IsAdmin/IsStateAgent's coordinator branch only ever
+        # check role, never account_status, so a client/coordinator/admin
+        # "suspended" this way kept completely normal access — the admin UI
+        # looked like it worked while nothing was actually restricted.
+        # Mirrors set_agent_status/set_coordinator_status (core/services.py),
+        # which already keep is_active in lockstep with account_status for
+        # the dedicated agent/coordinator status endpoints; save(**kwargs)
+        # overrides validated_data, so this wins even if is_active was also
+        # present in the request.
+        account_status = serializer.validated_data.get('account_status')
+        if account_status is not None:
+            serializer.save(is_active=(account_status == 'active'))
+        else:
+            serializer.save()
+
     def destroy(self, request, *args, **kwargs):
         if self.get_object().id == request.user.id:
             return Response({'error': 'You cannot deactivate your own account.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1949,7 +1969,7 @@ class AdminVerifyUserView(APIView):
 
         if getattr(settings, 'PAYSTACK_SECRET_KEY', '') and not target_user.registration_fee_paid:
             return Response(
-                {'error': 'Cannot verify this account: registration fee of ₦2,500 has not been paid.'},
+                {'error': f'Cannot verify this account: registration fee of ₦{get_registration_fee_naira():,} has not been paid.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2178,11 +2198,14 @@ def _verification_requests_visible_to(user):
         return VerificationRequest.objects.filter(artisan=user)
     elif user.role == 'agent':
         # An agent is entitled to only their own LGA — same reasoning
-        # as AgentArtisanListView/AgentVerifyArtisanView.
+        # as AgentArtisanListView/AgentVerifyArtisanView. artisan__role
+        # is a defense-in-depth filter, not the only guard — see
+        # VerificationRequestViewSet.create, which is what actually stops
+        # a non-artisan account from having a request to see here at all.
         if not user.lga_id:
             return VerificationRequest.objects.none()
         return VerificationRequest.objects.filter(
-            status='pending', artisan__lga_id=user.lga_id
+            status='pending', artisan__role='artisan', artisan__lga_id=user.lga_id
         )
     elif user.role == 'state_coordinator':
         # Scoped to the caller's own state, consistent with the
@@ -2190,7 +2213,7 @@ def _verification_requests_visible_to(user):
         if not user.state_id:
             return VerificationRequest.objects.none()
         return VerificationRequest.objects.filter(
-            status='pending', artisan__state_id=user.state_id
+            status='pending', artisan__role='artisan', artisan__state_id=user.state_id
         )
     return VerificationRequest.objects.none()
 
@@ -2202,12 +2225,42 @@ class VerificationRequestViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return _verification_requests_visible_to(self.request.user)
 
+    def create(self, request, *args, **kwargs):
+        # Previously any authenticated role (client, business, agent...)
+        # could submit a VerificationRequest naming themselves — the
+        # model's limit_choices_to={'role': 'artisan'} on the artisan FK
+        # is only a Django-admin-form hint, never enforced by the ORM or
+        # by a plain .save(). An agent later approving that request would
+        # hand out is_verified=True and a bogus ArtisanProfile to an
+        # account that never registered as an artisan.
+        if request.user.role != 'artisan':
+            return Response(
+                {'error': 'Only artisans can submit a verification request.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(artisan=self.request.user)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsStateAgent])
     def process(self, request, pk=None):
         verification_request = self.get_object()
+
+        # Without this, the same request could be approved then rejected
+        # (or reprocessed twice) by different agents/coordinators with
+        # object access, leaving VerificationRequest.status,
+        # ArtisanProfile.verification_status and User.is_verified in three
+        # disagreeing states — reject_*'s internal
+        # `.filter(status='pending')` update would silently no-op on an
+        # already-decided request while the profile/is_verified fields
+        # still changed underneath it.
+        if verification_request.status != 'pending':
+            return Response(
+                {'error': 'This request has already been reviewed.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = VerificationProcessSerializer(data=request.data)
 
         if serializer.is_valid():
@@ -2484,6 +2537,54 @@ class BookingViewSet(viewsets.ModelViewSet):
             BookingPhotoSerializer(photo, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class PortfolioItemViewSet(viewsets.ModelViewSet):
+    """An artisan's or business's own showcase photos (PortfolioItem —
+    see its own docstring). `list` is deliberately public: with ?user=<id>
+    it is how a future client-facing profile/discovery screen would read
+    someone's showcase, same public-by-default shape as ArtisanViewSet.
+    Every other action stays scoped to the caller's own items — get_queryset
+    filters to request.user for them, so reaching someone else's item 404s
+    instead of 403ing, the same pattern BookingViewSet's own scoping uses."""
+    serializer_class = PortfolioItemSerializer
+    parser_classes = [MultiPartParser, FormParser]
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+
+    MAX_ITEMS = 12
+
+    def get_permissions(self):
+        if self.action == 'list':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        qs = PortfolioItem.objects.select_related('user')
+        if self.action == 'list':
+            user_id = self.request.query_params.get('user')
+            if user_id:
+                return qs.filter(user_id=user_id)
+            if self.request.user.is_authenticated:
+                return qs.filter(user=self.request.user)
+            return PortfolioItem.objects.none()
+        # retrieve/update/partial_update/destroy — always only the caller's own.
+        return qs.filter(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role not in ('artisan', 'business'):
+            return Response(
+                {'error': 'Only artisans and businesses can add showcase photos.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if PortfolioItem.objects.filter(user=request.user).count() >= self.MAX_ITEMS:
+            return Response(
+                {'error': f'You can have up to {self.MAX_ITEMS} photos — remove one first.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().create(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
 class ReviewViewSet(viewsets.ModelViewSet):

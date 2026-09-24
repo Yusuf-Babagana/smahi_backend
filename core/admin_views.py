@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .services import approve_artisan_verification, approve_business_verification
+from .services import approve_artisan_verification, approve_business_verification, get_registration_fee_naira
 
 User = get_user_model()
 
@@ -28,7 +28,7 @@ def verify_user_from_dashboard(request, user_id):
         messages.error(
             request,
             f'Cannot verify {target_user.get_full_name() or target_user.email}: '
-            'registration fee of ₦2,500 has not been paid.',
+            f'registration fee of ₦{get_registration_fee_naira():,} has not been paid.',
         )
         return redirect(reverse('admin:index'))
 

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, Review, DisputeReport, PlatformSettings, ActivityLog
+from .models import Category, ArtisanProfile, BusinessProfile, VerificationRequest, Booking, BookingPhoto, PortfolioItem, Review, DisputeReport, PlatformSettings, ActivityLog
 from accounts.serializers import UserSerializer, PublicUserSerializer
 from locations.serializers import CountryLiteSerializer, StateLiteSerializer, LGASerializer
 
@@ -265,6 +265,13 @@ class BookingPhotoSerializer(serializers.ModelSerializer):
     class Meta:
         model = BookingPhoto
         fields = ['id', 'image', 'created_at']
+
+
+class PortfolioItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PortfolioItem
+        fields = ['id', 'user', 'image', 'caption', 'kind', 'price_label', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at']
 
 
 class BookingSerializer(serializers.ModelSerializer):
