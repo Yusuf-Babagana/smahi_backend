@@ -2320,18 +2320,17 @@ class BookingViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_queryset(self):
+        # Every role can purchase/book/hire, so every role has bookings as a
+        # CLIENT. Artisans keep their existing "jobs I was hired for" list by
+        # default (unchanged); they see their own purchases with ?as=client,
+        # and may always open/act on a single booking they are a party to.
         user = self.request.user
-        if user.role == 'client':
-            return Booking.objects.filter(client=user).select_related(
-                'client', 'artisan', 'artisan__artisan_profile',
-                'country', 'state', 'lga'
-            )
-        elif user.role == 'artisan':
-            return Booking.objects.filter(artisan=user).select_related(
-                'client', 'artisan', 'artisan__artisan_profile',
-                'country', 'state', 'lga'
-            )
-        return Booking.objects.none()
+        related = ('client', 'artisan', 'artisan__artisan_profile', 'country', 'state', 'lga')
+        if user.role == 'artisan' and self.request.query_params.get('as') != 'client':
+            if self.action == 'list':
+                return Booking.objects.filter(artisan=user).select_related(*related)
+            return Booking.objects.filter(Q(artisan=user) | Q(client=user)).select_related(*related)
+        return Booking.objects.filter(client=user).select_related(*related)
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -2341,8 +2340,8 @@ class BookingViewSet(viewsets.ModelViewSet):
         return BookingSerializer
 
     def get_permissions(self):
-        if self.action == 'create':
-            return [IsClient()]
+        # Any authenticated role may hire (see get_queryset); booking
+        # yourself is rejected in perform_create.
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -2377,6 +2376,8 @@ class BookingViewSet(viewsets.ModelViewSet):
         # Client -> Agent Dashboard connection (item 8) possible at all:
         # AgentServiceRequestsView scopes by exactly this lga/state.
         artisan = serializer.validated_data.get('artisan')
+        if artisan and artisan.pk == self.request.user.pk:
+            raise drf_serializers.ValidationError({'artisan': "You can't book yourself."})
         scheduled_date = serializer.validated_data.get('scheduled_date')
         double_booked = drf_serializers.ValidationError(
             {'scheduled_date': "This artisan already has a booking at that time. Please choose a different slot."}
@@ -2594,11 +2595,10 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'client':
-            return Review.objects.filter(booking__client=user).select_related('booking')
-        elif user.role == 'artisan':
+        if user.role == 'artisan':
             return Review.objects.filter(booking__artisan=user).select_related('booking')
-        return Review.objects.none()
+        # client and every other role: reviews of bookings they made.
+        return Review.objects.filter(booking__client=user).select_related('booking')
 
     def perform_create(self, serializer):
         booking_id = self.request.data.get('booking')
