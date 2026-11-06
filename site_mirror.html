@@ -239,7 +239,41 @@
   </header>
 
   <main>
-    <!-- ============================ HERO ============================ -->
+       <!-- ===== Partnership banner (added, animated) ===== -->
+    <section id="partnership-banner" style="position:relative; width:100%; margin:0; padding:0; overflow:hidden; background:linear-gradient(135deg,#071a33 0%,#0d2b57 55%,#0a2140 100%); line-height:0;">
+      <style>
+        @keyframes pbReveal   { from { opacity:0; transform:scale(1.06); } to { opacity:1; transform:scale(1); } }
+        @keyframes pbBreathe  { 0%,100% { transform:scale(1); } 50% { transform:scale(1.025); } }
+        @keyframes pbSheen    { 0% { left:-60%; } 60%,100% { left:130%; } }
+        @keyframes pbGoldLine { 0% { background-position:0% 50%; } 100% { background-position:200% 50%; } }
+
+        #partnership-banner .pb-img {
+          display:block; width:100%; height:auto; max-height:520px; object-fit:contain; margin:0 auto;
+          animation: pbReveal 1.2s ease-out both, pbBreathe 14s ease-in-out 1.2s infinite;
+        }
+        #partnership-banner .pb-sheen {
+          position:absolute; top:0; left:-60%; width:40%; height:100%; pointer-events:none;
+          background:linear-gradient(105deg, transparent 0%, rgba(255,255,255,.18) 50%, transparent 100%);
+          animation: pbSheen 6s ease-in-out 1.5s infinite;
+        }
+        #partnership-banner .pb-line {
+          position:absolute; left:0; bottom:0; width:100%; height:3px;
+          background:linear-gradient(90deg,#c9a227,#ffe6a6,#c9a227,#ffe6a6,#c9a227);
+          background-size:200% 100%;
+          animation: pbGoldLine 4s linear infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          #partnership-banner .pb-img, #partnership-banner .pb-sheen, #partnership-banner .pb-line { animation:none; }
+        }
+      </style>
+
+      <img class="pb-img" src="public/PARTENERSHIP.jpeg"
+           alt="S MAHI Global Services partnership announcement"
+           loading="eager" />
+      <span class="pb-sheen" aria-hidden="true"></span>
+      <span class="pb-line" aria-hidden="true"></span>
+    </section>
+    
     <section class="hero" id="home">
       <div class="container">
         <div class="hero__grid">
@@ -1005,9 +1039,9 @@
                 <div>
                   <h4>Email</h4>
                   <div class="contact-sub">
-                    <a href="/cdn-cgi/l/email-protection#5734323817243a363f3e303b3835363b243225213e3432247934383a"><strong>CEO:</strong> <span class="__cf_email__" data-cfemail="284b4d47685b454940414f44474a49445b4d5a5e414b4d5b064b4745">[email&#160;protected]</span></a>
-                    <a href="/cdn-cgi/l/email-protection#2d44434b426d5e404c45444a41424f4c415e485f5b444e485e034e4240"><strong>Inquiries:</strong> <span class="__cf_email__" data-cfemail="85ecebe3eac5f6e8e4edece2e9eae7e4e9f6e0f7f3ece6e0f6abe6eae8">[email&#160;protected]</span></a>
-                    <a href="/cdn-cgi/l/email-protection#3a594f494e55575f487a49575b52535d5655585b56495f484c53595f4914595557"><strong>Support:</strong> <span class="__cf_email__" data-cfemail="5734222423383a322517243a363f3e303b3835363b243225213e3432247934383a">[email&#160;protected]</span></a>
+                    <a href="/cdn-cgi/l/email-protection#9dfef8f2ddeef0fcf5f4faf1f2fffcf1eef8efebf4fef8eeb3fef2f0"><strong>CEO:</strong> <span class="__cf_email__" data-cfemail="1073757f50637d717879777c7f72717c63756266797375633e737f7d">[email&#160;protected]</span></a>
+                    <a href="/cdn-cgi/l/email-protection#6e070008012e1d030f06070902010c0f021d0b1c18070d0b1d400d0103"><strong>Inquiries:</strong> <span class="__cf_email__" data-cfemail="c4adaaa2ab84b7a9a5acada3a8aba6a5a8b7a1b6b2ada7a1b7eaa7aba9">[email&#160;protected]</span></a>
+                    <a href="/cdn-cgi/l/email-protection#4724323433282a223507342a262f2e202b2825262b342235312e2422346924282a"><strong>Support:</strong> <span class="__cf_email__" data-cfemail="4d2e383e392220283f0d3e202c25242a21222f2c213e283f3b242e283e632e2220">[email&#160;protected]</span></a>
                   </div>
                 </div>
               </div>
@@ -1123,7 +1157,7 @@
           <div class="footer__social">
             <a href="https://www.tiktok.com/@smahiglobalservices?_r=1&_t=ZS-9565yfAwIdd" target="_blank" rel="noopener" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
             <a href="https://wa.me/2349066062541" target="_blank" rel="noopener" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
-            <a href="/cdn-cgi/l/email-protection#7e171018113e0d131f16171912111c1f120d1b0c08171d1b0d501d1113" aria-label="Email"><i class="fas fa-envelope"></i></a>
+            <a href="/cdn-cgi/l/email-protection#1970777f76596a747871707e75767b78756a7c6b6f707a7c6a377a7674" aria-label="Email"><i class="fas fa-envelope"></i></a>
           </div>
         </div>
 
@@ -1153,8 +1187,8 @@
         <div class="footer__col">
           <h4>Contact Info</h4>
           <ul class="footer__contact">
-            <li><i class="fas fa-envelope"></i> <a href="/cdn-cgi/l/email-protection#9af3f4fcf5dae9f7fbf2f3fdf6f5f8fbf6e9ffe8ecf3f9ffe9b4f9f5f7"><span class="__cf_email__" data-cfemail="aac3c4ccc5ead9c7cbc2c3cdc6c5c8cbc6d9cfd8dcc3c9cfd984c9c5c7">[email&#160;protected]</span></a></li>
-            <li><i class="fas fa-headset"></i> <a href="/cdn-cgi/l/email-protection#9efdebedeaf1f3fbecdeedf3fff6f7f9f2f1fcfff2edfbece8f7fdfbedb0fdf1f3"><span class="__cf_email__" data-cfemail="a5c6d0d6d1cac8c0d7e5d6c8c4cdccc2c9cac7c4c9d6c0d7d3ccc6c0d68bc6cac8">[email&#160;protected]</span></a></li>
+            <li><i class="fas fa-envelope"></i> <a href="/cdn-cgi/l/email-protection#7c15121a133c0f111d14151b10131e1d100f190e0a151f190f521f1311"><span class="__cf_email__" data-cfemail="6c05020a032c1f010d04050b00030e0d001f091e1a050f091f420f0301">[email&#160;protected]</span></a></li>
+            <li><i class="fas fa-headset"></i> <a href="/cdn-cgi/l/email-protection#8ceff9fff8e3e1e9feccffe1ede4e5ebe0e3eeede0ffe9fefae5efe9ffa2efe3e1"><span class="__cf_email__" data-cfemail="55362026213a383027152638343d3c32393a373439263027233c3630267b363a38">[email&#160;protected]</span></a></li>
             <li><i class="fas fa-phone"></i> <a href="tel:+2349066062541">+234 906 606 2541</a></li>
             <li><i class="fas fa-phone"></i> <a href="tel:+2349052373245">+234 905 237 3245</a></li>
             <li><i class="fas fa-location-dot"></i> Kano, Nigeria</li>
